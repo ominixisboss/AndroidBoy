@@ -1,0 +1,82 @@
+name: Release
+
+# When main has an app version (versionName in app/build.gradle) with no release yet,
+# builds the release APK and publishes it as a GitHub release tagged v<version>.
+# Bump versionName to publish a new release.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find the version to release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="v$(sed -n 's/.*versionName "\([^ "]*\).*/\1/p' app/build.gradle)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "$tag is already released; bump versionName to publish a new release."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Releasing $tag"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-java@v4
+        if: steps.version.outputs.exists == 'false'
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        if: steps.version.outputs.exists == 'false'
+
+      - name: Build the release APK
+        if: steps.version.outputs.exists == 'false'
+        run: ./gradlew --no-daemon assembleRelease
+
+      - name: Check APK contents
+        if: steps.version.outputs.exists == 'false'
+        run: |
+          apk=app/build/outputs/apk/release/app-release.apk
+          unzip -l "$apk" > contents.txt
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            grep -q "lib/$abi/libandroidboy.so" contents.txt || { echo "missing $abi library"; exit 1; }
+          done
+          for rom in dmg mgb sgb sgb2 cgb cgb0 agb; do
+            grep -q "assets/BootROMs/${rom}_boot.bin" contents.txt || { echo "missing $rom boot ROM"; exit 1; }
+          done
+
+      - name: Publish the release
+        if: steps.version.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          apk="AndroidBoy-${TAG}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$apk"
+          sha256sum "$apk" > "$apk.sha256"
+          sameboy="$(sed -n 's/^VERSION *:= *//p' sameboy/version.mk)"
+          cat > notes.md <<NOTES
+          AndroidBoy ${TAG}: a standalone Game Boy and Game Boy Color emulator for Android 8.0 and later, built on SameBoy ${sameboy}.
+
+          **Install:** download \`${apk}\`, open it on your phone and allow installing from this source. Then add your \`.gb\`/\`.gbc\` ROMs (or \`.zip\` files containing them) from the game list.
+
+          The APK runs on arm64, 32-bit ARM, x86 and x86_64 devices. No BIOS files are needed.
+
+          **Signing:** this APK is signed with a debug key, not a permanent release key. If a later release switches to a real key, you'll have to uninstall this one first. Export your save files from the game list before you do.
+
+          See the [README](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/README.md) for controls and features.
+          NOTES
+          gh release create "$TAG" "$apk" "$apk.sha256" --target "$GITHUB_SHA" \
+            --title "AndroidBoy ${TAG}" --notes-file notes.md
