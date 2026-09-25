@@ -14,6 +14,24 @@ jobs:
       - name: Run the host test
         run: tests/run_host_test.sh
 
+  shaders:
+    name: Filter shaders
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Playwright
+        run: npm install --no-save playwright@1.56.1 && npx playwright install --with-deps chromium
+      - name: Compile and render every filter
+        run: node tests/shader_test.js app/src/main/assets/shaders shader-previews
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shader-previews
+          path: shader-previews/
+
   apk:
     name: Android APK
     runs-on: ubuntu-latest
@@ -23,12 +41,12 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug and release APKs
-        run: ./gradlew --no-daemon assembleDebug assembleRelease lintDebug
+      - name: Build debug and release APKs and run the unit tests
+        run: ./gradlew --no-daemon assembleDebug assembleRelease lintDebug testDebugUnitTest
 
       - name: Check APK contents
         run: |
@@ -52,6 +70,18 @@ jobs:
         with:
           name: AndroidBoy-release
           path: app/build/outputs/apk/release/*.apk
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: skin-previews
+          path: app/build/skin-previews/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: unit-test-report
+          path: app/build/reports/tests/
 
       - uses: actions/upload-artifact@v4
         if: always()

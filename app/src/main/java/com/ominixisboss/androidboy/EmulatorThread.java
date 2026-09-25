@@ -1,6 +1,5 @@
 package com.ominixisboss.androidboy;
 
-import android.graphics.Bitmap;
 import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
@@ -16,7 +15,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
  */
 final class EmulatorThread extends Thread {
     interface Host {
-        void onFrame(Bitmap frame);
+        void onFrame(Frame frame);
         void onRumble(double amplitude);
         /** Called every few seconds and when stopping, only if the game wrote to its save RAM. */
         void onBatteryDirty();
@@ -35,9 +34,9 @@ final class EmulatorThread extends Thread {
     private final int sampleRate;
     private final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<>();
     private final Object pauseLock = new Object();
-    // Three bitmaps so the one being written is never the one the UI may still be drawing.
-    private final Bitmap[] bitmaps = new Bitmap[3];
-    private int bitmapIndex;
+    // Three frames so the one being written is never the one the renderer may still be reading.
+    private final Frame[] frames = {new Frame(), new Frame(), new Frame()};
+    private int frameIndex;
 
     private volatile boolean running = true;
     private volatile boolean paused;
@@ -191,16 +190,13 @@ final class EmulatorThread extends Thread {
     }
 
     private void publishFrame() {
-        int width = Emulator.nativeGetFrameWidth();
-        int height = Emulator.nativeGetFrameHeight();
-        bitmapIndex = (bitmapIndex + 1) % bitmaps.length;
-        Bitmap bitmap = bitmaps[bitmapIndex];
-        if (bitmap == null || bitmap.getWidth() != width || bitmap.getHeight() != height) {
-            bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            bitmaps[bitmapIndex] = bitmap;
-        }
-        if (Emulator.nativeCopyFrame(bitmap)) {
-            host.onFrame(bitmap);
+        frameIndex = (frameIndex + 1) % frames.length;
+        Frame frame = frames[frameIndex];
+        frame.width = Emulator.nativeGetFrameWidth();
+        frame.height = Emulator.nativeGetFrameHeight();
+        frame.odd = Emulator.nativeIsOddFrame();
+        if (Emulator.nativeCopyFrame(frame.pixels)) {
+            host.onFrame(frame);
         } else {
             Log.w(TAG, "Could not copy frame");
         }

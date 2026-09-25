@@ -1,11 +1,12 @@
 package com.ominixisboss.androidboy;
 
 import android.app.Activity;
+import android.app.ActivityManager;
 import android.app.AlertDialog;
 import android.content.Context;
-import android.graphics.Bitmap;
-import android.graphics.Color;
+import android.content.Intent;
 import android.graphics.Insets;
+import android.graphics.Rect;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -30,9 +31,10 @@ import java.text.DateFormat;
 import java.util.Date;
 
 /** Runs a game: screen, on-screen controls, hardware input, save states and the in-game menu. */
-public final class EmulatorActivity extends Activity implements EmulatorThread.Host, GamepadView.Listener {
+public final class EmulatorActivity extends Activity implements EmulatorThread.Host, SkinView.Listener {
     static final String EXTRA_ROM = "rom";
     private static final String TAG = "AndroidBoy";
+    private static final int REQUEST_IMPORT_SKIN = 1;
 
     // The core is a process-wide singleton; remember which ROM it holds.
     private static String loadedRomPath;
@@ -44,8 +46,12 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private RomLibrary library;
     private File rom;
 
-    private ScreenView screen;
-    private GamepadView gamepad;
+    private SkinLibrary skins;
+    private FrameLayout root;
+    private GameScreen screen;
+    private SkinView skinView;
+    private int shownFrameWidth = 160;
+    private int shownFrameHeight = 144;
     private EmulatorThread thread;
     private Vibrator vibrator;
 
@@ -53,6 +59,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private int hardwareKeys;
     private int axisKeys;
     private boolean fastForwardHeld;
+    private boolean fastForwardTouched;
     private boolean fastForwardToggled;
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
@@ -84,23 +91,17 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
             window.setDecorFitsSystemWindows(false);
         }
 
-        FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.BLACK);
-        screen = new ScreenView(this);
-        gamepad = new GamepadView(this, screen, this);
-        root.addView(screen, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT));
-        root.addView(gamepad, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+        skins = new SkinLibrary(this);
+        Skin skin = skins.loadActive();
+        root = new FrameLayout(this);
+        root.setBackgroundColor(skin.backgroundColor());
+        // The game screen sits under the skin, which leaves a hole for it; see onScreenRectChanged.
+        screen = supportsGles3() ? new GlScreenView(this) : new CanvasScreenView(this);
+        skinView = new SkinView(this, skin, this);
+        root.addView(screen.view(), new FrameLayout.LayoutParams(0, 0));
+        root.addView(skinView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         root.setOnApplyWindowInsetsListener(this::applyInsets);
-        // Only reachable while the controls are hidden: touching the screen brings them back.
-        screen.setOnTouchListener((v, event) -> {
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN && controlsHiddenByGamepad) {
-                controlsHiddenByGamepad = false;
-                updateControlsVisibility();
-            }
-            return true;
-        });
         setContentView(root);
 
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
@@ -116,6 +117,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
             finish();
             return;
         }
+        screen.onResume();
         thread = new EmulatorThread(this, loadedSampleRate);
         thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
         thread.setMuted(!settings.isOn(Settings.SOUND));
@@ -129,6 +131,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     protected void onPause() {
         super.onPause();
         if (thread == null) return;
+        screen.onPause();
         thread.shutdown();
         thread = null;
         if (settings.isOn(Settings.AUTO_SAVE)) {
@@ -214,8 +217,16 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     // ---- EmulatorThread.Host (called on the emulation thread) ----
 
     @Override
-    public void onFrame(Bitmap frame) {
+    public void onFrame(Frame frame) {
         screen.setFrame(frame);
+        if (frame.width != shownFrameWidth || frame.height != shownFrameHeight) {
+            // E.g. a Super Game Boy border appeared: the screen's aspect ratio changes.
+            shownFrameWidth = frame.width;
+            shownFrameHeight = frame.height;
+            int width = frame.width;
+            int height = frame.height;
+            mainHandler.post(() -> skinView.setFrameSize(width, height));
+        }
     }
 
     @Override
@@ -302,6 +313,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                 "Load state…",
                 fastForward ? "Stop fast-forward" : "Fast-forward",
                 "Reset",
+                "Skin…",
                 "Settings",
                 "Quit to game list",
         };
@@ -316,15 +328,45 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                             updateFastForward();
                             break;
                         case 4: confirmReset(); break;
-                        case 5:
+                        case 5: showSkinPicker(); break;
+                        case 6:
                             dialogOpened();
                             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
                             break;
-                        case 6: finish(); break;
+                        case 7: finish(); break;
                         default: break;
                     }
                 })
                 .create());
+    }
+
+    private void showSkinPicker() {
+        dialogOpened();
+        SkinPicker.show(this, skins, REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {
+            @Override
+            public void onSkinChanged() {
+                applySkin();
+            }
+
+            @Override
+            public void onDismissed() {
+                dialogClosed();
+            }
+        });
+    }
+
+    private void applySkin() {
+        Skin skin = skins.loadActive();
+        root.setBackgroundColor(skin.backgroundColor());
+        skinView.setSkin(skin);
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_IMPORT_SKIN && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            SkinPicker.importSkin(this, skins, data.getData(), this::applySkin);
+        }
     }
 
     private void showStateSlots(boolean save) {
@@ -406,15 +448,51 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
             if (thread != null) thread.setMuted(!settings.isOn(Settings.SOUND));
         } else if (choice == Settings.FAST_FORWARD) {
             if (thread != null) thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
+        } else if (choice == Settings.FILTER || choice == Settings.FRAME_BLENDING) {
+            applyScreenSettings();
         } else {
             applyUiSettings();
         }
     }
 
     private void applyUiSettings() {
-        screen.setIntegerScaling(settings.get(Settings.SCALING) == 1);
-        gamepad.setHaptics(settings.isOn(Settings.HAPTICS));
+        skinView.setIntegerScaling(settings.get(Settings.SCALING) == 1);
+        skinView.setHaptics(settings.isOn(Settings.HAPTICS));
+        applyScreenSettings();
         updateControlsVisibility();
+    }
+
+    private void applyScreenSettings() {
+        screen.setFilter(settings.get(Settings.FILTER));
+        screen.setFrameBlending(settings.get(Settings.FRAME_BLENDING));
+    }
+
+    private boolean supportsGles3() {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        return manager != null && manager.getDeviceConfigurationInfo().reqGlEsVersion >= 0x30000;
+    }
+
+    // ---- SkinView.Listener ----
+
+    @Override
+    public void onScreenRectChanged(Rect rect) {
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(rect.width(), rect.height());
+        params.leftMargin = rect.left;
+        params.topMargin = rect.top;
+        // Often called while the skin is being laid out; move the screen on the next pass.
+        mainHandler.post(() -> screen.view().setLayoutParams(params));
+    }
+
+    @Override
+    public void onShowControlsRequested() {
+        controlsHiddenByGamepad = false;
+        updateControlsVisibility();
+    }
+
+    @Override
+    public void onFastForwardTouched(boolean held) {
+        fastForwardTouched = held;
+        updateFastForward();
     }
 
     // ---- Input ----
@@ -430,7 +508,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     }
 
     private void updateFastForward() {
-        if (thread != null) thread.setFastForward(fastForwardToggled || fastForwardHeld);
+        if (thread != null) thread.setFastForward(fastForwardToggled || fastForwardHeld || fastForwardTouched);
     }
 
     private static int mapKey(int keyCode) {
@@ -532,11 +610,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private void updateControlsVisibility() {
         int mode = settings.get(Settings.CONTROLS);
         boolean visible = mode == 1 || (mode == 0 && !controlsHiddenByGamepad);
-        if (!visible) {
-            gamepad.releaseAll();
-        }
-        gamepad.setVisibility(visible ? View.VISIBLE : View.GONE);
-        screen.setReserveControlsSpace(visible);
+        skinView.setControlsVisible(visible);
     }
 
     // ---- Window ----

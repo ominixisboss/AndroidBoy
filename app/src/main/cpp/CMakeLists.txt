@@ -48,4 +48,4 @@ target_compile_options(sameboy PRIVATE
 
 add_library(androidboy SHARED emulator.c jni_bridge.c)
 target_compile_options(androidboy PRIVATE -std=gnu11 -O2 -Wall -Wno-multichar)
-target_link_libraries(androidboy sameboy android jnigraphics log m)
+target_link_libraries(androidboy sameboy android log m)

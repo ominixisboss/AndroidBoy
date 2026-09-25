@@ -53,6 +53,9 @@ void emu_run_frame(void);
 /* The most recently completed frame, as 0xAABBGGRR pixels (Android ARGB_8888 memory order). */
 const uint32_t *emu_get_frame(unsigned *width, unsigned *height);
 
+/* Whether the most recent frame is an odd one, for SameBoy's accurate frame blending. */
+bool emu_is_odd_frame(void);
+
 /* Moves up to `max_samples` interleaved stereo int16 samples into `out`. Returns the count moved. */
 size_t emu_take_audio(int16_t *out, size_t max_samples);
 

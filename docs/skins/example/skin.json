@@ -1,0 +1,125 @@
+{
+  "name": "Midnight (example)",
+  "author": "AndroidBoy",
+  "backgroundColor": "#121628",
+  "portrait": {
+    "image": "portrait.png",
+    "pressedImage": "portrait_pressed.png",
+    "screen": [
+      90,
+      140,
+      900,
+      810
+    ],
+    "controls": {
+      "dpad": [
+        80,
+        1180,
+        360,
+        360
+      ],
+      "b": [
+        600,
+        1330,
+        170,
+        170
+      ],
+      "a": [
+        820,
+        1220,
+        170,
+        170
+      ],
+      "ab": [
+        770,
+        1330,
+        70,
+        70
+      ],
+      "select": [
+        300,
+        1660,
+        200,
+        70
+      ],
+      "start": [
+        580,
+        1660,
+        200,
+        70
+      ],
+      "menu": [
+        440,
+        1070,
+        200,
+        70
+      ],
+      "fastForward": [
+        840,
+        1060,
+        160,
+        70
+      ]
+    }
+  },
+  "landscape": {
+    "image": "landscape.png",
+    "pressedImage": "landscape_pressed.png",
+    "screen": [
+      540,
+      90,
+      840,
+      756
+    ],
+    "controls": {
+      "dpad": [
+        90,
+        360,
+        340,
+        340
+      ],
+      "b": [
+        1500,
+        500,
+        160,
+        160
+      ],
+      "a": [
+        1700,
+        380,
+        160,
+        160
+      ],
+      "ab": [
+        1650,
+        490,
+        70,
+        70
+      ],
+      "select": [
+        130,
+        900,
+        200,
+        70
+      ],
+      "start": [
+        1590,
+        900,
+        200,
+        70
+      ],
+      "menu": [
+        1700,
+        40,
+        180,
+        70
+      ],
+      "fastForward": [
+        1500,
+        40,
+        160,
+        70
+      ]
+    }
+  }
+}

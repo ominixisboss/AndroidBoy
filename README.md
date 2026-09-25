@@ -18,8 +18,15 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 - **Controls.** Multi-touch on-screen controls with haptic feedback: an 8-way d-pad and A/B, where
   sliding between A and B presses both. Physical gamepads and keyboards work too, and the touch
   controls hide while one is in use.
-- **Display.** Nearest-neighbour scaling, with fit-to-screen or integer-only modes. Also SameBoy's
-  color correction modes, monochrome palettes and Super Game Boy borders.
+- **Skins.** Built-in themes styled after the original handhelds' colours: classic grey, Pocket
+  silver, Light gold, Berry, Grape, Kiwi, Dandelion, Teal, Atomic purple and Advance indigo. There's
+  also a minimal translucent overlay. You can import your own skins as a `.zip` of images plus a
+  layout file; see [docs/skins.md](docs/skins.md).
+- **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
+  CRT, flat CRT, bilinear, Scale2x/4x, HQ2x, OmniScale and more. There's also SameBoy's frame
+  blending, which some games rely on for flicker transparency.
+- **Display.** Fit-to-screen or integer-only scaling. Also SameBoy's color correction modes,
+  monochrome palettes and Super Game Boy borders.
 - **Audio.** Emulation is paced by the audio output, so sound stays smooth.
   Fast-forward runs at 2×, 3×, 4×, 8× or unlimited speed.
 - **Rumble** for rumble cartridges, optionally for all games.
@@ -36,12 +43,14 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 | Fast-forward (hold) | R1 / R2 | Space |
 | Menu | Mode / Menu, or Back | Esc |
 
+Skins can also have an on-screen fast-forward button.
+
 The face buttons are mapped by position, not by label. The right face button is A and the bottom
 one is B, matching the Game Boy's layout.
 
 ## Building
 
-Requirements: JDK 17 and the Android SDK. Gradle downloads the NDK and CMake if they're missing.
+Requirements: JDK 21 (17 works for building, but the skin tests need 21) and the Android SDK. Gradle downloads the NDK and CMake if they're missing.
 
 ```sh
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
@@ -98,11 +107,15 @@ without it.
 
 Each release's notes include the signing certificate's SHA-256 fingerprint.
 
-### Core smoke test
+### Tests
+
+`./gradlew testDebugUnitTest` runs the skin tests. CI uploads their preview images as the
+`skin-previews` artifact.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
-loading, video, audio rate, joypad input, battery saves, save states and the SGB border. You only
+loading, video, audio rate, joypad input, battery saves, save states, the SGB border and the frame
+parity used for frame blending. You only
 need a C compiler.
 
 ## Project layout
@@ -111,25 +124,37 @@ need a C compiler.
 sameboy/                  SameBoy 1.0.3: Core/ and BootROMs/ sources, unmodified
 app/src/main/cpp/         Native code
   emulator.c/.h           Platform-independent wrapper around the core
-  jni_bridge.c            JNI bindings, boot ROMs from assets, bitmap output
+  jni_bridge.c            JNI bindings, boot ROMs from assets, frame output
   CMakeLists.txt
 app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   MainActivity            Game library, save import/export
   EmulatorActivity        Game screen, input, menu, save states
   EmulatorThread          Emulation loop, audio output and pacing
-  ScreenView/GamepadView  Rendering and touch controls
+  GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
+  CanvasScreenView        Fallback renderer for devices without OpenGL ES 3
+  Skin, ThemeSkin         Skin layout and drawing; the built-in themes
+  ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
+  SkinView                Draws the active skin and handles touch
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
-tools/build_bootroms.sh   Rebuilds those from sameboy/BootROMs (needs RGBDS 0.7+)
-tests/                    Host-side smoke test
+app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
+app/src/test/             Robolectric tests for skins (layout, touch, import); write previews
+                          to app/build/skin-previews
+docs/skins.md             The skin file format; docs/skins/example is a complete example
+tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)
+tools/make_example_skin.py  Draws the example skin (needs Pillow)
+tests/                    Host-side smoke test for the core wrapper
 ```
 
 To update SameBoy, replace `sameboy/Core`, `sameboy/BootROMs` and `sameboy/version.mk` with the new
-release's copies. Then run `tools/build_bootroms.sh` and `tests/run_host_test.sh`.
+release's copies, and copy its `Shaders/*.fsh` files (except `MasterShader.fsh`) into
+`app/src/main/assets/shaders/`. Then run `tools/build_bootroms.sh`, `tests/run_host_test.sh` and
+`./gradlew testDebugUnitTest`.
 
 ## License
 
 SameBoy is © Lior Halphon and licensed under the Expat (MIT) license; see `sameboy/LICENSE`.
-The app shows the license under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
+That includes the filter shaders in `app/src/main/assets/shaders/`, and `Master.glsl` there is a port
+of SameBoy's master shader. The app shows the license under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
 so its extra distribution condition doesn't apply. The rest of this repository is released under
 CC0 (see `LICENSE`).
 

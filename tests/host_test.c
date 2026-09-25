@@ -84,6 +84,17 @@ static void test_model(const uint8_t *rom, size_t rom_size, GB_model_t model, co
     CHECK(width == 160 && height == 144, "%s: frame is 160x144 (got %ux%u)", name, width, height);
     CHECK(frame_is_opaque(), "%s: frame pixels are opaque", name);
 
+    /* Frame blending relies on the odd/even flag alternating. SameBoy doesn't track it for the
+       Super Game Boy, whose frames always blend as even ones. */
+    if (model != GB_MODEL_SGB && model != GB_MODEL_SGB2) {
+        unsigned odd = 0;
+        for (unsigned i = 0; i < 10; i++) {
+            emu_run_frame();
+            odd += emu_is_odd_frame();
+        }
+        CHECK(odd > 0 && odd < 10, "%s: odd/even frame flag alternates (%u of 10 odd)", name, odd);
+    }
+
     CHECK(emu_take_battery_dirty(), "%s: battery marked dirty", name);
     size_t battery_size = emu_battery_size();
     uint8_t *battery = malloc(battery_size);

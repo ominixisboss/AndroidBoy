@@ -67,8 +67,20 @@ android {
         }
     }
 
+    testOptions {
+        unitTests.all {
+            // Robolectric's native graphics (used by the skin tests) needs this on JDK 17+.
+            jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
+        }
+    }
+
     lint {
         // Emulators are sideloaded often; don't fail builds over Play-specific checks.
         abortOnError false
     }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.17'
 }

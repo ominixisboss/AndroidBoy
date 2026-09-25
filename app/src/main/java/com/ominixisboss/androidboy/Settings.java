@@ -81,6 +81,15 @@ final class Settings {
             new int[] {0, 1},
             0);
 
+    static final Choice FILTER = new Choice("filter", "Screen filter",
+            Filters.LABELS, indices(Filters.LABELS.length), 0);
+
+    // Mixes each frame with the previous one, which some games rely on for flicker transparency.
+    static final Choice FRAME_BLENDING = new Choice("frame_blending", "Frame blending",
+            new String[] {"Off", "Simple", "Accurate"},
+            new int[] {0, 1, 2},
+            2);
+
     static final Choice SOUND = new Choice("sound", "Sound",
             new String[] {"On", "Off"},
             new int[] {1, 0},
@@ -97,9 +106,15 @@ final class Settings {
             0);
 
     static final Choice[] ALL = {
-            DMG_MODEL, CGB_MODEL, COLOR_CORRECTION, DMG_PALETTE, BORDER, SCALING, CONTROLS,
+            DMG_MODEL, CGB_MODEL, COLOR_CORRECTION, DMG_PALETTE, FILTER, FRAME_BLENDING, BORDER, SCALING, CONTROLS,
             SOUND, HIGHPASS, HAPTICS, RUMBLE, FAST_FORWARD, AUTO_SAVE,
     };
+
+    private static int[] indices(int count) {
+        int[] values = new int[count];
+        for (int i = 0; i < count; i++) values[i] = i;
+        return values;
+    }
 
     interface Listener {
         void onSettingChanged(Choice choice);

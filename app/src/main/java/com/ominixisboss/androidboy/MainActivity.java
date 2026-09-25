@@ -29,6 +29,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_IMPORT_ROM = 1;
     private static final int REQUEST_IMPORT_SAVE = 2;
     private static final int REQUEST_EXPORT_SAVE = 3;
+    private static final int REQUEST_IMPORT_SKIN = 4;
     private static final String STATE_PENDING_ROM = "pending_rom";
 
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -92,8 +93,9 @@ public final class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, R.string.add_game).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
-        menu.add(0, 2, 1, R.string.settings);
-        menu.add(0, 3, 2, R.string.about);
+        menu.add(0, 4, 1, R.string.skin);
+        menu.add(0, 2, 2, R.string.settings);
+        menu.add(0, 3, 3, R.string.about);
         return true;
     }
 
@@ -108,6 +110,15 @@ public final class MainActivity extends Activity {
                 return true;
             case 3:
                 showAbout();
+                return true;
+            case 4:
+                SkinPicker.show(this, new SkinLibrary(this), REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {
+                    @Override
+                    public void onSkinChanged() {}
+
+                    @Override
+                    public void onDismissed() {}
+                });
                 return true;
             default:
                 return super.onOptionsItemSelected(item);
@@ -242,6 +253,11 @@ public final class MainActivity extends Activity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (resultCode != RESULT_OK || data == null) return;
+
+        if (requestCode == REQUEST_IMPORT_SKIN) {
+            if (data.getData() != null) SkinPicker.importSkin(this, new SkinLibrary(this), data.getData(), () -> {});
+            return;
+        }
 
         if (requestCode == REQUEST_IMPORT_ROM) {
             if (data.getClipData() != null) {
