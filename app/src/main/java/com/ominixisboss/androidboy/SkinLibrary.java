@@ -54,12 +54,34 @@ final class SkinLibrary {
 
     /** Names of the bundled skins, as asset folder names. */
     private String[] bundledNames() {
-        try {
-            String[] names = context.getAssets().list(BUNDLED_ASSETS);
-            return names != null ? names : new String[0];
-        } catch (IOException e) {
-            return new String[0];
+        List<String> names = new ArrayList<>();
+        for (String name : assetChildren(BUNDLED_ASSETS)) {
+            if (assetChildren(BUNDLED_ASSETS + "/" + name).contains(ImageSkin.MANIFEST)) names.add(name);
         }
+        return names.toArray(new String[0]);
+    }
+
+    /**
+     * The files and folders directly inside an asset folder. Android lists just their names, but
+     * some asset managers (Robolectric's) list every file below the folder by its relative path,
+     * so this keeps only the first part of each, once.
+     */
+    private List<String> assetChildren(String path) {
+        List<String> children = new ArrayList<>();
+        try {
+            String[] entries = context.getAssets().list(path);
+            if (entries == null) return children;
+            for (String entry : entries) {
+                if (entry.startsWith(path + "/")) entry = entry.substring(path.length() + 1);
+                int slash = entry.indexOf('/');
+                String child = slash >= 0 ? entry.substring(0, slash) : entry;
+                if (!child.isEmpty() && !children.contains(child)) children.add(child);
+            }
+        } catch (IOException e) {
+            // No such folder.
+        }
+        java.util.Collections.sort(children);
+        return children;
     }
 
     /**
@@ -76,9 +98,7 @@ final class SkinLibrary {
             for (String skin : bundledNames()) {
                 File dir = new File(bundledDir, skin);
                 dir.mkdirs();
-                String[] files = context.getAssets().list(BUNDLED_ASSETS + "/" + skin);
-                if (files == null) continue;
-                for (String file : files) {
+                for (String file : assetChildren(BUNDLED_ASSETS + "/" + skin)) {
                     try (InputStream in = context.getAssets().open(BUNDLED_ASSETS + "/" + skin + "/" + file);
                          OutputStream out = new FileOutputStream(new File(dir, file))) {
                         int read;
