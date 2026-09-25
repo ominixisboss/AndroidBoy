@@ -168,6 +168,41 @@ int main(int argc, char **argv)
     CHECK(emu_load_state(state, state_size) && emu_get_model() == GB_MODEL_DMG_B, "loading a DMG state switches back to DMG");
     free(state);
 
+    /* Rewind. The test ROM counts frames in cartridge RAM, so the RAM shows how far back in the
+       recorded history the emulator is. */
+    emu_set_rewind_length(10);
+    emu_load_rom(rom, rom_size, GB_MODEL_CGB_E, 48000);
+    run_frames(840);
+    uint8_t ram[0x2000];
+    #define FRAME_COUNT() (emu_save_battery(ram, sizeof(ram)), ram[2] | (ram[3] << 8))
+    unsigned now = FRAME_COUNT();
+    CHECK(now > 600, "rewind: the test ROM counts frames (%u)", now);
+    bool moved = true;
+    for (unsigned i = 0; i < 60 && moved; i++) moved = emu_rewind_frame();
+    unsigned back = FRAME_COUNT();
+    /* Each step goes back one frame, except that the first lands on the frame already shown,
+       as in SameBoy's own frontend. */
+    CHECK(moved && now - back == 59, "rewind: 60 steps go back 59 frames (%u -> %u)", now, back);
+    for (unsigned i = 0; i < 120 && moved; i++) moved = emu_rewind_frame();
+    CHECK(moved && now - FRAME_COUNT() == 179, "rewind: 180 steps go back 179 frames (%u -> %u)", now, FRAME_COUNT());
+    unsigned steps = 0;
+    while (emu_rewind_frame() && steps < 100000) steps++;
+    /* 10 seconds were asked for; SameBoy keeps the history in blocks of frames, so a little of
+       it may already have been dropped. */
+    unsigned oldest = FRAME_COUNT();
+    CHECK(steps > 300 && now - oldest >= 540 && now - oldest <= 620,
+          "rewind: stops at the oldest recorded frame, about 10 seconds back (%u frames back)", now - oldest);
+    CHECK(!emu_rewind_frame(), "rewind: nothing older after that");
+    run_frames(3);
+    CHECK(FRAME_COUNT() == oldest + 3, "rewind: playing resumes from there (%u)", FRAME_COUNT());
+    moved = emu_rewind_frame() && emu_rewind_frame();
+    CHECK(moved && FRAME_COUNT() == oldest + 2, "rewind: new play is recorded again (%u)", FRAME_COUNT());
+    #undef FRAME_COUNT
+
+    emu_set_rewind_length(0);
+    run_frames(10);
+    CHECK(!emu_rewind_frame(), "rewind: off records nothing");
+
     emu_unload();
     free(rom);
     printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);

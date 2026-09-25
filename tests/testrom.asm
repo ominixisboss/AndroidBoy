@@ -1,5 +1,6 @@
 ; Minimal test cartridge for the host test (MBC1+RAM+BATTERY).
-; Writes a marker to cartridge RAM, plays a tone and mirrors the joypad state to SRAM.
+; Writes a marker to cartridge RAM, plays a tone, mirrors the joypad state to SRAM and counts
+; frames (at $A002, for the rewind test).
 SECTION "Header", ROM0[$100]
     nop
     jp Start
@@ -26,7 +27,21 @@ Start:
     ld [$FF13], a
     ld a, $87
     ld [$FF14], a        ; trigger
+    xor a
+    ld [$A002], a        ; frame counter, little endian
+    ld [$A003], a
+    ld a, $01
+    ld [$FFFF], a        ; enable the VBlank interrupt, only to wake HALT
 .loop:
+    halt                 ; one iteration per frame (IME is off, so no handler runs)
+    xor a
+    ldh [$FF0F], a       ; clear IF, or the next HALT would return at once
+    ld hl, $A002
+    inc [hl]
+    jr nz, .counted
+    inc hl
+    inc [hl]
+.counted:
     ld a, $20
     ld [$FF00], a        ; select d-pad
     ld a, [$FF00]

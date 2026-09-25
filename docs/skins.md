@@ -26,7 +26,8 @@ folder's contents and import the zip.
       "select": [300, 1660, 200, 70],
       "start": [580, 1660, 200, 70],
       "menu": [440, 1070, 200, 70],
-      "fastForward": [840, 1060, 160, 70]
+      "fastForward": [840, 1060, 160, 70],
+      "rewind": [80, 1060, 160, 70]
     }
   },
   "landscape": { "...": "same fields as portrait" }
@@ -61,6 +62,7 @@ Control names:
 | `start`, `select` | Start and Select. |
 | `menu` | Opens the in-game menu (save states, settings, and so on). |
 | `fastForward` | Fast-forwards while held. |
+| `rewind` | Rewinds while held. |
 
 All coordinates are in the skin's own space: the image's pixels, or `size` if set. The skin is
 scaled to fit the display, keeping its shape, and centred. So design for a common phone shape,

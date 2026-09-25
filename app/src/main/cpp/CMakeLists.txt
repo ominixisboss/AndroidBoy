@@ -17,6 +17,7 @@ set(SAMEBOY_SOURCES
     ${SAMEBOY_DIR}/Core/mbc.c
     ${SAMEBOY_DIR}/Core/memory.c
     ${SAMEBOY_DIR}/Core/random.c
+    ${SAMEBOY_DIR}/Core/rewind.c
     ${SAMEBOY_DIR}/Core/rumble.c
     ${SAMEBOY_DIR}/Core/save_state.c
     ${SAMEBOY_DIR}/Core/sgb.c
@@ -29,7 +30,6 @@ target_include_directories(sameboy PUBLIC ${SAMEBOY_DIR})
 target_compile_definitions(sameboy PUBLIC
     GB_VERSION="${SAMEBOY_VERSION}"
     GB_DISABLE_TIMEKEEPING
-    GB_DISABLE_REWIND
     GB_DISABLE_DEBUGGER
     GB_DISABLE_CHEATS
     GB_DISABLE_CHEAT_SEARCH

@@ -20,6 +20,8 @@ final class SkinView extends View {
 
         void onFastForwardTouched(boolean held);
 
+        void onRewindTouched(boolean held);
+
         void onMenuPressed();
 
         /** The controls are hidden (a gamepad is in use) and the user touched the screen. */
@@ -166,6 +168,7 @@ final class SkinView extends View {
         if (newMask == mask) return;
         int pressed = newMask & ~mask;
         boolean fastForwardChanged = ((newMask ^ mask) & Skin.KEY_FAST_FORWARD) != 0;
+        boolean rewindChanged = ((newMask ^ mask) & Skin.KEY_REWIND) != 0;
         boolean gameKeysChanged = ((newMask ^ mask) & Skin.GAME_KEYS) != 0;
         mask = newMask;
         if (pressed != 0 && haptics) {
@@ -173,6 +176,7 @@ final class SkinView extends View {
         }
         if (gameKeysChanged) listener.onTouchKeysChanged(mask & Skin.GAME_KEYS);
         if (fastForwardChanged) listener.onFastForwardTouched((mask & Skin.KEY_FAST_FORWARD) != 0);
+        if (rewindChanged) listener.onRewindTouched((mask & Skin.KEY_REWIND) != 0);
         invalidate();
     }
 

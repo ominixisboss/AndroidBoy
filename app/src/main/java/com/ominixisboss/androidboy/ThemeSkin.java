@@ -200,6 +200,9 @@ final class ThemeSkin extends Skin {
         addControls(out, g, dpadX, centerY, dpadRadius, aX, aY, bX, bY, buttonRadius,
                 width / 2f - pillWidth * 0.75f, width / 2f + pillWidth * 0.75f, pillY, pillY, pillWidth, pillHeight,
                 width / 2f, top + menuRadius * 1.6f, menuRadius);
+        // Rewind and fast-forward flank the menu button.
+        addUtilityButtons(out, width / 2f - menuRadius * 2.6f, top + menuRadius * 1.6f,
+                width / 2f + menuRadius * 2.6f, top + menuRadius * 1.6f, menuRadius);
     }
 
     private void layoutLandscapeControls(Layout out, Geometry g, int width, int height) {
@@ -221,6 +224,15 @@ final class ThemeSkin extends Skin {
                 rightCenter - buttonRadius * 1.2f, height * 0.5f + buttonRadius * 0.6f, buttonRadius,
                 dpadX, rightCenter, pillY, pillY, pillWidth, pillHeight,
                 width - menuRadius * 1.6f, menuRadius * 1.6f, menuRadius);
+        // Rewind in the top-left corner; fast-forward next to the menu in the top-right one.
+        addUtilityButtons(out, menuRadius * 1.6f, menuRadius * 1.6f,
+                width - menuRadius * 4.2f, menuRadius * 1.6f, menuRadius);
+    }
+
+    private static void addUtilityButtons(Layout out, float rewindX, float rewindY,
+                                          float fastForwardX, float fastForwardY, float radius) {
+        out.controls.add(new Control(KEY_REWIND, Control.CIRCLE, circle(rewindX, rewindY, radius), true));
+        out.controls.add(new Control(KEY_FAST_FORWARD, Control.CIRCLE, circle(fastForwardX, fastForwardY, radius), true));
     }
 
     private void addControls(Layout out, Geometry g, float dpadX, float dpadY, float dpadRadius,
@@ -346,8 +358,8 @@ final class ThemeSkin extends Skin {
                     drawPill(canvas, g, control, down);
                     break;
                 default:
-                    if (control.keys == KEY_MENU) {
-                        drawMenu(canvas, control.bounds, down);
+                    if (control.keys == KEY_MENU || control.keys == KEY_REWIND || control.keys == KEY_FAST_FORWARD) {
+                        drawUtility(canvas, control.bounds, control.keys, down);
                     } else {
                         drawButton(canvas, g, control, down);
                     }
@@ -437,7 +449,8 @@ final class ThemeSkin extends Skin {
         drawCentered(canvas, label, b.centerX(), b.bottom + text.getTextSize() * 1.2f);
     }
 
-    private void drawMenu(Canvas canvas, RectF b, boolean down) {
+    /** The small round buttons: menu (☰), rewind (◀◀) and fast-forward (▶▶). */
+    private void drawUtility(Canvas canvas, RectF b, int keys, boolean down) {
         float radius = b.width() / 2;
         int background;
         int lines;
@@ -450,6 +463,23 @@ final class ThemeSkin extends Skin {
         }
         fill.setColor(background);
         canvas.drawCircle(b.centerX(), b.centerY(), radius, fill);
+        if (keys != KEY_MENU) {
+            // Two small triangles pointing back (rewind) or forward (fast-forward).
+            float direction = keys == KEY_REWIND ? -1 : 1;
+            float h = radius * 0.32f;
+            float w = radius * 0.3f;
+            fill.setColor(lines);
+            for (int i = 0; i < 2; i++) {
+                float start = b.centerX() + direction * (i * w - w);
+                path.reset();
+                path.moveTo(start, b.centerY() - h);
+                path.lineTo(start + direction * w, b.centerY());
+                path.lineTo(start, b.centerY() + h);
+                path.close();
+                canvas.drawPath(path, fill);
+            }
+            return;
+        }
         stroke.setColor(lines);
         stroke.setStrokeWidth(radius * 0.12f);
         float half = radius * 0.45f;

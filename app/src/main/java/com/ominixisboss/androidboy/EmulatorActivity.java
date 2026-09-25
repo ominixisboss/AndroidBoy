@@ -58,6 +58,8 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private int axisKeys;
     private boolean fastForwardHeld;
     private boolean fastForwardTouched;
+    private boolean rewindHeld;
+    private boolean rewindTouched;
     private boolean fastForwardToggled;
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
@@ -121,6 +123,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         thread.setMuted(!settings.isOn(Settings.SOUND));
         thread.setPaused(openDialogs > 0);
         updateFastForward();
+        updateRewind();
         pushKeys();
         thread.start();
     }
@@ -450,7 +453,8 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                 Toast.makeText(this, "The new model is used after you reset the game", Toast.LENGTH_LONG).show();
             }
         } else if (choice == Settings.COLOR_CORRECTION || choice == Settings.DMG_PALETTE
-                || choice == Settings.BORDER || choice == Settings.HIGHPASS || choice == Settings.RUMBLE) {
+                || choice == Settings.BORDER || choice == Settings.HIGHPASS || choice == Settings.RUMBLE
+                || choice == Settings.REWIND) {
             onEmulationThread(settings::applyToCore);
         } else if (choice == Settings.SOUND) {
             if (thread != null) thread.setMuted(!settings.isOn(Settings.SOUND));
@@ -498,6 +502,12 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     }
 
     @Override
+    public void onRewindTouched(boolean held) {
+        rewindTouched = held;
+        updateRewind();
+    }
+
+    @Override
     public void onFastForwardTouched(boolean held) {
         fastForwardTouched = held;
         updateFastForward();
@@ -513,6 +523,15 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
 
     private void pushKeys() {
         if (thread != null) thread.setKeys(touchKeys | hardwareKeys | axisKeys);
+    }
+
+    private void updateRewind() {
+        boolean rewind = rewindHeld || rewindTouched;
+        if (rewind && settings.get(Settings.REWIND) == 0) {
+            Toast.makeText(this, "Rewind is off. Turn it on in Settings → Emulation.", Toast.LENGTH_SHORT).show();
+            rewind = false;
+        }
+        if (thread != null) thread.setRewinding(rewind);
     }
 
     private void updateFastForward() {
@@ -542,6 +561,11 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                 || keyCode == KeyEvent.KEYCODE_SPACE;
     }
 
+    private static boolean isRewindKey(int keyCode) {
+        return keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_L2
+                || keyCode == KeyEvent.KEYCODE_R;
+    }
+
     private static boolean isMenuKey(int keyCode) {
         return keyCode == KeyEvent.KEYCODE_BUTTON_MODE || keyCode == KeyEvent.KEYCODE_MENU
                 || keyCode == KeyEvent.KEYCODE_ESCAPE;
@@ -565,6 +589,15 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         if (isFastForwardKey(code)) {
             fastForwardHeld = down;
             updateFastForward();
+            onHardwareInput();
+            return true;
+        }
+        if (isRewindKey(code)) {
+            // Key repeats would re-show the "rewind is off" message; only act on changes.
+            if (event.getRepeatCount() == 0 && rewindHeld != down) {
+                rewindHeld = down;
+                updateRewind();
+            }
             onHardwareInput();
             return true;
         }
@@ -599,6 +632,13 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         if (held != fastForwardHeld && (held || trigger < 0.2f)) {
             fastForwardHeld = held;
             updateFastForward();
+        }
+        float leftTrigger = Math.max(event.getAxisValue(MotionEvent.AXIS_LTRIGGER),
+                event.getAxisValue(MotionEvent.AXIS_BRAKE));
+        boolean rewind = leftTrigger > 0.5f;
+        if (rewind != rewindHeld && (rewind || leftTrigger < 0.2f)) {
+            rewindHeld = rewind;
+            updateRewind();
         }
         if (keys != axisKeys) {
             axisKeys = keys;

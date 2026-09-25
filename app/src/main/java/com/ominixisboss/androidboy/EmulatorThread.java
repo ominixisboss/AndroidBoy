@@ -42,6 +42,7 @@ final class EmulatorThread extends Thread {
     private volatile boolean paused;
     private volatile int keys;
     private volatile boolean fastForward;
+    private volatile boolean rewinding;
     private volatile int fastForwardSpeed = 4;
     private volatile boolean muted;
     private double lastRumble;
@@ -62,6 +63,11 @@ final class EmulatorThread extends Thread {
 
     boolean isFastForward() {
         return fastForward;
+    }
+
+    /** While set, emulation runs backwards through the rewind history, silently, at normal speed. */
+    void setRewinding(boolean enabled) {
+        rewinding = enabled;
     }
 
     /** 0 means unlimited. */
@@ -133,6 +139,15 @@ final class EmulatorThread extends Thread {
                 }
 
                 Emulator.nativeSetKeys(keys);
+                if (rewinding) {
+                    // Stays on the oldest frame once the history runs out.
+                    Emulator.nativeRewindFrame(audio);
+                    publishFrame();
+                    nextFrameTime += (long) (1e9 / FRAME_RATE);
+                    sleepUntil(nextFrameTime);
+                    if (nextFrameTime < System.nanoTime() - 100_000_000L) nextFrameTime = System.nanoTime();
+                    continue;
+                }
                 int count = Emulator.nativeRunFrame(audio);
                 publishFrame();
                 publishRumble();

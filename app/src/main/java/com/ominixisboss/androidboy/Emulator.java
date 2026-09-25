@@ -50,6 +50,9 @@ final class Emulator {
     static native void nativeSetKeys(int mask);
     /** Runs one frame and moves the audio it produced into {@code audio}; returns the number of shorts written. */
     static native int nativeRunFrame(short[] audio);
+    /** Steps one frame back in the rewind history (discarding its audio); false at the oldest frame. */
+    static native boolean nativeRewindFrame(short[] audio);
+    static native void nativeSetRewindLength(int seconds);
     static native int nativeGetFrameWidth();
     static native int nativeGetFrameHeight();
     /** Copies the latest frame, tightly packed RGBA, into a direct buffer of at least 256×224 pixels. */

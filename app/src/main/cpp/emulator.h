@@ -50,6 +50,16 @@ void emu_set_keys(unsigned mask);
 /* Runs the emulator until the next frame is ready. */
 void emu_run_frame(void);
 
+/* How many seconds of gameplay to record for rewinding; 0 turns rewinding off. */
+void emu_set_rewind_length(unsigned seconds);
+
+/*
+ * Steps one frame back in the rewind history and renders it. Returns false, leaving the
+ * emulator where it is, once the oldest recorded frame is reached (or rewinding is off).
+ * Audio produced while rewinding is left in the buffer for the caller to discard.
+ */
+bool emu_rewind_frame(void);
+
 /* The most recently completed frame, as 0xAABBGGRR pixels (Android ARGB_8888 memory order). */
 const uint32_t *emu_get_frame(unsigned *width, unsigned *height);
 

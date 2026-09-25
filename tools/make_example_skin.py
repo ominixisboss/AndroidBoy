@@ -53,7 +53,8 @@ def draw_controls(draw, controls, pressed):
         x, y, w, h = controls[name]
         draw.ellipse([x, y, x + w, y + h], fill=button)
         draw.text((x + w / 2, y + h / 2), name.upper(), fill=BACKGROUND, font=font(int(h * 0.45)), anchor="mm")
-    for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>")):
+    for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                       ("rewind", "<<")):
         x, y, w, h = controls[name]
         draw.rounded_rectangle([x, y, x + w, y + h], radius=h / 2, fill=dark)
         draw.text((x + w / 2, y + h / 2), text, fill=LABEL, font=font(int(h * 0.42)), anchor="mm")
@@ -89,6 +90,7 @@ def main():
             "start": [580, 1660, 200, 70],
             "menu": [440, 1070, 200, 70],
             "fastForward": [840, 1060, 160, 70],
+            "rewind": [80, 1060, 160, 70],
         },
     }
     landscape = {
@@ -104,6 +106,7 @@ def main():
             "start": [1590, 900, 200, 70],
             "menu": [1700, 40, 180, 70],
             "fastForward": [1500, 40, 160, 70],
+            "rewind": [40, 40, 160, 70],
         },
     }
     render("portrait", (1080, 1920), portrait["screen"], portrait["controls"])
