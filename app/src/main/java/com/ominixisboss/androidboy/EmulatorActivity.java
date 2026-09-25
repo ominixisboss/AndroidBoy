@@ -27,8 +27,6 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
-import java.text.DateFormat;
-import java.util.Date;
 
 /** Runs a game: screen, on-screen controls, hardware input, save states and the in-game menu. */
 public final class EmulatorActivity extends Activity implements EmulatorThread.Host, SkinView.Listener {
@@ -270,10 +268,27 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         if (state == null) return false;
         try {
             RomLibrary.writeAtomically(library.stateFile(rom, slot), state);
-            return true;
         } catch (IOException e) {
             Log.e(TAG, "Could not write save state", e);
             return false;
+        }
+        if (slot != RomLibrary.AUTO_SLOT) saveThumbnail(slot);
+        return true;
+    }
+
+    /** Emulation thread (or stopped). A missing thumbnail never fails the save itself. */
+    private void saveThumbnail(int slot) {
+        File file = library.thumbnailFile(rom, slot);
+        Frame frame = new Frame();
+        frame.width = Emulator.nativeGetFrameWidth();
+        frame.height = Emulator.nativeGetFrameHeight();
+        try {
+            if (!Emulator.nativeCopyFrame(frame.pixels)) throw new IOException("no frame");
+            StateThumbnails.write(file, frame);
+        } catch (IOException | RuntimeException e) {
+            Log.w(TAG, "Could not save the state's thumbnail", e);
+            // Don't leave the previous state's picture next to the new state.
+            file.delete();
         }
     }
 
@@ -370,16 +385,9 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     }
 
     private void showStateSlots(boolean save) {
-        String[] labels = new String[RomLibrary.STATE_SLOTS];
-        DateFormat format = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT);
-        for (int slot = 1; slot <= RomLibrary.STATE_SLOTS; slot++) {
-            File file = library.stateFile(rom, slot);
-            labels[slot - 1] = "Slot " + slot + " — "
-                    + (file.isFile() ? format.format(new Date(file.lastModified())) : "empty");
-        }
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(save ? "Save state" : "Load state")
-                .setItems(labels, (d, which) -> {
+                .setAdapter(new SlotAdapter(this, library, rom), (d, which) -> {
                     int slot = which + 1;
                     if (!save && !library.stateFile(rom, slot).isFile()) {
                         Toast.makeText(this, "Slot " + slot + " is empty", Toast.LENGTH_SHORT).show();

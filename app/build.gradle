@@ -76,6 +76,8 @@ android {
     }
 
     testOptions {
+        // Lets Robolectric inflate the app's layouts (the save-state slot list test).
+        unitTests.includeAndroidResources = true
         unitTests.all {
             // Robolectric's native graphics (used by the skin tests) needs this on JDK 17+.
             jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'

@@ -13,7 +13,8 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 - **Game library.** Add `.gb`/`.gbc` ROMs, or `.zip` files containing them, from any storage provider.
   You can also use "Open with" from a file manager.
 - **Saving.** Battery saves (including the RTC) are written automatically every few seconds.
-  There are 9 save-state slots, plus an automatic "resume where you left off" state.
+  There are 9 save-state slots, each showing a screenshot from when it was saved, plus an automatic
+  "resume where you left off" state.
   You can import and export `.sav` files to move saves between devices and emulators.
 - **Controls.** Multi-touch on-screen controls with haptic feedback: an 8-way d-pad and A/B, where
   sliding between A and B presses both. Physical gamepads and keyboards work too, and the touch
