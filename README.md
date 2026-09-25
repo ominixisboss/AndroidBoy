@@ -129,9 +129,8 @@ Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
-loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and the frame
-parity used for frame blending. You only
-need a C compiler.
+loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
+the frame parity used for frame blending. You only need a C compiler.
 
 ## Project layout
 
