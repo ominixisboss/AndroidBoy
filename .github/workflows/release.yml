@@ -87,7 +87,8 @@ jobs:
               exit 1
             }
           fi
-          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' certs.txt)"
+          # apksigner prints "V2 Signer: certificate ..." or "Signer #1 certificate ...", by APK scheme.
+          digest="$(sed -n 's/^.*[Ss]igner.* certificate SHA-256 digest: //p' certs.txt | head -n 1)"
           [ -n "$digest" ] || { echo "::error::Could not read the signing certificate."; exit 1; }
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
