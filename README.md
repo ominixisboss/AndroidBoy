@@ -17,12 +17,17 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   "resume where you left off" state.
   You can import and export `.sav` files to move saves between devices and emulators.
 - **Controls.** Multi-touch on-screen controls with haptic feedback: an 8-way d-pad and A/B, where
-  sliding between A and B presses both. Physical gamepads and keyboards work too, and the touch
-  controls hide while one is in use.
-- **Skins.** Built-in themes styled after the original handhelds' colours: classic grey, Pocket
-  silver, Light gold, Berry, Grape, Kiwi, Dandelion, Teal, Atomic purple and Advance indigo. There's
-  also a minimal translucent overlay. You can import your own skins as a `.zip` of images plus a
-  layout file; see [docs/skins.md](docs/skins.md).
+  sliding between A and B presses both. Buttons spring down and bounce back when released, and the
+  d-pad rocks towards the direction you hold (turn off under Settings → Controls → Button
+  animations; they also follow the system's animation setting). Physical gamepads and keyboards
+  work too, and the touch controls hide while one is in use.
+- **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
+  buttons, a moulded d-pad and slanted rubber Start/Select: Classic grey, Pocket silver, black, red
+  and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
+  Ice blue, Atomic purple and Advance indigo. Modern ones too: OLED black (outlines), Neon, Pastel,
+  Frosted glass, and a minimal translucent overlay. Three image skins come with the app (Midnight,
+  Arcade and Woodgrain), and you can import your own as a `.zip` of images plus a layout file; see
+  [docs/skins.md](docs/skins.md).
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
   CRT, flat CRT, bilinear, Scale2x/4x, HQ2x, OmniScale and more. There's also SameBoy's frame
   blending, which some games rely on for flicker transparency.
@@ -124,8 +129,9 @@ Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 ### Tests
 
-`./gradlew testDebugUnitTest` runs the skin tests. CI uploads their preview images as the
-`skin-previews` artifact.
+`./gradlew testDebugUnitTest` runs the skin tests, including the press animations. CI uploads
+their preview images, and frame-by-frame strips of a press and release, as the `skin-previews`
+artifact.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
@@ -151,11 +157,12 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   SkinView                Draws the active skin and handles touch
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
 app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
+app/src/main/assets/skins/      Image skins bundled with the app
 app/src/test/             Robolectric tests for skins (layout, touch, import); write previews
                           to app/build/skin-previews
 docs/skins.md             The skin file format; docs/skins/example is a complete example
 tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)
-tools/make_example_skin.py  Draws the example skin (needs Pillow)
+tools/make_skins.py       Draws the example skin and the bundled image skins (needs Pillow)
 tests/                    Host-side smoke test for the core wrapper
 ```
 

@@ -82,6 +82,10 @@ final class ImageSkin extends Skin {
 
     /** Loads and validates a skin from an extracted directory. Throws with a user-readable message. */
     static ImageSkin load(File dir) throws IOException {
+        return load(dir, "custom:" + dir.getName());
+    }
+
+    static ImageSkin load(File dir, String id) throws IOException {
         try {
             JSONObject root = new JSONObject(new String(RomLibrary.readFile(new File(dir, MANIFEST)), "UTF-8"));
             String name = root.optString("name", dir.getName()).trim();
@@ -92,7 +96,7 @@ final class ImageSkin extends Skin {
             if (portrait == null && landscape == null) {
                 throw new IOException("skin.json needs a \"portrait\" or \"landscape\" layout");
             }
-            return new ImageSkin("custom:" + dir.getName(), name, background, portrait, landscape);
+            return new ImageSkin(id, name, background, portrait, landscape);
         } catch (JSONException e) {
             throw new IOException("skin.json is invalid: " + e.getMessage(), e);
         }
@@ -250,31 +254,33 @@ final class ImageSkin extends Skin {
     }
 
     @Override
-    void drawControls(Canvas canvas, Layout layout, int pressed) {
+    void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {
         if (!(layout.extras instanceof Placement)) {
             // No artwork for this orientation: show the minimal theme's controls instead.
-            ThemeSkin.fallback().drawControls(canvas, layout, pressed);
+            ThemeSkin.fallback().drawControls(canvas, layout, pressed, motion);
             return;
         }
-        if (pressed == 0) return;
         Placement p = (Placement) layout.extras;
         Orientation o = p.orientation;
         int i = 0;
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
-            Control control = layout.controls.get(i++);
-            // The d-pad lights up for any direction; other controls (like "ab") need all their keys.
-            boolean down = control.shape == Control.DPAD
-                    ? (pressed & control.keys) != 0
-                    : (pressed & control.keys) == control.keys;
-            if (!down) continue;
+            int index = i++;
+            // Pressed artwork fades in and out with the press animation.
+            float amount = Math.min(1, motion.press(index));
+            if (amount <= 0.01f) continue;
+            Control control = layout.controls.get(index);
+            int alpha = Math.round(255 * amount);
             if (o.pressedImage != null) {
                 // Copy the pressed artwork for just this control's area.
                 RectF r = entry.getValue();
                 float sx = o.pressedImage.getWidth() / o.width;
                 float sy = o.pressedImage.getHeight() / o.height;
                 source.set((int) (r.left * sx), (int) (r.top * sy), (int) Math.ceil(r.right * sx), (int) Math.ceil(r.bottom * sy));
+                imagePaint.setAlpha(alpha);
                 canvas.drawBitmap(o.pressedImage, source, control.bounds, imagePaint);
+                imagePaint.setAlpha(255);
             } else {
+                highlight.setAlpha(Math.round(80 * amount));
                 canvas.drawOval(control.bounds, highlight);
             }
         }
