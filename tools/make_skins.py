@@ -267,6 +267,204 @@ class Woodgrain:
                  text, self.CREAM, False)
 
 
+class Space:
+    """Deep space: a starfield with a ringed planet, chrome buttons and cyan trim."""
+    name = "Space"
+    background = "#05060F"
+    TOP = (12, 14, 38)
+    BOTTOM = (3, 3, 10)
+    CYAN = (80, 230, 255)
+    CHROME = (190, 198, 214)
+    DARK = (30, 34, 58)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = vertical_gradient(size, self.TOP, self.BOTTOM)
+        draw = ImageDraw.Draw(image)
+        rng = random.Random(42)
+        for _ in range(int(width * height / (2600 * s * s))):
+            x, y = rng.uniform(0, width), rng.uniform(0, height)
+            r = rng.choice((0.8, 1, 1, 1.4, 2.2)) * s
+            shade = rng.randint(150, 255)
+            draw.ellipse([x - r, y - r, x + r, y + r], fill=(shade, shade, min(255, shade + 20)))
+        # A ringed planet in a corner the controls leave free.
+        px, py, pr = (width * 0.83, height * 0.955, width * 0.1) if height > width else (width * 0.135, height * 0.74, height * 0.065)
+        draw.ellipse([px - pr * 1.9, py - pr * 0.45, px + pr * 1.9, py + pr * 0.45], outline=(210, 170, 120), width=int(5 * s))
+        ball(draw, [px - pr, py - pr, px + pr, py + pr], (200, 110, 70), light=0.35, shade=0.6)
+        draw.arc([px - pr * 1.9, py - pr * 0.45, px + pr * 1.9, py + pr * 0.45], 0, 180, fill=(230, 190, 140), width=int(5 * s))
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad,
+                               fill=(8, 10, 24), outline=self.CYAN, width=int(3 * s))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "ANDROIDBOY  ·  ORBIT", pad * 0.8, self.CYAN)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = (60, 70, 110) if pressed else self.DARK
+        for box in ([x + arm, y, x + 2 * arm, y + h], [x, y + arm, x + w, y + 2 * arm]):
+            draw.rounded_rectangle(box, radius=arm * 0.2, fill=color, outline=self.CYAN, width=max(2, int(w * 0.012)))
+        draw.rectangle([x + arm + 3, y + arm + 3, x + 2 * arm - 3, y + 2 * arm - 3], fill=color)
+        for name in ("a", "b"):
+            x, y, w, h = controls[name]
+            ring = w * 0.07
+            draw.ellipse([x - ring, y - ring, x + w + ring, y + h + ring], fill=self.CYAN if pressed else (40, 90, 120))
+            ball(draw, [x, y, x + w, y + h], lighten(self.CHROME, 0.2) if pressed else self.CHROME, light=0.7, shade=0.55)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, (20, 30, 60))
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            draw.rounded_rectangle([x, y, x + w, y + h], radius=h / 2, fill=(40, 90, 120) if pressed else self.DARK,
+                                   outline=self.CYAN, width=max(2, int(h * 0.05)))
+            label(draw, (x + w / 2, y + h / 2), text, h * 0.42, self.CYAN)
+
+
+class Camo:
+    """Woodland camouflage, with a stencilled faceplate and olive rubber buttons."""
+    name = "Camo"
+    background = "#3E4A2A"
+    COLORS = [(92, 104, 62), (62, 74, 42), (120, 110, 76), (34, 38, 26)]
+    OLIVE = (86, 92, 52)
+    KHAKI = (176, 160, 110)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = Image.new("RGB", size, self.COLORS[0])
+        draw = ImageDraw.Draw(image)
+        rng = random.Random(3)
+        for color in self.COLORS[1:]:
+            for _ in range(int(width * height / (26000 * s * s))):
+                cx, cy = rng.uniform(-50, width + 50), rng.uniform(-50, height + 50)
+                r = rng.uniform(40, 110) * s
+                points = []
+                for k in range(9):
+                    angle = k / 9 * math.tau
+                    rr = r * rng.uniform(0.55, 1.15)
+                    points.append((cx + math.cos(angle) * rr * 1.4, cy + math.sin(angle) * rr))
+                draw.polygon(points, fill=color)
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad * 0.4,
+                               fill=(28, 30, 22), outline=self.KHAKI, width=int(3 * s))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "FIELD UNIT  AB-01", pad * 0.8, self.KHAKI)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = (120, 116, 80) if pressed else (76, 80, 50)
+        edge = max(2, int(w * 0.012))
+        draw.ellipse([x - w * 0.05, y - h * 0.05, x + w * 1.05, y + h * 1.05], fill=(28, 30, 22))
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.15, fill=color, outline=self.KHAKI, width=edge)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.15, fill=color, outline=self.KHAKI, width=edge)
+        draw.rectangle([x + arm + edge, y + arm + edge, x + 2 * arm - edge, y + 2 * arm - edge], fill=color)
+        for name in ("a", "b"):
+            x, y, w, h = controls[name]
+            draw.ellipse([x - w * 0.06, y - h * 0.06, x + w * 1.06, y + h * 1.06], fill=(28, 30, 22))
+            ball(draw, [x, y, x + w, y + h], lighten(self.OLIVE, 0.25) if pressed else self.OLIVE, light=0.3, shade=0.3)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, self.KHAKI)
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            pill(draw, [x, y, x + w, y + h], (70, 74, 52) if pressed else (28, 30, 22), text, self.KHAKI, False)
+
+
+class Candy:
+    """Pink and white candy stripes with sweet-coloured buttons."""
+    name = "Candy"
+    background = "#FFD6E7"
+    PINK = (255, 150, 190)
+    CREAM = (255, 244, 248)
+    BERRY = (214, 64, 120)
+    MINT = (120, 220, 190)
+    GRAPE = (150, 110, 210)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = Image.new("RGB", size, self.CREAM)
+        draw = ImageDraw.Draw(image)
+        stripe = 70 * s
+        for i in range(-int(height / stripe) - 2, int(width / stripe) + 2, 2):
+            x0 = i * stripe
+            draw.polygon([(x0, 0), (x0 + stripe, 0), (x0 + stripe + height, height), (x0 + height, height)], fill=self.PINK)
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad * 1.4, y - pad * 1.4, x + w + pad * 1.4, y + h + pad * 2.2], radius=pad * 1.5,
+                               fill=self.CREAM, outline=self.BERRY, width=int(6 * s))
+        draw.rounded_rectangle([x - pad * 0.5, y - pad * 0.5, x + w + pad * 0.5, y + h + pad * 0.5], radius=pad * 0.5,
+                               fill=(60, 30, 50))
+        label(draw, (x + w / 2, y + h + pad * 1.35), "ANDROIDBOY  SWEETS", pad * 0.8, self.BERRY)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = lighten(self.GRAPE, 0.3) if pressed else self.GRAPE
+        draw.rounded_rectangle([x + arm - 6, y - 6, x + 2 * arm + 6, y + h + 6], radius=arm * 0.4, fill=self.CREAM)
+        draw.rounded_rectangle([x - 6, y + arm - 6, x + w + 6, y + 2 * arm + 6], radius=arm * 0.4, fill=self.CREAM)
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.4, fill=color)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.4, fill=color)
+        for name, color in (("a", self.BERRY), ("b", self.MINT)):
+            x, y, w, h = controls[name]
+            draw.ellipse([x - w * 0.07, y - h * 0.07, x + w * 1.07, y + h * 1.07], fill=self.CREAM)
+            ball(draw, [x, y, x + w, y + h], lighten(color, 0.3) if pressed else color, light=0.55, shade=0.15)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, (255, 255, 255))
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            draw.rounded_rectangle([x - 5, y - 5, x + w + 5, y + h + 5], radius=h / 2 + 5, fill=self.CREAM)
+            pill(draw, [x, y, x + w, y + h], lighten(self.BERRY, 0.3) if pressed else self.BERRY, text, (255, 255, 255), True)
+
+
+class Carbon:
+    """Carbon-fibre weave with a red racing trim and glossy red buttons."""
+    name = "Carbon"
+    background = "#111214"
+    RED = (225, 30, 45)
+    LIGHT = (44, 46, 52)
+    DARK = (22, 23, 26)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = Image.new("RGB", size, self.DARK)
+        draw = ImageDraw.Draw(image)
+        cell = 18 * s
+        for row in range(int(height / cell) + 1):
+            for col in range(int(width / cell) + 1):
+                x0, y0 = col * cell, row * cell
+                # Alternate the direction of each tow's sheen, like a 2x2 twill weave.
+                if (row + col) % 2 == 0:
+                    for k in range(int(cell)):
+                        draw.line([(x0, y0 + k), (x0 + cell, y0 + k)], fill=lerp(self.LIGHT, self.DARK, k / cell))
+                else:
+                    for k in range(int(cell)):
+                        draw.line([(x0 + k, y0), (x0 + k, y0 + cell)], fill=lerp(self.DARK, self.LIGHT, k / cell * 0.8))
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad * 0.5, fill=(8, 8, 10))
+        draw.line([(x - pad, y + h + pad * 1.6 + 8 * s), (x + w + pad, y + h + pad * 1.6 + 8 * s)], fill=self.RED, width=int(6 * s))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "ANDROIDBOY  CARBON", pad * 0.8, self.RED)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = (96, 98, 108) if pressed else (52, 54, 60)
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.2, fill=color, outline=(150, 152, 162), width=int(w * 0.01) + 1)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.2, fill=color, outline=(150, 152, 162), width=int(w * 0.01) + 1)
+        draw.rectangle([x + arm + 2, y + arm + 2, x + 2 * arm - 2, y + 2 * arm - 2], fill=color)
+        for name in ("a", "b"):
+            x, y, w, h = controls[name]
+            draw.ellipse([x - w * 0.06, y - h * 0.06, x + w * 1.06, y + h * 1.06], fill=(8, 8, 10))
+            ball(draw, [x, y, x + w, y + h], lighten(self.RED, 0.3) if pressed else self.RED, light=0.5, shade=0.4)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, (255, 255, 255))
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            pill(draw, [x, y, x + w, y + h], (90, 20, 26) if pressed else (38, 40, 44), text, (235, 235, 240), False)
+
+
 def scaled(rect, s):
     return [v * s for v in rect]
 
@@ -306,7 +504,7 @@ def write_skin(style, out, display_name):
 
 def main():
     write_skin(Midnight(), EXAMPLE, "Midnight (example)")
-    for style in (Midnight(), Arcade(), Woodgrain()):
+    for style in (Midnight(), Arcade(), Woodgrain(), Space(), Camo(), Candy(), Carbon()):
         write_skin(style, os.path.join(BUNDLED, style.name.lower()), style.name)
 
 

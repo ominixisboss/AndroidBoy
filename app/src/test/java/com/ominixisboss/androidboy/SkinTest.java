@@ -297,10 +297,11 @@ public class SkinTest {
     public void bundledSkinsAreListed() {
         List<String> ids = new ArrayList<>();
         for (SkinLibrary.Entry entry : new SkinLibrary(RuntimeEnvironment.getApplication()).list()) ids.add(entry.id);
-        for (String name : new String[] {"midnight", "arcade", "woodgrain"}) {
+        String[] bundled = {"midnight", "arcade", "woodgrain", "space", "camo", "candy", "carbon"};
+        for (String name : bundled) {
             assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
         }
-        assertEquals("every theme is listed", ThemeSkin.ALL.length + 3, ids.size());
+        assertEquals("every theme is listed", ThemeSkin.ALL.length + bundled.length, ids.size());
     }
 
     @Test

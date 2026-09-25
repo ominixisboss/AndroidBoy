@@ -146,6 +146,47 @@ final class ThemeSkin extends Skin {
         return p;
     }
 
+    private static Palette sunset() {
+        Palette p = palette(0xFFFF9160, 0xFF2A1B3D, 0xFF2A1B3D, 0xFFFFC94D, 0xFF4A2F6B, 0xFFFFF1E0);
+        p.bodyShade = 0xFF7A3E9D;
+        p.led = 0xFFFFC94D;
+        return p;
+    }
+
+    private static Palette mint() {
+        Palette p = palette(0xFFA8E6CF, 0xFF2E4A48, 0xFF3A5957, 0xFFFF8B94, 0xFF6E9C8F, 0xFF2E4A48);
+        p.bodyShade = 0xFF7FCBB2;
+        return p;
+    }
+
+    private static Palette synthwave() {
+        Palette p = palette(0xFF2E1260, 0xFF120526, 0xFF00F0FF, 0xFFFF2E97, 0xFFFFD319, 0xFFFF2E97);
+        p.bodyShade = 0xFF0B0320;
+        p.bezelStroke = 0xFFFF2E97;
+        p.style = NEON;
+        p.led = 0xFF00F0FF;
+        p.speaker = false;
+        return p;
+    }
+
+    private static Palette terminal() {
+        Palette p = palette(0xFF020803, 0xFF030A04, 0xFF39FF6A, 0xFF39FF6A, 0xFF39FF6A, 0xFF39FF6A);
+        p.bodyShade = Color.BLACK;
+        p.bezelStroke = 0xFF1F6F3A;
+        p.style = OUTLINE;
+        p.led = 0xFF39FF6A;
+        p.speaker = false;
+        return p;
+    }
+
+    private static Palette smoke() {
+        Palette p = glass();
+        p.body = 0xFF4C515C;
+        p.bodyShade = 0xFF16181D;
+        p.led = 0xFFFF6B6B;
+        return p;
+    }
+
     static final ThemeSkin[] ALL = {
             new ThemeSkin("minimal", "Minimal (translucent controls)", MINIMAL),
             new ThemeSkin("classic", "Classic grey", classic()),
@@ -166,6 +207,9 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("dandelion", "Dandelion", color(0xFFF2C21C)),
             new ThemeSkin("teal", "Teal", color(0xFF14A2B2)),
             new ThemeSkin("ice", "Ice blue", color(0xFF9CCFE8)),
+            new ThemeSkin("coral", "Coral", color(0xFFFF6F61)),
+            new ThemeSkin("mint", "Mint", mint()),
+            new ThemeSkin("sunset", "Sunset", sunset()),
             new ThemeSkin("atomic", "Atomic purple", color(0xFF7B67B5)),
             new ThemeSkin("indigo", "Advance indigo",
                     palette(0xFF474C9E, 0xFF1F1F24, 0xFF2A2A2E, 0xFFD2D2DA, 0xFF2A2A2E, 0xFFE6E6F0)),
@@ -173,6 +217,9 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("neon", "Neon", neon()),
             new ThemeSkin("pastel", "Pastel", pastel()),
             new ThemeSkin("glass", "Frosted glass", glass()),
+            new ThemeSkin("smoke", "Smoke glass", smoke()),
+            new ThemeSkin("synthwave", "Synthwave", synthwave()),
+            new ThemeSkin("terminal", "Terminal green (outlines)", terminal()),
     };
 
     static ThemeSkin find(String id) {
@@ -372,7 +419,7 @@ final class ThemeSkin extends Skin {
             bodyGradient = new LinearGradient(0, 0, 0, layout.height, palette.body, palette.bodyShade,
                     Shader.TileMode.CLAMP);
         }
-        fill.setShader(bodyGradient);
+        useShader(bodyGradient);
         canvas.drawRect(0, 0, layout.width, layout.height, fill);
         fill.setShader(null);
 
@@ -479,8 +526,8 @@ final class ThemeSkin extends Skin {
                 Shader.TileMode.CLAMP);
         // Convex buttons, lit from the top left.
         buttonShader = new RadialGradient(-0.32f, -0.38f, 1.5f,
-                new int[] {lighten(palette.buttons, 0.3f), palette.buttons, shade(palette.buttons, 0.68f)},
-                new float[] {0, 0.5f, 1}, Shader.TileMode.CLAMP);
+                new int[] {lighten(palette.buttons, 0.3f), palette.buttons, shade(palette.buttons, 0.76f)},
+                new float[] {0, 0.66f, 1}, Shader.TileMode.CLAMP);
         dpadShader = new LinearGradient(-1, -1, 1, 1, lighten(palette.dpad, 0.16f), shade(palette.dpad, 0.78f),
                 Shader.TileMode.CLAMP);
         pillShader = new LinearGradient(0, -0.4f, 0, 0.4f, lighten(palette.startSelect, 0.22f),
@@ -519,6 +566,15 @@ final class ThemeSkin extends Skin {
         }
     }
 
+    /**
+     * Fills with a gradient. The paint's colour alpha still applies to shaders, so reset it to
+     * opaque; otherwise the gradient would take the alpha of whatever was drawn before (a shadow).
+     */
+    private void useShader(Shader shader) {
+        fill.setColor(Color.BLACK);
+        fill.setShader(shader);
+    }
+
     /** Moves the canvas to a control's centre, scaled so its radius is 1. */
     private static void enterUnit(Canvas canvas, float cx, float cy, float radius) {
         canvas.save();
@@ -541,7 +597,7 @@ final class ThemeSkin extends Skin {
 
     private void drawSolidDpad(Canvas canvas, float tiltX, float tiltY) {
         // The recess the cross sits in, then its shadow, which leans the way the cross rocks.
-        fill.setShader(wellShader);
+        useShader(wellShader);
         drawCross(canvas, 0, 0.03f, 1.07f, ARM + 0.06f, 0.14f);
         fill.setShader(null);
         fill.setColor(0x66000000);
@@ -552,7 +608,7 @@ final class ThemeSkin extends Skin {
 
         canvas.save();
         applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES);
-        fill.setShader(dpadShader);
+        useShader(dpadShader);
         drawCross(canvas, 0, 0, 1f, ARM, 0.1f);
         fill.setShader(null);
         // The held arm dips into shadow; the opposite one rises into the light.
@@ -564,7 +620,7 @@ final class ThemeSkin extends Skin {
             fill.setColor(shade(palette.dpad, 0.45f));
             drawArrow(canvas, direction, 0.72f, 0.13f, 0);
         }
-        fill.setShader(dimpleShader);
+        useShader(dimpleShader);
         canvas.drawCircle(0, 0, 0.19f, fill);
         fill.setShader(null);
         stroke.setColor(shade(palette.dpad, 0.5f));
@@ -684,7 +740,7 @@ final class ThemeSkin extends Skin {
             return;
         }
         enterUnit(canvas, b.centerX(), b.centerY(), radius);
-        fill.setShader(wellShader);
+        useShader(wellShader);
         canvas.drawCircle(0, 0.04f, 1.1f, fill);
         fill.setShader(null);
         // The drop shadow shortens as the button sinks.
@@ -693,7 +749,7 @@ final class ThemeSkin extends Skin {
         canvas.translate(0, 0.08f * press);
         float scale = 1 - 0.04f * press;
         canvas.scale(scale, scale);
-        fill.setShader(buttonShader);
+        useShader(buttonShader);
         canvas.drawCircle(0, 0, 1f, fill);
         fill.setShader(null);
         if (down > 0) {
@@ -740,7 +796,7 @@ final class ThemeSkin extends Skin {
         canvas.save();
         canvas.rotate(PILL_ANGLE, b.centerX(), b.centerY());
         enterUnit(canvas, b.centerX(), b.centerY(), halfWidth);
-        fill.setShader(wellShader);
+        useShader(wellShader);
         rect.set(-PILL_LENGTH - 0.07f, -h - 0.07f, PILL_LENGTH + 0.07f, h + 0.07f);
         canvas.drawRoundRect(rect, h + 0.07f, h + 0.07f, fill);
         fill.setShader(null);
@@ -749,7 +805,7 @@ final class ThemeSkin extends Skin {
         rect.offset(0, 0.1f * (1 - clamp(press)));
         canvas.drawRoundRect(rect, h, h, fill);
         canvas.translate(0, 0.07f * press);
-        fill.setShader(pillShader);
+        useShader(pillShader);
         rect.set(-PILL_LENGTH, -h, PILL_LENGTH, h);
         canvas.drawRoundRect(rect, h, h, fill);
         fill.setShader(null);
@@ -776,7 +832,7 @@ final class ThemeSkin extends Skin {
             fill.setColor(0x50000000);
             canvas.drawCircle(0, 0.1f * (1 - clamp(press)), 1f, fill);
             canvas.translate(0, 0.07f * press);
-            fill.setShader(utilityShader);
+            useShader(utilityShader);
             canvas.drawCircle(0, 0, 1f, fill);
             fill.setShader(null);
             if (down > 0) {
