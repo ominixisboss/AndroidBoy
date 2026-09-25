@@ -124,6 +124,26 @@ JNIEXPORT jint JNICALL JNI_FN(nativeRunFrame)(JNIEnv *env, jclass clazz, jshortA
     return (jint)count;
 }
 
+JNIEXPORT jboolean JNICALL JNI_FN(nativeRewindFrame)(JNIEnv *env, jclass clazz, jshortArray audio)
+{
+    (void)clazz;
+    bool moved = emu_rewind_frame();
+    /* Rewound frames play silently; drop what the core produced. */
+    jsize capacity = (*env)->GetArrayLength(env, audio);
+    jshort *samples = (*env)->GetPrimitiveArrayCritical(env, audio, NULL);
+    if (samples) {
+        while (emu_take_audio((int16_t *)samples, (size_t)capacity) > 0) {}
+        (*env)->ReleasePrimitiveArrayCritical(env, audio, samples, JNI_ABORT);
+    }
+    return moved;
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeSetRewindLength)(JNIEnv *env, jclass clazz, jint seconds)
+{
+    (void)env; (void)clazz;
+    emu_set_rewind_length(seconds > 0 ? (unsigned)seconds : 0);
+}
+
 JNIEXPORT jint JNICALL JNI_FN(nativeGetFrameWidth)(JNIEnv *env, jclass clazz)
 {
     (void)env; (void)clazz;

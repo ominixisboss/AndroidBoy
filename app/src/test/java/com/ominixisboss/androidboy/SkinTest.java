@@ -100,6 +100,15 @@ public class SkinTest {
                     hasDpad |= control.shape == Skin.Control.DPAD;
                 }
                 assertTrue(what + ": has a menu control", hasMenu);
+                if (skin instanceof ThemeSkin) {
+                    boolean hasRewind = false;
+                    boolean hasFastForward = false;
+                    for (Skin.Control control : layout.controls) {
+                        hasRewind |= control.keys == Skin.KEY_REWIND;
+                        hasFastForward |= control.keys == Skin.KEY_FAST_FORWARD;
+                    }
+                    assertTrue(what + ": has rewind and fast-forward buttons", hasRewind && hasFastForward);
+                }
                 assertTrue(what + ": has a d-pad", hasDpad);
 
                 if (skin instanceof ThemeSkin) {
@@ -167,6 +176,12 @@ public class SkinTest {
                         assertTrue(what + ": fast-forward held", listener.fastForward);
                         touch(view, MotionEvent.ACTION_UP, x, y);
                         assertFalse(what + ": fast-forward released", listener.fastForward);
+                    } else if (control.keys == Skin.KEY_REWIND) {
+                        touch(view, MotionEvent.ACTION_DOWN, x, y);
+                        assertTrue(what + ": rewind held", listener.rewind);
+                        assertEquals(what + ": rewind presses no game keys", 0, listener.keys);
+                        touch(view, MotionEvent.ACTION_UP, x, y);
+                        assertFalse(what + ": rewind released", listener.rewind);
                     } else {
                         checkTouch(view, listener, x, y, control.keys, what + " " + Integer.toHexString(control.keys));
                     }
@@ -244,7 +259,7 @@ public class SkinTest {
                 canvas.restore();
                 drawTestScreen(canvas, layout.screen);
                 // Show a few keys pressed so the pressed look is visible too.
-                skin.drawControls(canvas, layout, Emulator.KEY_A | Emulator.KEY_RIGHT);
+                skin.drawControls(canvas, layout, Emulator.KEY_A | Emulator.KEY_RIGHT | Skin.KEY_REWIND);
                 String name = skin.id().replace(':', '-') + (portrait ? "-portrait" : "-landscape") + ".png";
                 try (OutputStream stream = new FileOutputStream(new File(out, name))) {
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
@@ -362,6 +377,7 @@ public class SkinTest {
     private static final class RecordingListener implements SkinView.Listener {
         int keys;
         boolean fastForward;
+        boolean rewind;
         int menuPresses;
         boolean showControlsRequested;
         Rect screen;
@@ -374,6 +390,11 @@ public class SkinTest {
         @Override
         public void onFastForwardTouched(boolean held) {
             fastForward = held;
+        }
+
+        @Override
+        public void onRewindTouched(boolean held) {
+            rewind = held;
         }
 
         @Override

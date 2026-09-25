@@ -29,6 +29,7 @@ static GB_border_mode_t border_mode = GB_BORDER_NEVER;
 static GB_highpass_mode_t highpass = GB_HIGHPASS_ACCURATE;
 static GB_rumble_mode_t rumble_mode = GB_RUMBLE_CARTRIDGE_ONLY;
 static unsigned sample_rate = 48000;
+static unsigned rewind_seconds = 30;
 
 void emu_set_boot_rom_provider(emu_boot_rom_provider_t provider)
 {
@@ -141,6 +142,7 @@ static void apply_settings(void)
     GB_set_border_mode(gb, border_mode);
     GB_set_highpass_filter_mode(gb, highpass);
     GB_set_rumble_mode(gb, rumble_mode);
+    GB_set_rewind_length(gb, rewind_seconds);
     update_frame_size();
 }
 
@@ -240,6 +242,24 @@ void emu_run_frame(void)
     for (unsigned i = 0; !vblank_occurred && i < 1000000; i++) {
         GB_run(gb);
     }
+}
+
+void emu_set_rewind_length(unsigned seconds)
+{
+    rewind_seconds = seconds;
+    if (loaded) GB_set_rewind_length(gb, seconds);
+}
+
+bool emu_rewind_frame(void)
+{
+    if (!loaded) return false;
+    /* The core records a state at every frame, so the newest one is the frame on screen.
+       Drop it, step back to the one before, then run a frame from there to show it (which
+       records it again). This is what SameBoy's own frontend does. */
+    GB_rewind_pop(gb);
+    if (!GB_rewind_pop(gb)) return false;
+    emu_run_frame();
+    return true;
 }
 
 const uint32_t *emu_get_frame(unsigned *width, unsigned *height)

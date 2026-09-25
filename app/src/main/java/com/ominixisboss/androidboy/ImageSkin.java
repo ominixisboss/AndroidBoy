@@ -41,6 +41,7 @@ final class ImageSkin extends Skin {
         CONTROL_KEYS.put("select", Emulator.KEY_SELECT);
         CONTROL_KEYS.put("menu", KEY_MENU);
         CONTROL_KEYS.put("fastForward", KEY_FAST_FORWARD);
+        CONTROL_KEYS.put("rewind", KEY_REWIND);
     }
 
     /** One orientation's artwork and layout, in the skin's own coordinate space. */

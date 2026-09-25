@@ -15,6 +15,7 @@ abstract class Skin {
     // Pseudo-keys handled by the frontend, never sent to the core.
     static final int KEY_MENU = 1 << 16;
     static final int KEY_FAST_FORWARD = 1 << 17;
+    static final int KEY_REWIND = 1 << 18;
     static final int GAME_KEYS = 0xFF;
 
     /** A touch control. Bounds are in view pixels. */

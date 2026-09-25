@@ -30,6 +30,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   monochrome palettes and Super Game Boy borders.
 - **Audio.** Emulation is paced by the audio output, so sound stays smooth.
   Fast-forward runs at 2×, 3×, 4×, 8× or unlimited speed.
+- **Rewind.** Hold rewind to play backwards through the last 30 seconds (adjustable from 10 seconds
+  to 5 minutes, or off), using SameBoy's rewind.
+- **Settings** are grouped into Display, Emulation, Controls and Sound.
 - **Rumble** for rumble cartridges, optionally for all games.
 
 ### Controls
@@ -42,9 +45,11 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 | Start | Start | Enter |
 | Select | Select | Backspace / Right Shift |
 | Fast-forward (hold) | R1 / R2 | Space |
+| Rewind (hold) | L1 / L2 | R |
 | Menu | Mode / Menu, or Back | Esc |
 
-Skins can also have an on-screen fast-forward button.
+The built-in themes also have on-screen rewind and fast-forward buttons next to the menu button.
+Custom skins can include them too.
 
 The face buttons are mapped by position, not by label. The right face button is A and the bottom
 one is B, matching the Game Boy's layout.
@@ -124,9 +129,8 @@ Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
-loading, video, audio rate, joypad input, battery saves, save states, the SGB border and the frame
-parity used for frame blending. You only
-need a C compiler.
+loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
+the frame parity used for frame blending. You only need a C compiler.
 
 ## Project layout
 

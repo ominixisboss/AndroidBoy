@@ -3,9 +3,13 @@ package com.ominixisboss.androidboy;
 import android.app.AlertDialog;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.view.View;
+import android.view.ViewGroup;
 import android.widget.ArrayAdapter;
+import android.widget.ListView;
+import android.widget.TextView;
 
-/** User preferences, stored in SharedPreferences, plus a simple framework-only settings dialog. */
+/** User preferences, stored in SharedPreferences, plus framework-only settings dialogs. */
 final class Settings {
     /** A multiple-choice preference; the stored value is the index into {@link #labels}. */
     static final class Choice {
@@ -100,14 +104,39 @@ final class Settings {
             new int[] {1, 0},
             0);
 
+    // Seconds of gameplay kept for rewinding (GB_set_rewind_length).
+    static final Choice REWIND = new Choice("rewind", "Rewind",
+            new String[] {"Off", "10 seconds", "30 seconds", "1 minute", "2 minutes", "5 minutes"},
+            new int[] {0, 10, 30, 60, 120, 300},
+            2);
+
     static final Choice AUTO_SAVE = new Choice("auto_save", "Resume where you left off",
             new String[] {"On", "Off"},
             new int[] {1, 0},
             0);
 
-    static final Choice[] ALL = {
-            DMG_MODEL, CGB_MODEL, COLOR_CORRECTION, DMG_PALETTE, FILTER, FRAME_BLENDING, BORDER, SCALING, CONTROLS,
-            SOUND, HIGHPASS, HAPTICS, RUMBLE, FAST_FORWARD, AUTO_SAVE,
+    /** A group of related settings, shown as one entry in the settings dialog. */
+    static final class Category {
+        final String title;
+        final String summary;
+        final Choice[] choices;
+
+        Category(String title, String summary, Choice... choices) {
+            this.title = title;
+            this.summary = summary;
+            this.choices = choices;
+        }
+    }
+
+    static final Category[] CATEGORIES = {
+            new Category("Display", "Screen filter, colours, scaling, Super Game Boy border",
+                    FILTER, FRAME_BLENDING, COLOR_CORRECTION, DMG_PALETTE, SCALING, BORDER),
+            new Category("Emulation", "Game Boy models, rewind, fast-forward, resuming",
+                    DMG_MODEL, CGB_MODEL, REWIND, FAST_FORWARD, AUTO_SAVE),
+            new Category("Controls", "On-screen controls, vibration, rumble",
+                    CONTROLS, HAPTICS, RUMBLE),
+            new Category("Sound", "Sound on or off, audio filter",
+                    SOUND, HIGHPASS),
     };
 
     private static int[] indices(int count) {
@@ -150,39 +179,88 @@ final class Settings {
         Emulator.nativeSetBorderMode(get(BORDER));
         Emulator.nativeSetHighpass(get(HIGHPASS));
         Emulator.nativeSetRumbleMode(get(RUMBLE));
+        Emulator.nativeSetRewindLength(get(REWIND));
     }
 
+    /**
+     * Shows the settings: a short list of categories, each opening its own few settings. Dialogs
+     * stack, so changing a value keeps its list open (and updated) instead of starting over.
+     * {@code onDismiss} runs once, when the settings are closed.
+     */
     void showDialog(Context context, Listener listener, Runnable onDismiss) {
-        String[] rows = new String[ALL.length];
-        for (int i = 0; i < ALL.length; i++) {
-            rows[i] = ALL[i].title + "\n" + ALL[i].labels[index(ALL[i])];
-        }
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(context, android.R.layout.simple_list_item_1, rows);
+        TwoLineAdapter adapter = new TwoLineAdapter(context, CATEGORIES.length) {
+            @Override
+            void bind(int position, TextView title, TextView summary) {
+                title.setText(CATEGORIES[position].title);
+                summary.setText(CATEGORIES[position].summary);
+            }
+        };
         AlertDialog dialog = new AlertDialog.Builder(context)
                 .setTitle("Settings")
-                .setAdapter(adapter, (d, which) -> showChoice(context, ALL[which], listener, onDismiss))
+                .setView(listView(context, adapter, position ->
+                        showCategory(context, CATEGORIES[position], listener)))
                 .setPositiveButton("Done", null)
                 .create();
-        dialog.setOnDismissListener(d -> {
-            // Picking a row dismisses this dialog too; only report when no choice dialog is opening.
-            if (!pendingChoice) onDismiss.run();
-            pendingChoice = false;
-        });
+        dialog.setOnDismissListener(d -> onDismiss.run());
         dialog.show();
     }
 
-    private boolean pendingChoice;
+    private void showCategory(Context context, Category category, Listener listener) {
+        TwoLineAdapter adapter = new TwoLineAdapter(context, category.choices.length) {
+            @Override
+            void bind(int position, TextView title, TextView value) {
+                Choice choice = category.choices[position];
+                title.setText(choice.title);
+                value.setText(choice.labels[index(choice)]);
+            }
+        };
+        new AlertDialog.Builder(context)
+                .setTitle(category.title)
+                .setView(listView(context, adapter, position ->
+                        showChoice(context, category.choices[position], listener, adapter)))
+                .setPositiveButton("Back", null)
+                .show();
+    }
 
-    private void showChoice(Context context, Choice choice, Listener listener, Runnable onDismiss) {
-        pendingChoice = true;
+    private void showChoice(Context context, Choice choice, Listener listener, TwoLineAdapter category) {
         new AlertDialog.Builder(context)
                 .setTitle(choice.title)
                 .setSingleChoiceItems(choice.labels, index(choice), (d, which) -> {
                     set(choice, which);
                     listener.onSettingChanged(choice);
+                    category.notifyDataSetChanged();
                     d.dismiss();
                 })
-                .setOnDismissListener(d -> showDialog(context, listener, onDismiss))
+                .setNegativeButton(android.R.string.cancel, null)
                 .show();
+    }
+
+    private interface OnRowClick {
+        void onClick(int position);
+    }
+
+    /** A list whose rows don't close its dialog when tapped (unlike AlertDialog.setAdapter). */
+    private static ListView listView(Context context, TwoLineAdapter adapter, OnRowClick onClick) {
+        ListView list = new ListView(context);
+        list.setAdapter(adapter);
+        list.setOnItemClickListener((parent, view, position, id) -> onClick.onClick(position));
+        return list;
+    }
+
+    /** Rows with a title and a second line (a summary or the current value). */
+    private abstract static class TwoLineAdapter extends ArrayAdapter<Integer> {
+        TwoLineAdapter(Context context, int count) {
+            super(context, android.R.layout.simple_list_item_2, android.R.id.text1);
+            for (int i = 0; i < count; i++) add(i);
+        }
+
+        abstract void bind(int position, TextView title, TextView detail);
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            View view = super.getView(position, convertView, parent);
+            bind(position, view.findViewById(android.R.id.text1), view.findViewById(android.R.id.text2));
+            return view;
+        }
     }
 }
