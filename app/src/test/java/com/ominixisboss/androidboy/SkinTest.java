@@ -71,16 +71,17 @@ public class SkinTest {
     }
 
     /** The image skins in assets/skins, loaded the way the app does. */
-    private static List<Skin> bundledSkins() {
+    private static List<Skin> bundledSkins() throws IOException {
         SkinLibrary library = new SkinLibrary(RuntimeEnvironment.getApplication());
         List<Skin> skins = new ArrayList<>();
         for (SkinLibrary.Entry entry : library.list()) {
             if (!entry.id.startsWith("bundled:")) continue;
-            library.setActive(entry.id);
-            Skin skin = library.loadActive();
-            assertTrue(entry.id + " loads", skin instanceof ImageSkin);
+            // Loaded directly, so a failure shows its reason; then as the active skin, as the app does.
+            Skin skin = library.loadBundled(entry.id.substring("bundled:".length()));
             assertEquals(entry.id, skin.id());
             assertEquals(entry.name, skin.name());
+            library.setActive(entry.id);
+            assertTrue(entry.id + " loads as the active skin", library.loadActive() instanceof ImageSkin);
             skins.add(skin);
         }
         library.setActive(ThemeSkin.fallback().id());

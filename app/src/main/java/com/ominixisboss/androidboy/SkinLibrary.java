@@ -93,6 +93,12 @@ final class SkinLibrary {
         return new File(bundledDir, name);
     }
 
+    /** Loads the bundled skin in assets/skins/{@code name}. */
+    ImageSkin loadBundled(String name) throws IOException {
+        if (!Arrays.asList(bundledNames()).contains(name)) throw new IOException("No bundled skin " + name);
+        return ImageSkin.load(bundledSkinDir(name), "bundled:" + name);
+    }
+
     private String appVersion() {
         try {
             android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
@@ -154,7 +160,7 @@ final class SkinLibrary {
         if (id.startsWith("bundled:")) {
             String name = id.substring("bundled:".length());
             try {
-                if (Arrays.asList(bundledNames()).contains(name)) return ImageSkin.load(bundledSkinDir(name), id);
+                return loadBundled(name);
             } catch (IOException | RuntimeException | OutOfMemoryError e) {
                 Log.w(TAG, "Could not load bundled skin " + name, e);
             }
