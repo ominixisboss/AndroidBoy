@@ -30,6 +30,19 @@ jobs:
       - name: Build debug and release APKs
         run: ./gradlew --no-daemon assembleDebug assembleRelease lintDebug
 
+      - name: Check APK contents
+        run: |
+          for apk in app/build/outputs/apk/debug/*.apk app/build/outputs/apk/release/*.apk; do
+            echo "== $apk ($(stat -c %s "$apk") bytes)"
+            unzip -l "$apk" | grep -E 'lib/.*\.so|assets/' | tee contents.txt
+            for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+              grep -q "lib/$abi/libandroidboy.so" contents.txt || { echo "missing $abi library"; exit 1; }
+            done
+            for rom in dmg mgb sgb sgb2 cgb cgb0 agb; do
+              grep -q "assets/BootROMs/${rom}_boot.bin" contents.txt || { echo "missing $rom boot ROM"; exit 1; }
+            done
+          done
+
       - uses: actions/upload-artifact@v4
         with:
           name: AndroidBoy-debug
