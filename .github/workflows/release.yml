@@ -43,16 +43,20 @@ jobs:
 
       - name: Set up the signing key
         if: steps.version.outputs.exists == 'false'
+        id: key
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROIDBOY_KEYSTORE_BASE64 }}
         run: |
-          # Releases are never signed with the debug key; see "Signing releases" in the README.
+          # Without a release key in the secrets, releases use the repository's shared debug key
+          # (app/debug.keystore). See "Signing releases" in the README.
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::The ANDROIDBOY_KEYSTORE_BASE64 secret isn't set, so this release can't be signed. See \"Signing releases\" in the README."
-            exit 1
+            echo "Signing with the shared debug key."
+            echo "kind=debug" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "ANDROIDBOY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+          echo "kind=release" >> "$GITHUB_OUTPUT"
 
       - name: Build the release APK
         if: steps.version.outputs.exists == 'false'
@@ -65,12 +69,23 @@ jobs:
       - name: Check the APK's signature
         if: steps.version.outputs.exists == 'false'
         id: signature
+        env:
+          KEY_KIND: ${{ steps.key.outputs.kind }}
         run: |
           apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
           "$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
-          if grep -q "CN=Android Debug" certs.txt; then
-            echo "::error::The release APK is signed with the debug key."
+          # The APK must be signed with the key this run chose, never a runner's random debug key.
+          if [ "$KEY_KIND" = release ] && grep -q "CN=Android Debug" certs.txt; then
+            echo "::error::A release key is configured, but the APK is signed with a debug key."
             exit 1
+          fi
+          if [ "$KEY_KIND" = debug ]; then
+            expected="$(keytool -list -v -keystore app/debug.keystore -storepass android -alias androiddebugkey \
+              | sed -n 's/^.*SHA256: //p' | tr -d ':' | tr 'A-F' 'a-f')"
+            grep -q "SHA-256 digest: $expected" certs.txt || {
+              echo "::error::The APK isn't signed with the shared debug key (app/debug.keystore)."
+              exit 1
+            }
           fi
           digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' certs.txt)"
           [ -n "$digest" ] || { echo "::error::Could not read the signing certificate."; exit 1; }
@@ -94,11 +109,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
           CERT_DIGEST: ${{ steps.signature.outputs.digest }}
+          KEY_KIND: ${{ steps.key.outputs.kind }}
         run: |
           apk="AndroidBoy-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
           sha256sum "$apk" > "$apk.sha256"
           sameboy="$(sed -n 's/^VERSION *:= *//p' sameboy/version.mk)"
+          upgrade="**If you have v1.0 installed**, it was signed with a one-off key: export your save files from the game list (long-press a game), uninstall v1.0, then install this version and import them again."
+          if [ "$KEY_KIND" = release ]; then
+            SIGNING="**Signing:** signed with the AndroidBoy release key (certificate SHA-256 \`${CERT_DIGEST}\`). Future releases use the same key, so they install as updates. $upgrade"
+          else
+            SIGNING="**Signing:** signed with AndroidBoy's shared debug key, which is public in the repository (certificate SHA-256 \`${CERT_DIGEST}\`). Builds signed with it install as updates of each other. $upgrade"
+          fi
           cat > notes.md <<NOTES
           AndroidBoy ${TAG}: a standalone Game Boy and Game Boy Color emulator for Android 8.0 and later, built on SameBoy ${sameboy}.
 
@@ -106,7 +128,7 @@ jobs:
 
           The APK runs on arm64, 32-bit ARM, x86 and x86_64 devices. No BIOS files are needed.
 
-          **Signing:** signed with the AndroidBoy release key (certificate SHA-256 \`${CERT_DIGEST}\`). Future releases use the same key, so they install as updates. **If you have v1.0 installed**, it was signed with a temporary debug key: export your save files from the game list (long-press a game), uninstall v1.0, then install this version and import them again.
+          ${SIGNING}
 
           See the [README](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/README.md) for controls and features.
           NOTES

@@ -54,7 +54,7 @@ Requirements: JDK 21 (17 works for building, but the skin tests need 21) and the
 
 ```sh
 ./gradlew assembleDebug          # app/build/outputs/apk/debug/app-debug.apk
-./gradlew assembleRelease        # minified; signed with the debug key unless configured below
+./gradlew assembleRelease        # minified; signed with the shared debug key unless configured below
 ```
 
 To sign a local release build with your own key, set `ANDROIDBOY_KEYSTORE` (the keystore's path),
@@ -62,20 +62,29 @@ To sign a local release build with your own key, set `ANDROIDBOY_KEYSTORE` (the 
 key's password differs from the keystore's.
 
 Every push is built by GitHub Actions (`.github/workflows/android.yml`). You can download the APKs
-from the run's artifacts. Those builds are signed with the debug key.
+from the run's artifacts. Those builds are signed with the shared debug key (see below).
 
 ### Releases
 
 `.github/workflows/release.yml` runs on every push to `main`. If the `versionName` in
-`app/build.gradle` has no GitHub release yet, it builds the APK, signs it with the release key,
-and publishes a release tagged `v<versionName>`. To publish a new release, bump `versionName`
+`app/build.gradle` has no GitHub release yet, it builds the APK, signs it (see below), and
+publishes a release tagged `v<versionName>`. To publish a new release, bump `versionName`
 (and `versionCode`) and merge to `main`.
 
 ### Signing releases
 
 Releases must be signed with the same key every time, or Android won't install them as updates.
-The key is stored in the repository's Actions secrets, and the release workflow refuses to publish
-without it.
+
+By default, every build and release is signed with the shared debug key in `app/debug.keystore`
+(password `android`, alias `androiddebugkey`). It's committed on purpose, so local builds, CI builds
+and releases all share one signature and install over each other. It's public, so anyone could sign
+an APK that installs as an update of yours. That's the usual trade-off for sideloaded open-source
+apps. The key never goes inside the APK; like every signed app, the APK only carries the matching
+public certificate. The release workflow checks that the APK was signed with exactly this key.
+
+To use your own private key instead, keep it in the repository's Actions secrets. Switching keys
+means users uninstall once (after exporting their saves), because Android refuses updates signed
+with a different key.
 
 1. Generate the key on your own computer. `keytool` comes with any JDK.
 
