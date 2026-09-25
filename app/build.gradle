@@ -1,0 +1,73 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Version of the vendored SameBoy core, shown in the app.
+def sameboyVersion = file('../sameboy/version.mk').readLines()
+        .find { it.startsWith('VERSION') }
+        .split(':=')[1].trim()
+
+android {
+    namespace 'com.ominixisboss.androidboy'
+    compileSdk 35
+    ndkVersion '27.2.12479018'
+
+    defaultConfig {
+        applicationId 'com.ominixisboss.androidboy'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName "1.0 (SameBoy ${sameboyVersion})"
+        buildConfigField 'String', 'SAMEBOY_VERSION', "\"${sameboyVersion}\""
+
+        externalNativeBuild {
+            cmake {
+                arguments '-DANDROID_STL=none'
+            }
+        }
+    }
+
+    signingConfigs {
+        // Set these environment variables to sign release builds with your own key.
+        // Without them, release builds are signed with the debug key so they can still be installed.
+        release {
+            def keystore = System.getenv('ANDROIDBOY_KEYSTORE')
+            if (keystore) {
+                storeFile file(keystore)
+                storePassword System.getenv('ANDROIDBOY_KEYSTORE_PASSWORD')
+                keyAlias System.getenv('ANDROIDBOY_KEY_ALIAS')
+                keyPassword System.getenv('ANDROIDBOY_KEY_PASSWORD')
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            signingConfig System.getenv('ANDROIDBOY_KEYSTORE') ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    externalNativeBuild {
+        cmake {
+            path 'src/main/cpp/CMakeLists.txt'
+            version '3.22.1'
+        }
+    }
+
+    lint {
+        // Emulators are sideloaded often; don't fail builds over Play-specific checks.
+        abortOnError false
+    }
+}
