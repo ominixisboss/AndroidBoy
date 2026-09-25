@@ -22,5 +22,5 @@
     <string name="save_exported">Save file exported</string>
     <string name="save_failed">Could not copy the save file: %1$s</string>
     <string name="powered_by">Powered by SameBoy %1$s</string>
-    <string name="about_text">A standalone Game Boy and Game Boy Color emulator for Android, powered by SameBoy %1$s by Lior Halphon.\n\nSameBoy is released under the Expat (MIT) license. The included boot ROMs are SameBoy\'s own open-source replacements; no Nintendo code is included.\n\nTap a game to play it, long-press it for save file options. In a game, use the ☰ button or Back to open the menu.</string>
+    <string name="about_text">A standalone Game Boy and Game Boy Color emulator for Android, powered by SameBoy %1$s by Lior Halphon.\n\nPorted to Android by OOZI.\n\nSameBoy is released under the Expat (MIT) license. The included boot ROMs are SameBoy\'s own open-source replacements; no Nintendo code is included.\n\nTap a game to play it, long-press it for save file options. In a game, use the ☰ button or Back to open the menu.</string>
 </resources>
