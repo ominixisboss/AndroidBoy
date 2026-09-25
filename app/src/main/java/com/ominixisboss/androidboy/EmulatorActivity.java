@@ -470,6 +470,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private void applyUiSettings() {
         skinView.setIntegerScaling(settings.get(Settings.SCALING) == 1);
         skinView.setHaptics(settings.isOn(Settings.HAPTICS));
+        skinView.setAnimations(settings.isOn(Settings.ANIMATIONS));
         applyScreenSettings();
         updateControlsVisibility();
     }

@@ -3,8 +3,10 @@ package com.ominixisboss.androidboy;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.Path;
+import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -14,11 +16,23 @@ import android.graphics.Shader;
  * colours of the original handhelds. Everything scales with the view, in both orientations.
  */
 final class ThemeSkin extends Skin {
+    // How the controls are drawn.
+    /** Raised plastic and rubber, shaded like the real handhelds' buttons. */
+    private static final int SOLID = 0;
+    /** Flat, see-through shapes; labels inside. */
+    private static final int TRANSLUCENT = 1;
+    /** Thin outlines that fill in when pressed. */
+    private static final int OUTLINE = 2;
+    /** Glowing outlines. */
+    private static final int NEON = 3;
+
     /** Colours for one theme. A theme with {@code minimal} set draws no body or bezel. */
     private static final class Palette {
         int body;
         int bodyShade;
         int bezel;
+        /** Outline around the bezel, or 0 for none. */
+        int bezelStroke;
         int accent1;
         int accent2;
         int dpad;
@@ -26,6 +40,9 @@ final class ThemeSkin extends Skin {
         int startSelect;
         int label;
         int led;
+        /** Edge of translucent controls, or 0 for none. */
+        int rim;
+        int style = SOLID;
         boolean speaker;
         boolean roundedCorner;
         boolean minimal;
@@ -48,8 +65,11 @@ final class ThemeSkin extends Skin {
     private static final Palette MINIMAL = new Palette();
     static {
         MINIMAL.minimal = true;
+        MINIMAL.style = TRANSLUCENT;
         MINIMAL.body = Color.BLACK;
         MINIMAL.bodyShade = Color.BLACK;
+        MINIMAL.dpad = MINIMAL.buttons = MINIMAL.startSelect = Color.argb(90, 255, 255, 255);
+        MINIMAL.label = Color.argb(200, 0, 0, 0);
     }
 
     private static Palette classic() {
@@ -66,21 +86,93 @@ final class ThemeSkin extends Skin {
                 luminance(body) > 0.45f ? 0xFF1E1E22 : 0xFFF2F2F2);
     }
 
+    private static Palette superGrey() {
+        // Styled after the Super Game Boy's grey plastic and lilac buttons.
+        Palette p = palette(0xFFA7A7AE, 0xFF4A4A52, 0xFF2E2E33, 0xFF6F5FA6, 0xFF5B5B63, 0xFF3A3552);
+        p.accent1 = 0xFF6F5FA6;
+        p.accent2 = 0xFFB0344F;
+        return p;
+    }
+
+    private static Palette redAndWhite() {
+        Palette p = palette(0xFFEAE4D6, 0xFF7C1F27, 0xFF2A2A2D, 0xFFC4202F, 0xFF9C9486, 0xFF7C1F27);
+        p.accent1 = 0xFFC4202F;
+        p.accent2 = 0xFFD9A441;
+        return p;
+    }
+
+    private static Palette gold() {
+        Palette p = palette(0xFFE4C160, 0xFF2B2A28, 0xFF2B2A28, 0xFF3C3A36, 0xFF7A6634, 0xFF3A2E12);
+        p.bodyShade = 0xFF9E7B24;
+        p.roundedCorner = true;
+        return p;
+    }
+
+    private static Palette oled() {
+        Palette p = palette(Color.BLACK, 0xFF080808, 0xFFE6E6E6, 0xFFFF5A5F, 0xFFB0B0B0, 0xFFE6E6E6);
+        p.bodyShade = Color.BLACK;
+        p.bezelStroke = 0xFF3A3A3A;
+        p.style = OUTLINE;
+        p.led = 0;
+        p.speaker = false;
+        return p;
+    }
+
+    private static Palette neon() {
+        Palette p = palette(0xFF15122E, 0xFF0B0A1A, 0xFF22E6FF, 0xFFFF3CD2, 0xFF8BFF5A, 0xFF22E6FF);
+        p.bodyShade = 0xFF06050F;
+        p.bezelStroke = 0xFF22E6FF;
+        p.style = NEON;
+        p.led = 0xFFFF3CD2;
+        p.speaker = false;
+        return p;
+    }
+
+    private static Palette pastel() {
+        Palette p = palette(0xFFF8DAE7, 0xFF8E86B6, 0xFF8C84BA, 0xFF86D9BD, 0xFFB6AFD9, 0xFF6A6395);
+        p.bodyShade = 0xFFD5D0F5;
+        p.led = 0xFFFF8FB1;
+        return p;
+    }
+
+    private static Palette glass() {
+        Palette p = palette(0xFF2A4A86, 0x40FFFFFF, 0x50FFFFFF, 0x50FFFFFF, 0x50FFFFFF, 0xFFFFFFFF);
+        p.bodyShade = 0xFF6C3D8F;
+        p.bezelStroke = 0x90FFFFFF;
+        p.rim = 0xA0FFFFFF;
+        p.style = TRANSLUCENT;
+        p.led = 0xFF7CF3FF;
+        p.speaker = false;
+        return p;
+    }
+
     static final ThemeSkin[] ALL = {
             new ThemeSkin("minimal", "Minimal (translucent controls)", MINIMAL),
             new ThemeSkin("classic", "Classic grey", classic()),
             new ThemeSkin("pocket", "Pocket silver",
                     palette(0xFFC4C7CA, 0xFF2F3033, 0xFF2A2A2C, 0xFF3A3A3E, 0xFF6E7075, 0xFF26272A)),
+            new ThemeSkin("pocket-black", "Pocket black",
+                    palette(0xFF2C2C31, 0xFF151517, 0xFF1B1B1E, 0xFF45454C, 0xFF55555C, 0xFFD8D8DE)),
+            new ThemeSkin("pocket-red", "Pocket red", color(0xFFC62A3A)),
+            new ThemeSkin("pocket-pink", "Pocket pink", color(0xFFEA93B8)),
             new ThemeSkin("light", "Light gold",
                     palette(0xFFD6B45C, 0xFF2B2A28, 0xFF2A2A2A, 0xFF3B3A38, 0xFF6D5B30, 0xFF3A2E12)),
+            new ThemeSkin("gold", "Gold edition", gold()),
+            new ThemeSkin("sgb", "Super grey", superGrey()),
+            new ThemeSkin("red-white", "Red & white", redAndWhite()),
             new ThemeSkin("berry", "Berry", color(0xFFD02A5C)),
             new ThemeSkin("grape", "Grape", color(0xFF5B3190)),
             new ThemeSkin("kiwi", "Kiwi", color(0xFF86BE2A)),
             new ThemeSkin("dandelion", "Dandelion", color(0xFFF2C21C)),
             new ThemeSkin("teal", "Teal", color(0xFF14A2B2)),
+            new ThemeSkin("ice", "Ice blue", color(0xFF9CCFE8)),
             new ThemeSkin("atomic", "Atomic purple", color(0xFF7B67B5)),
             new ThemeSkin("indigo", "Advance indigo",
                     palette(0xFF474C9E, 0xFF1F1F24, 0xFF2A2A2E, 0xFFD2D2DA, 0xFF2A2A2E, 0xFFE6E6F0)),
+            new ThemeSkin("oled", "OLED black (outlines)", oled()),
+            new ThemeSkin("neon", "Neon", neon()),
+            new ThemeSkin("pastel", "Pastel", pastel()),
+            new ThemeSkin("glass", "Frosted glass", glass()),
     };
 
     static ThemeSkin find(String id) {
@@ -297,6 +389,20 @@ final class ThemeSkin extends Skin {
         path.addRoundRect(g.bezel, radii, Path.Direction.CW);
         fill.setColor(palette.bezel);
         canvas.drawPath(path, fill);
+        if (palette.bezelStroke != 0) {
+            float width = Math.max(1.5f, g.pad * 0.07f);
+            if (palette.style == NEON) {
+                stroke.setStrokeWidth(width * 5);
+                stroke.setColor((palette.bezelStroke & 0xFFFFFF) | 0x24000000);
+                canvas.drawPath(path, stroke);
+                stroke.setStrokeWidth(width * 2.4f);
+                stroke.setColor((palette.bezelStroke & 0xFFFFFF) | 0x60000000);
+                canvas.drawPath(path, stroke);
+            }
+            stroke.setStrokeWidth(width);
+            stroke.setColor(palette.bezelStroke);
+            canvas.drawPath(path, stroke);
+        }
 
         // Thin black frame just around the screen, like the real LCD's border.
         fill.setColor(0xFF101012);
@@ -344,54 +450,213 @@ final class ThemeSkin extends Skin {
         canvas.restore();
     }
 
+    // Controls are drawn in "unit" coordinates: the canvas is moved to the control's centre and
+    // scaled so its radius (half the width, for pills) is 1. The shaders below are made once in
+    // that space, so they fit every control size.
+
+    /** Start and Select are slanted like the original's; their length shrinks to keep the rotated pill in bounds. */
+    private static final float PILL_ANGLE = -25f;
+    private static final float PILL_LENGTH = 0.86f;
+    /** The d-pad rocks up to this far towards the held direction. */
+    private static final float SOLID_TILT_DEGREES = 13f;
+    private static final float FLAT_TILT_DEGREES = 8f;
+    private static final float[] SQUARE = {-1, -1, 1, -1, 1, 1, -1, 1};
+    private static final float ARM = 1f / 3;
+
+    private final Matrix tiltMatrix = new Matrix();
+    private final float[] tilted = new float[8];
+    private Shader wellShader;
+    private Shader buttonShader;
+    private Shader dpadShader;
+    private Shader pillShader;
+    private Shader utilityShader;
+    private Shader dimpleShader;
+
+    private void makeShaders() {
+        if (wellShader != null || palette.style != SOLID) return;
+        // Recess in the body around each control: darker at the top, where the lip casts a shadow.
+        wellShader = new LinearGradient(0, -1.1f, 0, 1.1f, shade(palette.body, 0.58f), shade(palette.body, 0.9f),
+                Shader.TileMode.CLAMP);
+        // Convex buttons, lit from the top left.
+        buttonShader = new RadialGradient(-0.32f, -0.38f, 1.5f,
+                new int[] {lighten(palette.buttons, 0.3f), palette.buttons, shade(palette.buttons, 0.68f)},
+                new float[] {0, 0.5f, 1}, Shader.TileMode.CLAMP);
+        dpadShader = new LinearGradient(-1, -1, 1, 1, lighten(palette.dpad, 0.16f), shade(palette.dpad, 0.78f),
+                Shader.TileMode.CLAMP);
+        pillShader = new LinearGradient(0, -0.4f, 0, 0.4f, lighten(palette.startSelect, 0.22f),
+                shade(palette.startSelect, 0.75f), Shader.TileMode.CLAMP);
+        int utility = shade(palette.body, 0.8f);
+        utilityShader = new RadialGradient(-0.3f, -0.35f, 1.5f,
+                new int[] {lighten(utility, 0.18f), utility, shade(utility, 0.75f)},
+                new float[] {0, 0.5f, 1}, Shader.TileMode.CLAMP);
+        dimpleShader = new RadialGradient(0.04f, 0.06f, 0.2f, shade(palette.dpad, 0.62f), lighten(palette.dpad, 0.08f),
+                Shader.TileMode.CLAMP);
+    }
+
     @Override
-    void drawControls(Canvas canvas, Layout layout, int pressed) {
+    void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {
         Geometry g = (Geometry) layout.extras;
-        for (Control control : layout.controls) {
+        makeShaders();
+        for (int i = 0; i < layout.controls.size(); i++) {
+            Control control = layout.controls.get(i);
             if (!control.visible) continue;
-            boolean down = (pressed & control.keys) != 0;
+            float press = motion.press(i);
             switch (control.shape) {
                 case Control.DPAD:
-                    drawDpad(canvas, control.bounds, pressed);
+                    drawDpad(canvas, control.bounds, motion.tiltX, motion.tiltY);
                     break;
                 case Control.PILL:
-                    drawPill(canvas, g, control, down);
+                    drawPill(canvas, g, control, press);
                     break;
                 default:
                     if (control.keys == KEY_MENU || control.keys == KEY_REWIND || control.keys == KEY_FAST_FORWARD) {
-                        drawUtility(canvas, control.bounds, control.keys, down);
+                        drawUtility(canvas, control.bounds, control.keys, press);
                     } else {
-                        drawButton(canvas, g, control, down);
+                        drawButton(canvas, g, control, press);
                     }
                     break;
             }
         }
     }
 
-    private void drawDpad(Canvas canvas, RectF bounds, int pressed) {
-        float cx = bounds.centerX();
-        float cy = bounds.centerY();
+    /** Moves the canvas to a control's centre, scaled so its radius is 1. */
+    private static void enterUnit(Canvas canvas, float cx, float cy, float radius) {
+        canvas.save();
+        canvas.translate(cx, cy);
+        canvas.scale(radius, radius);
+    }
+
+    // ---- D-pad ----
+
+    private void drawDpad(Canvas canvas, RectF bounds, float tiltX, float tiltY) {
         float radius = bounds.width() / 2;
-        float arm = radius / 3f;
-        float corner = arm * 0.3f;
-        if (palette.minimal) {
-            fill.setColor(Color.argb(90, 255, 255, 255));
-            drawCross(canvas, cx, cy, radius, arm, corner);
-            fill.setColor(Color.argb(170, 255, 255, 255));
+        enterUnit(canvas, bounds.centerX(), bounds.centerY(), radius);
+        if (palette.style == SOLID) {
+            drawSolidDpad(canvas, tiltX, tiltY);
         } else {
-            fill.setColor(shade(palette.body, 0.7f));
-            drawCross(canvas, cx, cy + radius * 0.05f, radius, arm, corner);
-            fill.setColor(palette.dpad);
-            drawCross(canvas, cx, cy, radius, arm, corner);
-            fill.setColor(lighten(palette.dpad, 0.1f));
-            canvas.drawCircle(cx, cy, arm * 0.55f, fill);
-            fill.setColor(Color.argb(90, 0, 0, 0));
+            drawFlatDpad(canvas, radius, tiltX, tiltY);
         }
-        corner = radius / 10f;
-        if ((pressed & Emulator.KEY_UP) != 0) drawArm(canvas, cx - arm, cy - radius, cx + arm, cy - arm, corner);
-        if ((pressed & Emulator.KEY_DOWN) != 0) drawArm(canvas, cx - arm, cy + arm, cx + arm, cy + radius, corner);
-        if ((pressed & Emulator.KEY_LEFT) != 0) drawArm(canvas, cx - radius, cy - arm, cx - arm, cy + arm, corner);
-        if ((pressed & Emulator.KEY_RIGHT) != 0) drawArm(canvas, cx + arm, cy - arm, cx + radius, cy + arm, corner);
+        canvas.restore();
+    }
+
+    private void drawSolidDpad(Canvas canvas, float tiltX, float tiltY) {
+        // The recess the cross sits in, then its shadow, which leans the way the cross rocks.
+        fill.setShader(wellShader);
+        drawCross(canvas, 0, 0.03f, 1.07f, ARM + 0.06f, 0.14f);
+        fill.setShader(null);
+        fill.setColor(0x66000000);
+        canvas.save();
+        canvas.translate(clamp(tiltX) * 0.03f, 0.07f + clamp(tiltY) * 0.02f);
+        drawUnitShape(canvas, CROSS_SHAPE, fill);
+        canvas.restore();
+
+        canvas.save();
+        applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES);
+        fill.setShader(dpadShader);
+        drawCross(canvas, 0, 0, 1f, ARM, 0.1f);
+        fill.setShader(null);
+        // The held arm dips into shadow; the opposite one rises into the light.
+        shadeArms(canvas, tiltX, tiltY, 0x000000, 90, 0xFFFFFF, 45);
+        // Arrows moulded into the arms (a light edge below a dark recess), and the dimple in the middle.
+        for (int direction = 0; direction < 4; direction++) {
+            fill.setColor(lighten(palette.dpad, 0.22f));
+            drawArrow(canvas, direction, 0.72f, 0.13f, 0.022f);
+            fill.setColor(shade(palette.dpad, 0.45f));
+            drawArrow(canvas, direction, 0.72f, 0.13f, 0);
+        }
+        fill.setShader(dimpleShader);
+        canvas.drawCircle(0, 0, 0.19f, fill);
+        fill.setShader(null);
+        stroke.setColor(shade(palette.dpad, 0.5f));
+        stroke.setStrokeWidth(0.025f);
+        drawUnitShape(canvas, CROSS_SHAPE, stroke);
+        canvas.restore();
+    }
+
+    private void drawFlatDpad(Canvas canvas, float radius, float tiltX, float tiltY) {
+        canvas.save();
+        applyTilt(canvas, tiltX, tiltY, FLAT_TILT_DEGREES);
+        int color = palette.dpad;
+        if (palette.style == TRANSLUCENT) {
+            fill.setColor(color);
+            // One shape, so the see-through middle isn't covered twice.
+            drawUnitShape(canvas, CROSS_SHAPE, fill);
+            shadeArms(canvas, tiltX, tiltY, 0xFFFFFF, Math.min(255, Color.alpha(color)), 0, 0);
+            if (palette.rim != 0) {
+                stroke.setColor(palette.rim);
+                stroke.setStrokeWidth(lineWidth(radius));
+                drawUnitShape(canvas, CROSS_SHAPE, stroke);
+            }
+            fill.setColor(palette.label);
+        } else {
+            shadeArms(canvas, tiltX, tiltY, color & 0xFFFFFF, palette.style == NEON ? 110 : 150, 0, 0);
+            drawOutline(canvas, radius, color, 1f, CROSS_SHAPE);
+            fill.setColor(palette.style == NEON ? lighten(color, 0.45f) : color);
+        }
+        for (int direction = 0; direction < 4; direction++) drawArrow(canvas, direction, 0.7f, 0.11f, 0);
+        canvas.restore();
+    }
+
+    /**
+     * Rocks the canvas in perspective: the held side of the d-pad moves away from the viewer and the
+     * opposite side comes closer. Tilts are -1 to 1 on each axis; the springs overshoot slightly.
+     */
+    private void applyTilt(Canvas canvas, float tiltX, float tiltY, float maxDegrees) {
+        if (tiltX == 0 && tiltY == 0) return;
+        double angleX = Math.toRadians(clamp(tiltX) * maxDegrees);
+        double angleY = Math.toRadians(clamp(tiltY) * maxDegrees);
+        float distance = 4f; // viewer distance, in d-pad radii
+        for (int i = 0; i < 8; i += 2) {
+            float x = SQUARE[i];
+            float y = SQUARE[i + 1];
+            float depth = (float) (x * Math.sin(angleX) + y * Math.sin(angleY));
+            float scale = distance / (distance + depth);
+            tilted[i] = (float) (x * Math.cos(angleX)) * scale;
+            tilted[i + 1] = (float) (y * Math.cos(angleY)) * scale;
+        }
+        tiltMatrix.setPolyToPoly(SQUARE, 0, tilted, 0, 4);
+        canvas.concat(tiltMatrix);
+    }
+
+    /** Tints each arm by how far the pad tilts towards it (held) or away from it (raised). */
+    private void shadeArms(Canvas canvas, float tiltX, float tiltY, int heldRgb, int heldAlpha, int raisedRgb, int raisedAlpha) {
+        float[] amounts = {Math.max(0, -tiltY), Math.max(0, tiltY), Math.max(0, -tiltX), Math.max(0, tiltX)};
+        for (int direction = 0; direction < 4; direction++) {
+            float held = Math.min(1, amounts[direction]);
+            float raised = Math.min(1, amounts[direction ^ 1]);
+            if (held > 0.01f && heldAlpha > 0) {
+                fill.setColor(((int) (heldAlpha * held) << 24) | heldRgb);
+                drawArmRect(canvas, direction);
+            }
+            if (raised > 0.01f && raisedAlpha > 0) {
+                fill.setColor(((int) (raisedAlpha * raised) << 24) | raisedRgb);
+                drawArmRect(canvas, direction);
+            }
+        }
+    }
+
+    /** Directions: 0 up, 1 down, 2 left, 3 right. */
+    private void drawArmRect(Canvas canvas, int direction) {
+        switch (direction) {
+            case 0: rect.set(-ARM, -1, ARM, -ARM); break;
+            case 1: rect.set(-ARM, ARM, ARM, 1); break;
+            case 2: rect.set(-1, -ARM, -ARM, ARM); break;
+            default: rect.set(ARM, -ARM, 1, ARM); break;
+        }
+        canvas.drawRoundRect(rect, 0.1f, 0.1f, fill);
+    }
+
+    private void drawArrow(Canvas canvas, int direction, float distance, float size, float offsetY) {
+        canvas.save();
+        canvas.translate(0, offsetY);
+        canvas.rotate(direction == 0 ? 0 : direction == 1 ? 180 : direction == 2 ? 270 : 90);
+        path.reset();
+        path.moveTo(0, -distance - size * 0.6f);
+        path.lineTo(size * 0.8f, -distance + size * 0.5f);
+        path.lineTo(-size * 0.8f, -distance + size * 0.5f);
+        path.close();
+        canvas.drawPath(path, fill);
+        canvas.restore();
     }
 
     private void drawCross(Canvas canvas, float cx, float cy, float radius, float arm, float corner) {
@@ -401,92 +666,249 @@ final class ThemeSkin extends Skin {
         canvas.drawRoundRect(rect, corner, corner, fill);
     }
 
-    private void drawArm(Canvas canvas, float l, float t, float r, float b, float corner) {
-        rect.set(l, t, r, b);
-        canvas.drawRoundRect(rect, corner, corner, fill);
-    }
+    // ---- A and B ----
 
-    private void drawButton(Canvas canvas, Geometry g, Control control, boolean down) {
+    private void drawButton(Canvas canvas, Geometry g, Control control, float press) {
         RectF b = control.bounds;
         float radius = b.width() / 2;
         String label = control.keys == Emulator.KEY_A ? "A" : "B";
-        if (palette.minimal) {
-            fill.setColor(down ? Color.argb(170, 255, 255, 255) : Color.argb(90, 255, 255, 255));
-            canvas.drawCircle(b.centerX(), b.centerY(), radius, fill);
-            text.setColor(Color.argb(200, 0, 0, 0));
-            text.setTextSize(radius * 0.7f);
+        float down = clamp01(press);
+        if (palette.style != SOLID) {
+            float scale = 1 - 0.08f * press;
+            enterUnit(canvas, b.centerX(), b.centerY(), radius * scale);
+            drawFlatShape(canvas, radius * scale, palette.buttons, down, CIRCLE_SHAPE);
+            canvas.restore();
+            text.setColor(palette.style == TRANSLUCENT ? palette.label : flatInk(palette.buttons, down));
+            text.setTextSize(radius * 0.7f * scale);
             drawCentered(canvas, label, b.centerX(), b.centerY());
             return;
         }
-        fill.setColor(shade(palette.body, 0.7f));
-        canvas.drawCircle(b.centerX(), b.centerY() + radius * 0.1f, radius, fill);
-        fill.setColor(down ? shade(palette.buttons, 0.75f) : palette.buttons);
-        canvas.drawCircle(b.centerX(), b.centerY() + (down ? radius * 0.06f : 0), radius, fill);
+        enterUnit(canvas, b.centerX(), b.centerY(), radius);
+        fill.setShader(wellShader);
+        canvas.drawCircle(0, 0.04f, 1.1f, fill);
+        fill.setShader(null);
+        // The drop shadow shortens as the button sinks.
+        fill.setColor(0x60000000);
+        canvas.drawCircle(0, 0.11f * (1 - clamp(press)), 1f, fill);
+        canvas.translate(0, 0.08f * press);
+        float scale = 1 - 0.04f * press;
+        canvas.scale(scale, scale);
+        fill.setShader(buttonShader);
+        canvas.drawCircle(0, 0, 1f, fill);
+        fill.setShader(null);
+        if (down > 0) {
+            fill.setColor(Color.argb((int) (70 * down), 0, 0, 0));
+            canvas.drawCircle(0, 0, 1f, fill);
+        }
+        stroke.setColor(shade(palette.buttons, 0.55f));
+        stroke.setStrokeWidth(0.05f);
+        canvas.drawCircle(0, 0, 0.975f, stroke);
+        // Glint on the curve, dimming as the button goes down.
+        fill.setColor(Color.argb((int) (80 * (1 - 0.6f * down)), 255, 255, 255));
+        rect.set(-0.62f, -0.72f, -0.08f, -0.36f);
+        canvas.save();
+        canvas.rotate(-28, -0.35f, -0.54f);
+        canvas.drawOval(rect, fill);
+        canvas.restore();
+        canvas.restore();
         text.setColor(palette.label);
         text.setTextSize(g.labelSize);
         drawCentered(canvas, label, b.centerX() + radius * 0.35f, b.bottom + g.labelSize * 1.1f);
     }
 
-    private void drawPill(Canvas canvas, Geometry g, Control control, boolean down) {
+    // ---- Start and Select ----
+
+    private void drawPill(Canvas canvas, Geometry g, Control control, float press) {
         RectF b = control.bounds;
-        float half = b.height() / 2;
+        float halfWidth = b.width() / 2;
         String label = control.keys == Emulator.KEY_START ? "START" : "SELECT";
-        if (palette.minimal) {
-            fill.setColor(down ? Color.argb(170, 255, 255, 255) : Color.argb(90, 255, 255, 255));
-            canvas.drawRoundRect(b, half, half, fill);
-            text.setColor(Color.argb(200, 0, 0, 0));
-            text.setTextSize(b.height() * 0.45f);
+        float down = clamp01(press);
+        pillHalfHeight = b.height() / b.width();
+        if (palette.style != SOLID) {
+            float scale = 1 - 0.08f * press;
+            pillHalfLength = 1;
+            enterUnit(canvas, b.centerX(), b.centerY(), halfWidth * scale);
+            drawFlatShape(canvas, halfWidth * scale, palette.startSelect, down, PILL_SHAPE);
+            canvas.restore();
+            text.setColor(palette.style == TRANSLUCENT ? palette.label : flatInk(palette.startSelect, down));
+            text.setTextSize(b.height() * 0.45f * scale);
             drawCentered(canvas, label, b.centerX(), b.centerY());
             return;
         }
-        rect.set(b.left, b.top + half * 0.3f, b.right, b.bottom + half * 0.3f);
-        fill.setColor(shade(palette.body, 0.7f));
-        canvas.drawRoundRect(rect, half, half, fill);
-        fill.setColor(down ? shade(palette.startSelect, 0.75f) : palette.startSelect);
-        canvas.drawRoundRect(b, half, half, fill);
+        pillHalfLength = PILL_LENGTH;
+        float h = pillHalfHeight;
+        canvas.save();
+        canvas.rotate(PILL_ANGLE, b.centerX(), b.centerY());
+        enterUnit(canvas, b.centerX(), b.centerY(), halfWidth);
+        fill.setShader(wellShader);
+        rect.set(-PILL_LENGTH - 0.07f, -h - 0.07f, PILL_LENGTH + 0.07f, h + 0.07f);
+        canvas.drawRoundRect(rect, h + 0.07f, h + 0.07f, fill);
+        fill.setShader(null);
+        fill.setColor(0x60000000);
+        rect.set(-PILL_LENGTH, -h, PILL_LENGTH, h);
+        rect.offset(0, 0.1f * (1 - clamp(press)));
+        canvas.drawRoundRect(rect, h, h, fill);
+        canvas.translate(0, 0.07f * press);
+        fill.setShader(pillShader);
+        rect.set(-PILL_LENGTH, -h, PILL_LENGTH, h);
+        canvas.drawRoundRect(rect, h, h, fill);
+        fill.setShader(null);
+        if (down > 0) {
+            fill.setColor(Color.argb((int) (70 * down), 0, 0, 0));
+            canvas.drawRoundRect(rect, h, h, fill);
+        }
+        canvas.restore();
         text.setColor(palette.label);
         text.setTextSize(Math.min(g.labelSize * 0.7f, b.height() * 0.6f));
         drawCentered(canvas, label, b.centerX(), b.bottom + text.getTextSize() * 1.2f);
+        canvas.restore();
     }
 
+    // ---- Menu, rewind and fast-forward ----
+
     /** The small round buttons: menu (☰), rewind (◀◀) and fast-forward (▶▶). */
-    private void drawUtility(Canvas canvas, RectF b, int keys, boolean down) {
+    private void drawUtility(Canvas canvas, RectF b, int keys, float press) {
         float radius = b.width() / 2;
-        int background;
-        int lines;
-        if (palette.minimal) {
-            background = down ? Color.argb(170, 255, 255, 255) : Color.argb(90, 255, 255, 255);
-            lines = Color.argb(200, 0, 0, 0);
+        float down = clamp01(press);
+        int ink;
+        if (palette.style == SOLID) {
+            enterUnit(canvas, b.centerX(), b.centerY(), radius);
+            fill.setColor(0x50000000);
+            canvas.drawCircle(0, 0.1f * (1 - clamp(press)), 1f, fill);
+            canvas.translate(0, 0.07f * press);
+            fill.setShader(utilityShader);
+            canvas.drawCircle(0, 0, 1f, fill);
+            fill.setShader(null);
+            if (down > 0) {
+                fill.setColor(Color.argb((int) (60 * down), 0, 0, 0));
+                canvas.drawCircle(0, 0, 1f, fill);
+            }
+            ink = palette.label;
         } else {
-            background = shade(palette.body, down ? 0.65f : 0.8f);
-            lines = palette.label;
+            float scale = 1 - 0.08f * press;
+            enterUnit(canvas, b.centerX(), b.centerY(), radius * scale);
+            int color = palette.startSelect;
+            drawFlatShape(canvas, radius * scale, color, down, CIRCLE_SHAPE);
+            ink = palette.style == TRANSLUCENT ? palette.label : flatInk(color, down);
         }
-        fill.setColor(background);
-        canvas.drawCircle(b.centerX(), b.centerY(), radius, fill);
+        drawGlyph(canvas, keys, ink);
+        canvas.restore();
+    }
+
+    /** ☰ or two triangles pointing back (rewind) or forward (fast-forward), in unit coordinates. */
+    private void drawGlyph(Canvas canvas, int keys, int color) {
         if (keys != KEY_MENU) {
-            // Two small triangles pointing back (rewind) or forward (fast-forward).
             float direction = keys == KEY_REWIND ? -1 : 1;
-            float h = radius * 0.32f;
-            float w = radius * 0.3f;
-            fill.setColor(lines);
+            float h = 0.32f;
+            float w = 0.3f;
+            fill.setColor(color);
             for (int i = 0; i < 2; i++) {
-                float start = b.centerX() + direction * (i * w - w);
+                float start = direction * (i * w - w);
                 path.reset();
-                path.moveTo(start, b.centerY() - h);
-                path.lineTo(start + direction * w, b.centerY());
-                path.lineTo(start, b.centerY() + h);
+                path.moveTo(start, -h);
+                path.lineTo(start + direction * w, 0);
+                path.lineTo(start, h);
                 path.close();
                 canvas.drawPath(path, fill);
             }
             return;
         }
-        stroke.setColor(lines);
-        stroke.setStrokeWidth(radius * 0.12f);
-        float half = radius * 0.45f;
-        float gap = radius * 0.3f;
+        stroke.setColor(color);
+        stroke.setStrokeWidth(0.12f);
         for (int i = -1; i <= 1; i++) {
-            canvas.drawLine(b.centerX() - half, b.centerY() + i * gap, b.centerX() + half, b.centerY() + i * gap, stroke);
+            canvas.drawLine(-0.45f, i * 0.3f, 0.45f, i * 0.3f, stroke);
         }
+    }
+
+    // ---- Flat styles: translucent, outline and neon ----
+
+    private static final int CIRCLE_SHAPE = 0;
+    private static final int PILL_SHAPE = 1;
+    private static final int CROSS_SHAPE = 2;
+    private final Path crossPath = new Path();
+    private float pillHalfLength = 1;
+    private float pillHalfHeight = 0.36f;
+
+    /** Draws a circle or pill in unit coordinates, in the palette's flat style; {@code down} is 0 to 1. */
+    private void drawFlatShape(Canvas canvas, float radius, int color, float down, int shape) {
+        if (palette.style == TRANSLUCENT) {
+            int alpha = Color.alpha(color);
+            alpha += (int) ((Math.min(255, alpha * 1.9f) - alpha) * down);
+            fill.setColor((color & 0xFFFFFF) | (alpha << 24));
+            drawUnitShape(canvas, shape, fill);
+            if (palette.rim != 0) {
+                stroke.setColor(palette.rim);
+                stroke.setStrokeWidth(lineWidth(radius));
+                drawUnitShape(canvas, shape, stroke);
+            }
+            return;
+        }
+        if (down > 0) {
+            fill.setColor(((int) ((palette.style == NEON ? 110 : 230) * down) << 24) | (color & 0xFFFFFF));
+            drawUnitShape(canvas, shape, fill);
+        }
+        drawOutline(canvas, radius, color, 1f + 0.6f * down, shape);
+    }
+
+    /**
+     * Strokes a shape's outline. Neon gets a soft glow without blur filters (which hardware
+     * rendering doesn't support): wide, faint strokes under narrower, brighter ones.
+     */
+    private void drawOutline(Canvas canvas, float radius, int color, float glow, int shape) {
+        float width = lineWidth(radius);
+        if (palette.style == NEON) {
+            int r = Color.red(color);
+            int gr = Color.green(color);
+            int bl = Color.blue(color);
+            stroke.setStrokeWidth(width * 5f);
+            stroke.setColor(Color.argb((int) Math.min(255, 28 * glow), r, gr, bl));
+            drawUnitShape(canvas, shape, stroke);
+            stroke.setStrokeWidth(width * 2.4f);
+            stroke.setColor(Color.argb((int) Math.min(255, 80 * glow), r, gr, bl));
+            drawUnitShape(canvas, shape, stroke);
+            color = lighten(color, 0.45f);
+        }
+        stroke.setStrokeWidth(width);
+        stroke.setColor(color);
+        drawUnitShape(canvas, shape, stroke);
+    }
+
+    private void drawUnitShape(Canvas canvas, int shape, Paint paint) {
+        if (shape == CIRCLE_SHAPE) {
+            canvas.drawCircle(0, 0, 1f, paint);
+        } else if (shape == PILL_SHAPE) {
+            rect.set(-pillHalfLength, -pillHalfHeight, pillHalfLength, pillHalfHeight);
+            canvas.drawRoundRect(rect, pillHalfHeight, pillHalfHeight, paint);
+        } else {
+            // The d-pad's cross as one outline; two stroked rectangles would cross in the middle.
+            path.reset();
+            rect.set(-ARM, -1, ARM, 1);
+            path.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
+            crossPath.reset();
+            rect.set(-1, -ARM, 1, ARM);
+            crossPath.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
+            path.op(crossPath, Path.Op.UNION);
+            canvas.drawPath(path, paint);
+        }
+    }
+
+    /** Label colour on a flat control: its own colour, or black once it's filled in. */
+    private int flatInk(int color, float down) {
+        if (palette.style == NEON) return lighten(color, 0.3f * down);
+        return down > 0.5f ? (luminance(color) > 0.5f ? Color.BLACK : Color.WHITE) : color;
+    }
+
+    /** A line about 2dp wide, in unit coordinates for a control of this radius. */
+    private static float lineWidth(float radius) {
+        return Math.max(1.5f, 2f * density()) / Math.max(1, radius);
+    }
+
+    private static float clamp(float value) {
+        return Math.max(-1.3f, Math.min(1.3f, value));
+    }
+
+    private static float clamp01(float value) {
+        return Math.max(0, Math.min(1, value));
     }
 
     private void drawCentered(Canvas canvas, String label, float x, float y) {

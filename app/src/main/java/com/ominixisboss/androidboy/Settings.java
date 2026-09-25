@@ -104,6 +104,11 @@ final class Settings {
             new int[] {1, 0},
             0);
 
+    static final Choice ANIMATIONS = new Choice("animations", "Button animations",
+            new String[] {"On", "Off"},
+            new int[] {1, 0},
+            0);
+
     // Seconds of gameplay kept for rewinding (GB_set_rewind_length).
     static final Choice REWIND = new Choice("rewind", "Rewind",
             new String[] {"Off", "10 seconds", "30 seconds", "1 minute", "2 minutes", "5 minutes"},
@@ -133,8 +138,8 @@ final class Settings {
                     FILTER, FRAME_BLENDING, COLOR_CORRECTION, DMG_PALETTE, SCALING, BORDER),
             new Category("Emulation", "Game Boy models, rewind, fast-forward, resuming",
                     DMG_MODEL, CGB_MODEL, REWIND, FAST_FORWARD, AUTO_SAVE),
-            new Category("Controls", "On-screen controls, vibration, rumble",
-                    CONTROLS, HAPTICS, RUMBLE),
+            new Category("Controls", "On-screen controls, animations, vibration, rumble",
+                    CONTROLS, ANIMATIONS, HAPTICS, RUMBLE),
             new Category("Sound", "Sound on or off, audio filter",
                     SOUND, HIGHPASS),
     };

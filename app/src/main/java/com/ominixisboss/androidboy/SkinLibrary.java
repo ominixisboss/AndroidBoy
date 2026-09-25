@@ -26,7 +26,7 @@ final class SkinLibrary {
     static final class Entry {
         final String id;
         final String name;
-        /** Imported skins have a directory; built-in themes don't. */
+        /** Imported skins have a directory; built-in themes and bundled skins don't. */
         final File dir;
 
         Entry(String id, String name, File dir) {
@@ -36,19 +36,105 @@ final class SkinLibrary {
         }
     }
 
+    /** Image skins that ship with the app, in assets/skins/<name>/. */
+    static final String BUNDLED_ASSETS = "skins";
+
+    private final Context context;
     private final File skinsDir;
+    private final File bundledDir;
     private final SharedPreferences prefs;
 
     SkinLibrary(Context context) {
+        this.context = context.getApplicationContext() != null ? context.getApplicationContext() : context;
         skinsDir = new File(context.getFilesDir(), "skins");
         skinsDir.mkdirs();
+        bundledDir = new File(context.getFilesDir(), "bundled-skins");
         prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE);
+    }
+
+    /** Names of the bundled skins, as asset folder names. */
+    private String[] bundledNames() {
+        List<String> names = new ArrayList<>();
+        for (String name : assetChildren(BUNDLED_ASSETS)) {
+            if (assetChildren(BUNDLED_ASSETS + "/" + name).contains(ImageSkin.MANIFEST)) names.add(name);
+        }
+        return names.toArray(new String[0]);
+    }
+
+    /**
+     * The files and folders directly inside an asset folder. Android lists just their names, but
+     * some asset managers (Robolectric's) list every file below the folder by its relative path,
+     * so this keeps only the first part of each, once.
+     */
+    private List<String> assetChildren(String path) {
+        List<String> children = new ArrayList<>();
+        try {
+            String[] entries = context.getAssets().list(path);
+            if (entries == null) return children;
+            for (String entry : entries) {
+                if (entry.startsWith(path + "/")) entry = entry.substring(path.length() + 1);
+                int slash = entry.indexOf('/');
+                String child = slash >= 0 ? entry.substring(0, slash) : entry;
+                if (!child.isEmpty() && !children.contains(child)) children.add(child);
+            }
+        } catch (IOException e) {
+            // No such folder.
+        }
+        java.util.Collections.sort(children);
+        return children;
+    }
+
+    /**
+     * Bundled skins are copied out of the APK once, since skins load from files. They're copied
+     * again after the app is updated, in case the artwork changed.
+     */
+    private synchronized File bundledSkinDir(String name) throws IOException {
+        String version = appVersion();
+        File marker = new File(bundledDir, ".version");
+        if (!marker.isFile() || !version.equals(new String(RomLibrary.readFile(marker), "UTF-8"))) {
+            deleteRecursively(bundledDir);
+            if (!bundledDir.mkdirs()) throw new IOException("Could not create " + bundledDir);
+            byte[] buffer = new byte[64 * 1024];
+            for (String skin : bundledNames()) {
+                File dir = new File(bundledDir, skin);
+                dir.mkdirs();
+                for (String file : assetChildren(BUNDLED_ASSETS + "/" + skin)) {
+                    try (InputStream in = context.getAssets().open(BUNDLED_ASSETS + "/" + skin + "/" + file);
+                         OutputStream out = new FileOutputStream(new File(dir, file))) {
+                        int read;
+                        while ((read = in.read(buffer)) != -1) out.write(buffer, 0, read);
+                    }
+                }
+            }
+            try (OutputStream out = new FileOutputStream(marker)) {
+                out.write(version.getBytes("UTF-8"));
+            }
+        }
+        return new File(bundledDir, name);
+    }
+
+    /** Loads the bundled skin in assets/skins/{@code name}. */
+    ImageSkin loadBundled(String name) throws IOException {
+        if (!Arrays.asList(bundledNames()).contains(name)) throw new IOException("No bundled skin " + name);
+        return ImageSkin.load(bundledSkinDir(name), "bundled:" + name);
+    }
+
+    private String appVersion() {
+        try {
+            android.content.pm.PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return info.versionName + ":" + info.lastUpdateTime;
+        } catch (android.content.pm.PackageManager.NameNotFoundException | RuntimeException e) {
+            return "0";
+        }
     }
 
     List<Entry> list() {
         List<Entry> entries = new ArrayList<>();
         for (ThemeSkin theme : ThemeSkin.ALL) {
             entries.add(new Entry(theme.id(), theme.name(), null));
+        }
+        for (String name : bundledNames()) {
+            entries.add(new Entry("bundled:" + name, bundledName(name), null));
         }
         File[] dirs = skinsDir.listFiles(f -> f.isDirectory() && new File(f, ImageSkin.MANIFEST).isFile());
         if (dirs != null) {
@@ -60,6 +146,20 @@ final class SkinLibrary {
             entries.addAll(custom);
         }
         return entries;
+    }
+
+    /** A bundled skin's display name, read from its skin.json inside the APK. */
+    private String bundledName(String name) {
+        try (InputStream in = context.getAssets().open(BUNDLED_ASSETS + "/" + name + "/" + ImageSkin.MANIFEST)) {
+            java.io.ByteArrayOutputStream bytes = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) bytes.write(buffer, 0, read);
+            String value = new org.json.JSONObject(bytes.toString("UTF-8")).optString("name", "").trim();
+            return value.isEmpty() ? name : value;
+        } catch (IOException | org.json.JSONException e) {
+            return name;
+        }
     }
 
     String activeId() {
@@ -76,6 +176,14 @@ final class SkinLibrary {
         if (id.startsWith("theme:")) {
             ThemeSkin theme = ThemeSkin.find(id.substring("theme:".length()));
             return theme != null ? theme : ThemeSkin.fallback();
+        }
+        if (id.startsWith("bundled:")) {
+            String name = id.substring("bundled:".length());
+            try {
+                return loadBundled(name);
+            } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                Log.w(TAG, "Could not load bundled skin " + name, e);
+            }
         }
         if (id.startsWith("custom:")) {
             File dir = new File(skinsDir, id.substring("custom:".length()));

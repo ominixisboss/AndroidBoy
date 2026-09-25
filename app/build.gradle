@@ -16,8 +16,8 @@ android {
         applicationId 'com.ominixisboss.androidboy'
         minSdk 26
         targetSdk 35
-        versionCode 4
-        versionName "1.3 (SameBoy ${sameboyVersion})"
+        versionCode 5
+        versionName "1.4 (SameBoy ${sameboyVersion})"
         buildConfigField 'String', 'SAMEBOY_VERSION', "\"${sameboyVersion}\""
 
         externalNativeBuild {
@@ -81,6 +81,11 @@ android {
         unitTests.all {
             // Robolectric's native graphics (used by the skin tests) needs this on JDK 17+.
             jvmArgs '--add-opens=java.base/java.io=ALL-UNNAMED'
+            // Show why a test failed in the build log, not only in the HTML report.
+            testLogging {
+                events 'failed'
+                exceptionFormat 'full'
+            }
         }
     }
 

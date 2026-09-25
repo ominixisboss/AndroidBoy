@@ -66,6 +66,25 @@ public class SkinTest {
         List<Skin> skins = new ArrayList<>();
         for (ThemeSkin theme : ThemeSkin.ALL) skins.add(theme);
         skins.add(ImageSkin.load(exampleSkinDir()));
+        skins.addAll(bundledSkins());
+        return skins;
+    }
+
+    /** The image skins in assets/skins, loaded the way the app does. */
+    private static List<Skin> bundledSkins() throws IOException {
+        SkinLibrary library = new SkinLibrary(RuntimeEnvironment.getApplication());
+        List<Skin> skins = new ArrayList<>();
+        for (SkinLibrary.Entry entry : library.list()) {
+            if (!entry.id.startsWith("bundled:")) continue;
+            // Loaded directly, so a failure shows its reason; then as the active skin, as the app does.
+            Skin skin = library.loadBundled(entry.id.substring("bundled:".length()));
+            assertEquals(entry.id, skin.id());
+            assertEquals(entry.name, skin.name());
+            library.setActive(entry.id);
+            assertTrue(entry.id + " loads as the active skin", library.loadActive() instanceof ImageSkin);
+            skins.add(skin);
+        }
+        library.setActive(ThemeSkin.fallback().id());
         return skins;
     }
 
@@ -259,7 +278,10 @@ public class SkinTest {
                 canvas.restore();
                 drawTestScreen(canvas, layout.screen);
                 // Show a few keys pressed so the pressed look is visible too.
-                skin.drawControls(canvas, layout, Emulator.KEY_A | Emulator.KEY_RIGHT | Skin.KEY_REWIND);
+                int pressed = Emulator.KEY_A | Emulator.KEY_RIGHT | Skin.KEY_REWIND;
+                Skin.Motion motion = new Skin.Motion();
+                motion.snap(layout, pressed);
+                skin.drawControls(canvas, layout, pressed, motion);
                 String name = skin.id().replace(':', '-') + (portrait ? "-portrait" : "-landscape") + ".png";
                 try (OutputStream stream = new FileOutputStream(new File(out, name))) {
                     bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
@@ -267,6 +289,124 @@ public class SkinTest {
                 // The skin must not paint over the game screen.
                 Rect s = layout.screen;
                 assertEquals(skin.id() + ": screen untouched", 0xFF0F380F, bitmap.getPixel(s.left + 2, s.top + 2));
+            }
+        }
+    }
+
+    @Test
+    public void bundledSkinsAreListed() {
+        List<String> ids = new ArrayList<>();
+        for (SkinLibrary.Entry entry : new SkinLibrary(RuntimeEnvironment.getApplication()).list()) ids.add(entry.id);
+        for (String name : new String[] {"midnight", "arcade", "woodgrain"}) {
+            assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
+        }
+        assertEquals("every theme is listed", ThemeSkin.ALL.length + 3, ids.size());
+    }
+
+    @Test
+    public void pressesBounceAndTheDpadTilts() {
+        Application app = RuntimeEnvironment.getApplication();
+        Skin skin = ThemeSkin.find("classic");
+        RecordingListener listener = new RecordingListener();
+        SkinView view = new SkinView(app, skin, listener);
+        view.setHaptics(false);
+        view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
+        Skin.Layout layout = new Skin.Layout();
+        skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+        int aIndex = layout.controls.indexOf(find(layout, Emulator.KEY_A));
+        RectF a = layout.controls.get(aIndex).bounds;
+        RectF dpad = find(layout, Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT).bounds;
+        Skin.Motion motion = view.getMotion();
+
+        touch(view, MotionEvent.ACTION_DOWN, a.centerX(), a.centerY());
+        assertEquals("the key goes down at once, whatever the animation", Emulator.KEY_A, listener.keys);
+        assertEquals(0, motion.press(aIndex), 0);
+        float peak = 0;
+        for (int i = 0; i < 30; i++) {
+            view.advanceAnimations(1 / 120f);
+            peak = Math.max(peak, motion.press(aIndex));
+        }
+        assertTrue("a press is quick: " + motion.press(aIndex), motion.press(aIndex) > 0.95f);
+        assertTrue("and overshoots a little: " + peak, peak > 1.01f && peak < 1.3f);
+        while (view.advanceAnimations(1 / 60f)) { /* settle */ }
+        assertEquals(1, motion.press(aIndex), 0);
+
+        touch(view, MotionEvent.ACTION_UP, a.centerX(), a.centerY());
+        float lowest = 1;
+        int frames = 0;
+        while (view.advanceAnimations(1 / 60f)) {
+            lowest = Math.min(lowest, motion.press(aIndex));
+            assertTrue("settles within a second", ++frames < 60);
+        }
+        assertTrue("a release springs back past rest: " + lowest, lowest < -0.05f && lowest > -0.6f);
+        assertEquals(0, motion.press(aIndex), 0);
+
+        // The d-pad rocks towards the held direction, diagonals included.
+        touch(view, MotionEvent.ACTION_DOWN, dpad.right - dpad.width() * 0.1f, dpad.top + dpad.height() * 0.1f);
+        assertEquals(Emulator.KEY_RIGHT | Emulator.KEY_UP, listener.keys);
+        while (view.advanceAnimations(1 / 60f)) { /* settle */ }
+        assertEquals(1, motion.tiltX, 0);
+        assertEquals(-1, motion.tiltY, 0);
+        touch(view, MotionEvent.ACTION_UP, dpad.centerX(), dpad.centerY());
+
+        // With animations off, everything jumps straight to where it rests.
+        view.setAnimations(false);
+        touch(view, MotionEvent.ACTION_DOWN, a.centerX(), a.centerY());
+        assertEquals(1, motion.press(aIndex), 0);
+        assertEquals(0, motion.tiltX, 0);
+        assertFalse(view.advanceAnimations(1 / 60f));
+        touch(view, MotionEvent.ACTION_UP, a.centerX(), a.centerY());
+        assertEquals(0, motion.press(aIndex), 0);
+    }
+
+    /** Frames of a press and release, side by side, for looking at the animation in the previews. */
+    @Test
+    public void rendersAnimationStrips() throws IOException {
+        File out = new File(System.getProperty("skinPreviewDir", "build/skin-previews"));
+        out.mkdirs();
+        Application app = RuntimeEnvironment.getApplication();
+        for (String id : new String[] {"classic", "sgb", "neon", "oled", "glass", "minimal"}) {
+            Skin skin = ThemeSkin.find(id);
+            SkinView view = new SkinView(app, skin, new RecordingListener());
+            view.setHaptics(false);
+            view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            RectF a = find(layout, Emulator.KEY_A).bounds;
+            RectF dpad = find(layout, Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT).bounds;
+            // The part of the view with the d-pad and buttons.
+            Rect crop = new Rect(0, (int) (dpad.top - dpad.height() * 0.2f), PHONE_SHORT, (int) (dpad.bottom + dpad.height() * 0.2f));
+            int frames = 10;
+            Bitmap strip = Bitmap.createBitmap(crop.width(), crop.height() * frames, Bitmap.Config.ARGB_8888);
+            Canvas stripCanvas = new Canvas(strip);
+            Bitmap frame = Bitmap.createBitmap(PHONE_SHORT, PHONE_LONG, Bitmap.Config.ARGB_8888);
+            long now = SystemClock.uptimeMillis();
+            MotionEvent.PointerProperties[] props = {new MotionEvent.PointerProperties(), new MotionEvent.PointerProperties()};
+            props[0].id = 0;
+            props[1].id = 1;
+            MotionEvent.PointerCoords[] coords = {new MotionEvent.PointerCoords(), new MotionEvent.PointerCoords()};
+            coords[0].x = a.centerX();
+            coords[0].y = a.centerY();
+            coords[1].x = dpad.centerX() + dpad.width() * 0.4f;
+            coords[1].y = dpad.centerY();
+            for (int i = 0; i < frames; i++) {
+                if (i == 0) {
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, 1, new MotionEvent.PointerProperties[] {props[0]},
+                            new MotionEvent.PointerCoords[] {coords[0]}, 0, 0, 1, 1, 0, 0, 0, 0));
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_POINTER_DOWN | (1 << MotionEvent.ACTION_POINTER_INDEX_SHIFT),
+                            2, props, coords, 0, 0, 1, 1, 0, 0, 0, 0));
+                } else if (i == 5) {
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, a.centerX(), a.centerY(), 0));
+                }
+                view.advanceAnimations(i == 0 ? 0.03f : 0.035f);
+                frame.eraseColor(0);
+                Canvas canvas = new Canvas(frame);
+                skin.drawBackground(canvas, layout);
+                skin.drawControls(canvas, layout, i < 5 ? Emulator.KEY_A | Emulator.KEY_RIGHT : 0, view.getMotion());
+                stripCanvas.drawBitmap(frame, crop, new Rect(0, i * crop.height(), crop.width(), (i + 1) * crop.height()), null);
+            }
+            try (OutputStream stream = new FileOutputStream(new File(out, "animation-" + id + ".png"))) {
+                strip.compress(Bitmap.CompressFormat.PNG, 100, stream);
             }
         }
     }

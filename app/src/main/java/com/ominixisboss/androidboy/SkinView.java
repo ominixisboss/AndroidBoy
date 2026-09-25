@@ -1,9 +1,11 @@
 package com.ominixisboss.androidboy;
 
+import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.os.SystemClock;
 import android.util.SparseIntArray;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -43,6 +45,22 @@ final class SkinView extends View {
     private boolean haptics = true;
     private int mask;
 
+    // Press animation: one damped spring per control, plus two for the d-pad's tilt. A press is
+    // quick with a slight overshoot; a release springs back past rest and settles, like rubber.
+    private static final float PRESS_STIFFNESS = 1500f;
+    private static final float PRESS_DAMPING = 0.55f;
+    private static final float RELEASE_DAMPING = 0.28f;
+    private static final float TILT_STIFFNESS = 900f;
+    private static final float TILT_DAMPING = 0.42f;
+    private static final float MAX_STEP = 1f / 480;
+    private final Skin.Motion motion = new Skin.Motion();
+    private float[] velocity = new float[0];
+    private float tiltVelocityX;
+    private float tiltVelocityY;
+    private boolean animations = true;
+    private boolean animating;
+    private long lastAnimationTime;
+
     SkinView(Context context, Skin skin, Listener listener) {
         super(context);
         this.skin = skin;
@@ -81,6 +99,21 @@ final class SkinView extends View {
         haptics = enabled;
     }
 
+    /** Animated presses; also off when the system's animations are (developer options, accessibility). */
+    void setAnimations(boolean enabled) {
+        animations = enabled;
+        if (!animationsEnabled()) settle();
+        invalidate();
+    }
+
+    private boolean animationsEnabled() {
+        return animations && ValueAnimator.areAnimatorsEnabled();
+    }
+
+    Skin.Motion getMotion() {
+        return motion;
+    }
+
     /** Releases every touch-held key. */
     void releaseAll() {
         pointerKeys.clear();
@@ -99,6 +132,7 @@ final class SkinView extends View {
         // Touches may now be over different controls.
         pointerKeys.clear();
         updateMask();
+        settle();
         if (!layout.screen.equals(lastScreen)) {
             lastScreen.set(layout.screen);
             listener.onScreenRectChanged(new Rect(layout.screen));
@@ -114,7 +148,72 @@ final class SkinView extends View {
         canvas.clipOutRect(layout.screen);
         skin.drawBackground(canvas, layout);
         canvas.restore();
-        if (controlsVisible) skin.drawControls(canvas, layout, mask);
+        if (!controlsVisible) return;
+        if (animating) {
+            long now = SystemClock.uptimeMillis();
+            // Cap the step so a stalled frame doesn't make the springs jump.
+            float seconds = Math.min(0.05f, (now - lastAnimationTime) / 1000f);
+            lastAnimationTime = now;
+            if (advanceAnimations(seconds)) {
+                postInvalidateOnAnimation();
+            } else {
+                animating = false;
+            }
+        }
+        skin.drawControls(canvas, layout, mask, motion);
+    }
+
+    /** Puts every control where it rests for the current keys, with no animation. */
+    private void settle() {
+        motion.snap(layout, mask);
+        velocity = new float[motion.press.length];
+        tiltVelocityX = 0;
+        tiltVelocityY = 0;
+        animating = false;
+    }
+
+    /**
+     * Moves the springs {@code seconds} forward. Returns whether anything is still moving; once
+     * everything is close enough to rest, it's snapped there exactly.
+     */
+    boolean advanceAnimations(float seconds) {
+        int count = layout.controls.size();
+        if (motion.press.length != count || velocity.length != count) {
+            motion.ensureSize(count);
+            velocity = new float[count];
+        }
+        float targetX = Skin.tiltTargetX(mask);
+        float targetY = Skin.tiltTargetY(mask);
+        float remaining = seconds;
+        while (remaining > 0) {
+            float dt = Math.min(MAX_STEP, remaining);
+            remaining -= dt;
+            for (int i = 0; i < count; i++) {
+                boolean down = Skin.isDown(layout.controls.get(i), mask);
+                float damping = down ? PRESS_DAMPING : RELEASE_DAMPING;
+                velocity[i] += spring(motion.press[i], velocity[i], down ? 1 : 0, PRESS_STIFFNESS, damping) * dt;
+                motion.press[i] += velocity[i] * dt;
+            }
+            tiltVelocityX += spring(motion.tiltX, tiltVelocityX, targetX, TILT_STIFFNESS, TILT_DAMPING) * dt;
+            motion.tiltX += tiltVelocityX * dt;
+            tiltVelocityY += spring(motion.tiltY, tiltVelocityY, targetY, TILT_STIFFNESS, TILT_DAMPING) * dt;
+            motion.tiltY += tiltVelocityY * dt;
+        }
+        boolean moving = !atRest(motion.tiltX, tiltVelocityX, targetX) || !atRest(motion.tiltY, tiltVelocityY, targetY);
+        for (int i = 0; i < count && !moving; i++) {
+            moving = !atRest(motion.press[i], velocity[i], Skin.isDown(layout.controls.get(i), mask) ? 1 : 0);
+        }
+        if (!moving) settle();
+        return moving;
+    }
+
+    /** Acceleration of a damped spring; {@code damping} is the damping ratio (1 = no overshoot). */
+    private static float spring(float position, float velocity, float target, float stiffness, float damping) {
+        return -stiffness * (position - target) - 2 * damping * (float) Math.sqrt(stiffness) * velocity;
+    }
+
+    private static boolean atRest(float position, float velocity, float target) {
+        return Math.abs(position - target) < 0.002f && Math.abs(velocity) < 0.05f;
     }
 
     @Override
@@ -177,6 +276,12 @@ final class SkinView extends View {
         if (gameKeysChanged) listener.onTouchKeysChanged(mask & Skin.GAME_KEYS);
         if (fastForwardChanged) listener.onFastForwardTouched((mask & Skin.KEY_FAST_FORWARD) != 0);
         if (rewindChanged) listener.onRewindTouched((mask & Skin.KEY_REWIND) != 0);
+        if (!animationsEnabled()) {
+            settle();
+        } else if (!animating) {
+            animating = true;
+            lastAnimationTime = SystemClock.uptimeMillis();
+        }
         invalidate();
     }
 
