@@ -8,5 +8,7 @@ local.properties
 captures/
 *.keystore
 *.jks
+# The shared public debug key (see app/build.gradle); private keys stay out of git.
+!app/debug.keystore
 node_modules/
 shader-previews/

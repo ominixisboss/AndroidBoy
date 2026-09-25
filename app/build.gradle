@@ -28,8 +28,16 @@ android {
     }
 
     signingConfigs {
-        // Set these environment variables to sign release builds with your own key.
-        // Without them, release builds are signed with the debug key so they can still be installed.
+        // A fixed, public debug key committed to the repository, so every build and release is
+        // signed the same way and installs as an update. Anyone can sign with it; it never goes
+        // inside the APK (only its public certificate does, as with any signed app).
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        // Optional: set these environment variables to sign release builds with your own key instead.
         release {
             def keystore = System.getenv('ANDROIDBOY_KEYSTORE')
             if (keystore) {
