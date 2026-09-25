@@ -41,9 +41,40 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         if: steps.version.outputs.exists == 'false'
 
+      - name: Set up the signing key
+        if: steps.version.outputs.exists == 'false'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROIDBOY_KEYSTORE_BASE64 }}
+        run: |
+          # Releases are never signed with the debug key; see "Signing releases" in the README.
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The ANDROIDBOY_KEYSTORE_BASE64 secret isn't set, so this release can't be signed. See \"Signing releases\" in the README."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "ANDROIDBOY_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
       - name: Build the release APK
         if: steps.version.outputs.exists == 'false'
+        env:
+          ANDROIDBOY_KEYSTORE_PASSWORD: ${{ secrets.ANDROIDBOY_KEYSTORE_PASSWORD }}
+          ANDROIDBOY_KEY_ALIAS: ${{ secrets.ANDROIDBOY_KEY_ALIAS }}
+          ANDROIDBOY_KEY_PASSWORD: ${{ secrets.ANDROIDBOY_KEY_PASSWORD }}
         run: ./gradlew --no-daemon assembleRelease
+
+      - name: Check the APK's signature
+        if: steps.version.outputs.exists == 'false'
+        id: signature
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --print-certs app/build/outputs/apk/release/app-release.apk | tee certs.txt
+          if grep -q "CN=Android Debug" certs.txt; then
+            echo "::error::The release APK is signed with the debug key."
+            exit 1
+          fi
+          digest="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' certs.txt)"
+          [ -n "$digest" ] || { echo "::error::Could not read the signing certificate."; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
 
       - name: Check APK contents
         if: steps.version.outputs.exists == 'false'
@@ -62,6 +93,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
+          CERT_DIGEST: ${{ steps.signature.outputs.digest }}
         run: |
           apk="AndroidBoy-${TAG}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$apk"
@@ -74,7 +106,7 @@ jobs:
 
           The APK runs on arm64, 32-bit ARM, x86 and x86_64 devices. No BIOS files are needed.
 
-          **Signing:** this APK is signed with a debug key, not a permanent release key. If a later release switches to a real key, you'll have to uninstall this one first. Export your save files from the game list before you do.
+          **Signing:** signed with the AndroidBoy release key (certificate SHA-256 \`${CERT_DIGEST}\`). Future releases use the same key, so they install as updates. **If you have v1.0 installed**, it was signed with a temporary debug key: export your save files from the game list (long-press a game), uninstall v1.0, then install this version and import them again.
 
           See the [README](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/README.md) for controls and features.
           NOTES
