@@ -35,6 +35,8 @@ target_compile_definitions(sameboy PUBLIC
     GB_DISABLE_CHEAT_SEARCH
     _GNU_SOURCE
 )
+# The core sees its own internals; frontends (emulator.c, jni_bridge.c) must not.
+target_compile_definitions(sameboy PRIVATE GB_INTERNAL)
 target_compile_options(sameboy PRIVATE
     -std=gnu11
     -O3
