@@ -12,6 +12,7 @@ static uint32_t render_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
 static uint32_t frame_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
 static unsigned frame_width = 160, frame_height = 144;
 static bool vblank_occurred;
+static bool frame_odd;
 
 static int16_t audio_buffer[EMU_AUDIO_CAPACITY];
 static size_t audio_count;
@@ -70,6 +71,7 @@ static void vblank_callback(GB_gameboy_t *unused, GB_vblank_type_t type)
     /* A repeated frame means the screen keeps showing the previous one. */
     if (type != GB_VBLANK_TYPE_REPEAT) {
         memcpy(frame_buffer, render_buffer, sizeof(render_buffer[0]) * frame_width * frame_height);
+        frame_odd = GB_is_odd_frame(gb);
     }
     vblank_occurred = true;
 }
@@ -245,6 +247,11 @@ const uint32_t *emu_get_frame(unsigned *width, unsigned *height)
     *width = frame_width;
     *height = frame_height;
     return frame_buffer;
+}
+
+bool emu_is_odd_frame(void)
+{
+    return frame_odd;
 }
 
 size_t emu_take_audio(int16_t *out, size_t max_samples)

@@ -1,7 +1,6 @@
 package com.ominixisboss.androidboy;
 
 import android.content.res.AssetManager;
-import android.graphics.Bitmap;
 
 /**
  * JNI bindings for the SameBoy core (see app/src/main/cpp/jni_bridge.c).
@@ -53,7 +52,9 @@ final class Emulator {
     static native int nativeRunFrame(short[] audio);
     static native int nativeGetFrameWidth();
     static native int nativeGetFrameHeight();
-    static native boolean nativeCopyFrame(Bitmap bitmap);
+    /** Copies the latest frame, tightly packed RGBA, into a direct buffer of at least 256×224 pixels. */
+    static native boolean nativeCopyFrame(java.nio.ByteBuffer buffer);
+    static native boolean nativeIsOddFrame();
     static native byte[] nativeSaveBattery();
     static native void nativeLoadBattery(byte[] data);
     static native boolean nativeTakeBatteryDirty();

@@ -2,7 +2,6 @@
 #include <jni.h>
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
-#include <android/bitmap.h>
 #include <android/log.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -141,23 +140,24 @@ JNIEXPORT jint JNICALL JNI_FN(nativeGetFrameHeight)(JNIEnv *env, jclass clazz)
     return (jint)height;
 }
 
-JNIEXPORT jboolean JNICALL JNI_FN(nativeCopyFrame)(JNIEnv *env, jclass clazz, jobject bitmap)
+JNIEXPORT jboolean JNICALL JNI_FN(nativeCopyFrame)(JNIEnv *env, jclass clazz, jobject buffer)
 {
     (void)clazz;
     unsigned width, height;
     const uint32_t *frame = emu_get_frame(&width, &height);
 
-    AndroidBitmapInfo info;
-    if (AndroidBitmap_getInfo(env, bitmap, &info) != ANDROID_BITMAP_RESULT_SUCCESS) return false;
-    if (info.width != width || info.height != height || info.format != ANDROID_BITMAP_FORMAT_RGBA_8888) return false;
-
-    void *pixels;
-    if (AndroidBitmap_lockPixels(env, bitmap, &pixels) != ANDROID_BITMAP_RESULT_SUCCESS) return false;
-    for (unsigned y = 0; y < height; y++) {
-        memcpy((uint8_t *)pixels + y * info.stride, frame + y * width, width * sizeof(uint32_t));
-    }
-    AndroidBitmap_unlockPixels(env, bitmap);
+    /* A direct ByteBuffer of at least EMU_MAX_WIDTH * EMU_MAX_HEIGHT pixels, filled tightly packed. */
+    void *pixels = (*env)->GetDirectBufferAddress(env, buffer);
+    jlong capacity = (*env)->GetDirectBufferCapacity(env, buffer);
+    if (!pixels || capacity < (jlong)(width * height * sizeof(uint32_t))) return false;
+    memcpy(pixels, frame, width * height * sizeof(uint32_t));
     return true;
+}
+
+JNIEXPORT jboolean JNICALL JNI_FN(nativeIsOddFrame)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return emu_is_odd_frame();
 }
 
 JNIEXPORT jbyteArray JNICALL JNI_FN(nativeSaveBattery)(JNIEnv *env, jclass clazz)
