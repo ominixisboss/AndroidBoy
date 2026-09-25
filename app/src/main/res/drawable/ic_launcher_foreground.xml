@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A handheld console silhouette, drawn inside the 72dp adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Body -->
+    <path
+        android:fillColor="#D8D8D0"
+        android:pathData="M36,24h36a4,4 0,0 1,4 4v44c0,6 -4,12 -12,12h-28a4,4 0,0 1,-4 -4v-52a4,4 0,0 1,4 -4z" />
+    <!-- Screen bezel -->
+    <path
+        android:fillColor="#5A5A66"
+        android:pathData="M39,29h30a2,2 0,0 1,2 2v21a2,2 0,0 1,-2 2h-30a2,2 0,0 1,-2 -2v-21a2,2 0,0 1,2 -2z" />
+    <!-- Screen -->
+    <path
+        android:fillColor="#9BBC0F"
+        android:pathData="M44,32h20v19h-20z" />
+    <!-- D-pad -->
+    <path
+        android:fillColor="#2B2B33"
+        android:pathData="M43,62h4v4h4v4h-4v4h-4v-4h-4v-4h4z" />
+    <!-- A and B buttons -->
+    <path
+        android:fillColor="#8C1F5B"
+        android:pathData="M66,65m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+    <path
+        android:fillColor="#8C1F5B"
+        android:pathData="M58,69m-3.5,0a3.5,3.5 0,1 1,7 0a3.5,3.5 0,1 1,-7 0" />
+</vector>
