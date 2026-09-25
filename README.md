@@ -48,11 +48,55 @@ Requirements: JDK 17 and the Android SDK. Gradle downloads the NDK and CMake if 
 ./gradlew assembleRelease        # minified; signed with the debug key unless configured below
 ```
 
-To sign release builds with your own key, set `ANDROIDBOY_KEYSTORE`, `ANDROIDBOY_KEYSTORE_PASSWORD`,
-`ANDROIDBOY_KEY_ALIAS` and `ANDROIDBOY_KEY_PASSWORD`.
+To sign a local release build with your own key, set `ANDROIDBOY_KEYSTORE` (the keystore's path),
+`ANDROIDBOY_KEYSTORE_PASSWORD` and `ANDROIDBOY_KEY_ALIAS`. Also set `ANDROIDBOY_KEY_PASSWORD` if the
+key's password differs from the keystore's.
 
 Every push is built by GitHub Actions (`.github/workflows/android.yml`). You can download the APKs
-from the run's artifacts.
+from the run's artifacts. Those builds are signed with the debug key.
+
+### Releases
+
+`.github/workflows/release.yml` runs on every push to `main`. If the `versionName` in
+`app/build.gradle` has no GitHub release yet, it builds the APK, signs it with the release key,
+and publishes a release tagged `v<versionName>`. To publish a new release, bump `versionName`
+(and `versionCode`) and merge to `main`.
+
+### Signing releases
+
+Releases must be signed with the same key every time, or Android won't install them as updates.
+The key is stored in the repository's Actions secrets, and the release workflow refuses to publish
+without it.
+
+1. Generate the key on your own computer. `keytool` comes with any JDK.
+
+   ```sh
+   keytool -genkeypair -keystore androidboy-release.jks -alias androidboy \
+       -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=AndroidBoy"
+   ```
+
+   Pick a strong password when prompted.
+
+2. Back up `androidboy-release.jks` and its password somewhere safe, such as a password manager.
+   Don't commit it. If you lose it, you can't publish updates that install over existing copies.
+
+3. Add these secrets under **Settings → Secrets and variables → Actions → New repository secret**:
+
+   | Secret | Value |
+   | --- | --- |
+   | `ANDROIDBOY_KEYSTORE_BASE64` | Output of `base64 -w0 androidboy-release.jks` (macOS: `base64 -i androidboy-release.jks`) |
+   | `ANDROIDBOY_KEYSTORE_PASSWORD` | The password you chose |
+   | `ANDROIDBOY_KEY_ALIAS` | `androidboy` |
+
+   With the [GitHub CLI](https://cli.github.com), you can run instead:
+
+   ```sh
+   base64 -w0 androidboy-release.jks | gh secret set ANDROIDBOY_KEYSTORE_BASE64
+   gh secret set ANDROIDBOY_KEYSTORE_PASSWORD
+   gh secret set ANDROIDBOY_KEY_ALIAS --body androidboy
+   ```
+
+Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 ### Core smoke test
 

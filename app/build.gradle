@@ -36,7 +36,8 @@ android {
                 storeFile file(keystore)
                 storePassword System.getenv('ANDROIDBOY_KEYSTORE_PASSWORD')
                 keyAlias System.getenv('ANDROIDBOY_KEY_ALIAS')
-                keyPassword System.getenv('ANDROIDBOY_KEY_PASSWORD')
+                // PKCS12 keystores (keytool's default) use the keystore password for the key too.
+                keyPassword System.getenv('ANDROIDBOY_KEY_PASSWORD') ?: System.getenv('ANDROIDBOY_KEYSTORE_PASSWORD')
             }
         }
     }
