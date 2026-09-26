@@ -361,6 +361,60 @@ public class SkinTest {
         assertEquals(0, motion.press(aIndex), 0);
     }
 
+    /**
+     * The d-pad through a press to the right, a slide round to up-left, and a release, frame by
+     * frame, for the solid, translucent and neon styles and an image skin.
+     */
+    @Test
+    public void rendersDpadStrips() throws IOException {
+        File out = new File(System.getProperty("skinPreviewDir", "build/skin-previews"));
+        out.mkdirs();
+        Application app = RuntimeEnvironment.getApplication();
+        List<Skin> skins = new ArrayList<>();
+        for (String id : new String[] {"classic", "navy", "glass", "neon"}) skins.add(ThemeSkin.find(id));
+        skins.add(ImageSkin.load(exampleSkinDir()));
+        for (Skin skin : skins) {
+            SkinView view = new SkinView(app, skin, new RecordingListener());
+            view.setHaptics(false);
+            view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            RectF dpad = find(layout, Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT).bounds;
+            int margin = (int) (dpad.width() * 0.15f);
+            Rect crop = new Rect((int) dpad.left - margin, (int) dpad.top - margin, (int) dpad.right + margin, (int) dpad.bottom + margin);
+            // Touch points: held right, then up-left, then let go.
+            float[][] path = {
+                    {dpad.right - dpad.width() * 0.1f, dpad.centerY()},
+                    {dpad.left + dpad.width() * 0.12f, dpad.top + dpad.height() * 0.12f},
+            };
+            int frames = 12;
+            Bitmap strip = Bitmap.createBitmap(crop.width() * frames, crop.height(), Bitmap.Config.ARGB_8888);
+            Canvas stripCanvas = new Canvas(strip);
+            Bitmap frame = Bitmap.createBitmap(PHONE_SHORT, PHONE_LONG, Bitmap.Config.ARGB_8888);
+            long now = SystemClock.uptimeMillis();
+            for (int i = 0; i < frames; i++) {
+                if (i == 0) {
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_DOWN, path[0][0], path[0][1], 0));
+                } else if (i == 4) {
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_MOVE, path[1][0], path[1][1], 0));
+                } else if (i == 8) {
+                    view.onTouchEvent(MotionEvent.obtain(now, now, MotionEvent.ACTION_UP, path[1][0], path[1][1], 0));
+                }
+                view.advanceAnimations(0.03f);
+                frame.eraseColor(0);
+                Canvas canvas = new Canvas(frame);
+                skin.drawBackground(canvas, layout);
+                skin.drawControls(canvas, layout, i < 4 ? Emulator.KEY_RIGHT : i < 8 ? Emulator.KEY_UP | Emulator.KEY_LEFT : 0,
+                        view.getMotion());
+                stripCanvas.drawBitmap(frame, crop, new Rect(i * crop.width(), 0, (i + 1) * crop.width(), crop.height()), null);
+            }
+            String name = "dpad-" + skin.id().replace(':', '-') + ".png";
+            try (OutputStream stream = new FileOutputStream(new File(out, name))) {
+                strip.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            }
+        }
+    }
+
     /** Frames of a press and release, side by side, for looking at the animation in the previews. */
     @Test
     public void rendersAnimationStrips() throws IOException {

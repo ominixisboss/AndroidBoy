@@ -635,24 +635,57 @@ final class ThemeSkin extends Skin {
         canvas.restore();
     }
 
+    /** How thick the solid d-pad is, in d-pad radii: its side walls show as it rocks. */
+    private static final float DPAD_THICKNESS = 0.17f;
+    private static final int DPAD_WALL_LAYERS = 7;
+    /** How far the whole pad sinks when a direction is held, in d-pad radii. */
+    private static final float DPAD_SINK = 0.06f;
+
     private void drawSolidDpad(Canvas canvas, float tiltX, float tiltY) {
-        // The recess the cross sits in, then its shadow, which leans the way the cross rocks.
+        float amount = Math.min(1f, (float) Math.hypot(tiltX, tiltY));
+        float sink = DPAD_SINK * amount;
+
+        // The recess the cross sits in.
         useShader(wellShader);
         drawCross(canvas, 0, 0.03f, 1.07f, ARM + 0.06f, 0.14f);
         fill.setShader(null);
-        fill.setColor(0x66000000);
+
+        // Its shadow on the recess floor, cast from the bottom of the pad, so it moves with the tilt.
         canvas.save();
-        canvas.translate(clamp(tiltX) * 0.03f, 0.07f + clamp(tiltY) * 0.02f);
+        canvas.translate(0.025f, 0.05f);
+        applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES, sink + DPAD_THICKNESS + 0.04f);
+        fill.setColor(0x60000000);
         drawUnitShape(canvas, CROSS_SHAPE, fill);
         canvas.restore();
 
+        // The pad's sides: slices from the bottom up, darker further down. The side that lifts
+        // swings out from under the face; the side that's pressed tucks away beneath it.
+        for (int i = 0; i < DPAD_WALL_LAYERS; i++) {
+            float t = (float) i / DPAD_WALL_LAYERS;
+            canvas.save();
+            applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES, sink + DPAD_THICKNESS * (1 - t));
+            fill.setColor(shade(palette.dpad, 0.34f + 0.3f * t));
+            drawUnitShape(canvas, CROSS_SHAPE, fill);
+            canvas.restore();
+        }
+
+        // The face.
         canvas.save();
-        applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES);
+        applyTilt(canvas, tiltX, tiltY, SOLID_TILT_DEGREES, sink);
         useShader(dpadShader);
-        drawCross(canvas, 0, 0, 1f, ARM, 0.1f);
+        drawUnitShape(canvas, CROSS_SHAPE, fill);
+        if (amount > 0.01f) {
+            // Light falls off across the face towards the held side, and catches the raised side.
+            float length = (float) Math.hypot(tiltX, tiltY);
+            float nx = tiltX / length;
+            float ny = tiltY / length;
+            useShader(new LinearGradient(nx, ny, -nx, -ny,
+                    new int[] {Color.argb((int) (125 * amount), 0, 0, 0), 0x00000000,
+                            Color.argb((int) (70 * amount), 255, 255, 255)},
+                    null, Shader.TileMode.CLAMP));
+            drawUnitShape(canvas, CROSS_SHAPE, fill);
+        }
         fill.setShader(null);
-        // The held arm dips into shadow; the opposite one rises into the light.
-        shadeArms(canvas, tiltX, tiltY, 0x000000, 90, 0xFFFFFF, 45);
         // Arrows moulded into the arms (a light edge below a dark recess), and the dimple in the middle.
         for (int direction = 0; direction < 4; direction++) {
             fill.setColor(lighten(palette.dpad, 0.22f));
@@ -663,6 +696,14 @@ final class ThemeSkin extends Skin {
         useShader(dimpleShader);
         canvas.drawCircle(0, 0, 0.19f, fill);
         fill.setShader(null);
+        // A bright edge along the top of the face, like light on a moulded rim.
+        stroke.setColor(Color.argb(60, 255, 255, 255));
+        stroke.setStrokeWidth(0.03f);
+        canvas.save();
+        canvas.translate(0, 0.012f);
+        canvas.clipRect(-1.1f, -1.1f, 1.1f, 0.1f);
+        drawUnitShape(canvas, CROSS_SHAPE, stroke);
+        canvas.restore();
         stroke.setColor(shade(palette.dpad, 0.5f));
         stroke.setStrokeWidth(0.025f);
         drawUnitShape(canvas, CROSS_SHAPE, stroke);
@@ -671,7 +712,7 @@ final class ThemeSkin extends Skin {
 
     private void drawFlatDpad(Canvas canvas, float radius, float tiltX, float tiltY) {
         canvas.save();
-        applyTilt(canvas, tiltX, tiltY, FLAT_TILT_DEGREES);
+        applyTilt(canvas, tiltX, tiltY, FLAT_TILT_DEGREES, DPAD_SINK * Math.min(1f, (float) Math.hypot(tiltX, tiltY)));
         int color = palette.dpad;
         if (palette.style == TRANSLUCENT) {
             fill.setColor(color);
@@ -693,22 +734,41 @@ final class ThemeSkin extends Skin {
         canvas.restore();
     }
 
+    /** The viewer's distance from the d-pad, in d-pad radii: nearer exaggerates the perspective. */
+    private static final float VIEW_DISTANCE = 4f;
     /**
-     * Rocks the canvas in perspective: the held side of the d-pad moves away from the viewer and the
-     * opposite side comes closer. Tilts are -1 to 1 on each axis; the springs overshoot slightly.
+     * The pad is seen from slightly in front, so anything deeper shows a little lower down; that's
+     * what makes its bottom edge, and a raised side's wall, visible.
      */
-    private void applyTilt(Canvas canvas, float tiltX, float tiltY, float maxDegrees) {
-        if (tiltX == 0 && tiltY == 0) return;
-        double angleX = Math.toRadians(clamp(tiltX) * maxDegrees);
-        double angleY = Math.toRadians(clamp(tiltY) * maxDegrees);
-        float distance = 4f; // viewer distance, in d-pad radii
+    private static final float VIEW_SLANT = 0.4f;
+
+    /**
+     * Maps the canvas onto the d-pad's plane at {@code depth} below its resting face, rocked
+     * about its centre: the held side goes down and away, the opposite side comes up. Tilts are
+     * -1 to 1 on each axis (the springs overshoot slightly).
+     */
+    private void applyTilt(Canvas canvas, float tiltX, float tiltY, float maxDegrees, float depth) {
+        if (tiltX == 0 && tiltY == 0 && depth == 0) return;
+        // Rock about one axis in the pad's plane, at right angles to the held direction, like the
+        // real pad pivoting on its centre; turning about x then y would also twist it on a diagonal.
+        float length = (float) Math.hypot(tiltX, tiltY);
+        float nx = length > 0 ? tiltX / length : 0;
+        float ny = length > 0 ? tiltY / length : 0;
+        double angle = Math.toRadians(clamp(length) * maxDegrees);
+        float sin = (float) Math.sin(angle);
+        float cos = (float) Math.cos(angle);
         for (int i = 0; i < 8; i += 2) {
             float x = SQUARE[i];
             float y = SQUARE[i + 1];
-            float depth = (float) (x * Math.sin(angleX) + y * Math.sin(angleY));
-            float scale = distance / (distance + depth);
-            tilted[i] = (float) (x * Math.cos(angleX)) * scale;
-            tilted[i + 1] = (float) (y * Math.cos(angleY)) * scale;
+            // Distance of the corner along the held direction: that part rotates down and away.
+            float along = x * nx + y * ny;
+            float shift = along * (cos - 1) - depth * sin;
+            float px = x + nx * shift;
+            float py = y + ny * shift;
+            float pz = depth * cos + along * sin;
+            float scale = VIEW_DISTANCE / (VIEW_DISTANCE + pz);
+            tilted[i] = px * scale;
+            tilted[i + 1] = (py + pz * VIEW_SLANT) * scale;
         }
         tiltMatrix.setPolyToPoly(SQUARE, 0, tilted, 0, 4);
         canvas.concat(tiltMatrix);
@@ -977,14 +1037,15 @@ final class ThemeSkin extends Skin {
             canvas.drawRoundRect(rect, pillHalfHeight, pillHalfHeight, paint);
         } else {
             // The d-pad's cross as one outline; two stroked rectangles would cross in the middle.
-            path.reset();
-            rect.set(-ARM, -1, ARM, 1);
-            path.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
-            crossPath.reset();
-            rect.set(-1, -ARM, 1, ARM);
-            crossPath.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
-            path.op(crossPath, Path.Op.UNION);
-            canvas.drawPath(path, paint);
+            if (crossPath.isEmpty()) {
+                rect.set(-ARM, -1, ARM, 1);
+                crossPath.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
+                Path across = new Path();
+                rect.set(-1, -ARM, 1, ARM);
+                across.addRoundRect(rect, 0.1f, 0.1f, Path.Direction.CW);
+                crossPath.op(across, Path.Op.UNION);
+            }
+            canvas.drawPath(crossPath, paint);
         }
     }
 

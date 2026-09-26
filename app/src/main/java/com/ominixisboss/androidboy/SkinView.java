@@ -50,8 +50,9 @@ final class SkinView extends View {
     private static final float PRESS_STIFFNESS = 1500f;
     private static final float PRESS_DAMPING = 0.55f;
     private static final float RELEASE_DAMPING = 0.28f;
-    private static final float TILT_STIFFNESS = 900f;
-    private static final float TILT_DAMPING = 0.42f;
+    // The d-pad rocks quickly onto its pivot with one small bounce, like a rubber-backed pad.
+    private static final float TILT_STIFFNESS = 1300f;
+    private static final float TILT_DAMPING = 0.5f;
     private static final float MAX_STEP = 1f / 480;
     private final Skin.Motion motion = new Skin.Motion();
     private float[] velocity = new float[0];

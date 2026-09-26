@@ -265,10 +265,15 @@ final class ImageSkin extends Skin {
         int i = 0;
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
             int index = i++;
+            Control control = layout.controls.get(index);
+            if (control.shape == Control.DPAD) {
+                // Follows the pad's tilt, arm by arm.
+                drawDpadArms(canvas, o, entry.getValue(), control.bounds, motion);
+                continue;
+            }
             // Pressed artwork fades in and out with the press animation.
             float amount = Math.min(1, motion.press(index));
             if (amount <= 0.01f) continue;
-            Control control = layout.controls.get(index);
             int alpha = Math.round(255 * amount);
             if (o.pressedImage != null) {
                 // Copy the pressed artwork for just this control's area.
@@ -283,6 +288,47 @@ final class ImageSkin extends Skin {
                 highlight.setAlpha(Math.round(80 * amount));
                 canvas.drawOval(control.bounds, highlight);
             }
+        }
+    }
+
+    private final RectF armSource = new RectF();
+    private final RectF armBounds = new RectF();
+
+    /**
+     * Shows the d-pad pressed only where it's held: each arm's third of the control fades in as the
+     * pad tilts towards it (both arms on a diagonal), and the middle with whichever is strongest.
+     */
+    private void drawDpadArms(Canvas canvas, Orientation o, RectF r, RectF bounds, Motion motion) {
+        float up = Math.min(1, Math.max(0, -motion.tiltY));
+        float down = Math.min(1, Math.max(0, motion.tiltY));
+        float left = Math.min(1, Math.max(0, -motion.tiltX));
+        float right = Math.min(1, Math.max(0, motion.tiltX));
+        drawDpadPart(canvas, o, r, bounds, 1, 0, up);
+        drawDpadPart(canvas, o, r, bounds, 1, 2, down);
+        drawDpadPart(canvas, o, r, bounds, 0, 1, left);
+        drawDpadPart(canvas, o, r, bounds, 2, 1, right);
+        drawDpadPart(canvas, o, r, bounds, 1, 1, Math.max(Math.max(up, down), Math.max(left, right)));
+    }
+
+    /** Draws cell ({@code column}, {@code row}) of the d-pad's 3×3 grid pressed, at {@code amount} opacity. */
+    private void drawDpadPart(Canvas canvas, Orientation o, RectF r, RectF bounds, int column, int row, float amount) {
+        if (amount <= 0.01f) return;
+        armSource.set(r.left + r.width() * column / 3, r.top + r.height() * row / 3,
+                r.left + r.width() * (column + 1) / 3, r.top + r.height() * (row + 1) / 3);
+        armBounds.set(bounds.left + bounds.width() * column / 3, bounds.top + bounds.height() * row / 3,
+                bounds.left + bounds.width() * (column + 1) / 3, bounds.top + bounds.height() * (row + 1) / 3);
+        if (o.pressedImage != null) {
+            float sx = o.pressedImage.getWidth() / o.width;
+            float sy = o.pressedImage.getHeight() / o.height;
+            source.set((int) (armSource.left * sx), (int) (armSource.top * sy),
+                    (int) Math.ceil(armSource.right * sx), (int) Math.ceil(armSource.bottom * sy));
+            imagePaint.setAlpha(Math.round(255 * amount));
+            canvas.drawBitmap(o.pressedImage, source, armBounds, imagePaint);
+            imagePaint.setAlpha(255);
+        } else {
+            highlight.setAlpha(Math.round(80 * amount));
+            float corner = armBounds.width() * 0.25f;
+            canvas.drawRoundRect(armBounds, corner, corner, highlight);
         }
     }
 }
