@@ -369,6 +369,40 @@ void emu_set_rumble_mode(GB_rumble_mode_t mode)
     if (loaded) GB_set_rumble_mode(gb, mode);
 }
 
+/* One byte from a region of core memory, `offset` bytes in; false if it's past the end. */
+static bool read_direct(GB_direct_access_t region, uint32_t offset, uint8_t *out)
+{
+    size_t size = 0;
+    uint16_t bank;
+    const uint8_t *data = GB_get_direct_access(gb, region, &size, &bank);
+    if (!data || offset >= size) return false;
+    *out = data[offset];
+    return true;
+}
+
+uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t num_bytes)
+{
+    if (!gb || !loaded) return 0;
+    for (uint32_t i = 0; i < num_bytes; i++) {
+        uint32_t a = address + i;
+        if (a < 0x10000) {
+            buffer[i] = GB_safe_read_memory(gb, (uint16_t)a);
+        }
+        else if (a < 0x16000) {
+            /* Banks 2-7 of the Color's work RAM; banks 0 and 1 are the first 0x2000 bytes. */
+            if (!GB_is_cgb(gb) || !read_direct(GB_DIRECT_ACCESS_RAM, 0x2000 + (a - 0x10000), &buffer[i])) return i;
+        }
+        else if (a < 0x34000) {
+            /* Cartridge RAM banks 1-15; bank 0 is the first 0x2000 bytes. */
+            if (!read_direct(GB_DIRECT_ACCESS_CART_RAM, 0x2000 + (a - 0x16000), &buffer[i])) return i;
+        }
+        else {
+            return i;
+        }
+    }
+    return num_bytes;
+}
+
 double emu_get_rumble(void)
 {
     return rumble_amplitude;

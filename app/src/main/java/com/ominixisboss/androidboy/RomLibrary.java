@@ -67,12 +67,18 @@ final class RomLibrary {
         return new File(statesDir, stateFile(rom, slot).getName() + ".png");
     }
 
+    /** RetroAchievements progress saved with a state, so partly-done achievements carry on. */
+    File achievementProgressFile(File rom, int slot) {
+        return new File(statesDir, stateFile(rom, slot).getName() + ".ra");
+    }
+
     void delete(File rom) {
         rom.delete();
         batteryFile(rom).delete();
         for (int slot = 0; slot <= STATE_SLOTS; slot++) {
             stateFile(rom, slot).delete();
             thumbnailFile(rom, slot).delete();
+            achievementProgressFile(rom, slot).delete();
         }
     }
 

@@ -14,6 +14,11 @@ final class Emulator {
 
     private Emulator() {}
 
+    /** Loads the native library; for other classes with native methods in it (Achievements). */
+    static void loadLibrary() {
+        // The static initializer above does the work.
+    }
+
     // GB_model_t values from sameboy/Core/model.h
     static final int MODEL_DMG_B = 0x002;
     static final int MODEL_SGB = 0x004;

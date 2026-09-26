@@ -46,6 +46,32 @@ target_compile_options(sameboy PRIVATE
     -Wno-deprecated-declarations
 )
 
-add_library(androidboy SHARED emulator.c jni_bridge.c)
+# RetroAchievements client (rcheevos, MIT), vendored unmodified. Only what a cartridge-based
+# system needs: the client, web API, achievement runtime and ROM hashing.
+set(RCHEEVOS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/rcheevos)
+file(GLOB RCHEEVOS_SOURCES
+    ${RCHEEVOS_DIR}/src/rapi/*.c
+    ${RCHEEVOS_DIR}/src/rcheevos/*.c
+)
+list(APPEND RCHEEVOS_SOURCES
+    ${RCHEEVOS_DIR}/src/rc_client.c
+    ${RCHEEVOS_DIR}/src/rc_compat.c
+    ${RCHEEVOS_DIR}/src/rc_util.c
+    ${RCHEEVOS_DIR}/src/rc_version.c
+    ${RCHEEVOS_DIR}/src/rhash/hash.c
+    ${RCHEEVOS_DIR}/src/rhash/hash_rom.c
+    ${RCHEEVOS_DIR}/src/rhash/md5.c
+)
+add_library(rcheevos STATIC ${RCHEEVOS_SOURCES})
+target_include_directories(rcheevos PUBLIC ${RCHEEVOS_DIR}/include)
+target_compile_definitions(rcheevos PUBLIC
+    RC_CLIENT_SUPPORTS_HASH
+    RC_HASH_NO_DISC
+    RC_HASH_NO_ENCRYPTED
+    RC_HASH_NO_ZIP
+)
+target_compile_options(rcheevos PRIVATE -std=gnu11 -O2 -Wno-unused-function)
+
+add_library(androidboy SHARED emulator.c jni_bridge.c achievements.c)
 target_compile_options(androidboy PRIVATE -std=gnu11 -O2 -Wall -Wno-multichar)
-target_link_libraries(androidboy sameboy android log m)
+target_link_libraries(androidboy sameboy rcheevos android log m)

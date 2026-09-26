@@ -13,6 +13,7 @@
     <string name="import_save">Import save file (.sav)</string>
     <string name="export_save">Export save file</string>
     <string name="back">Back</string>
+    <string name="retroachievements">RetroAchievements</string>
     <string name="delete">Delete</string>
     <string name="delete_title">Delete %1$s?</string>
     <string name="delete_message">The game, its save file and its save states will be removed from this device.</string>
@@ -23,5 +24,5 @@
     <string name="save_exported">Save file exported</string>
     <string name="save_failed">Could not copy the save file: %1$s</string>
     <string name="powered_by">Powered by SameBoy %1$s</string>
-    <string name="about_text">A standalone Game Boy and Game Boy Color emulator for Android, powered by SameBoy %1$s by Lior Halphon.\n\nPorted to Android by OOZI.\n\nSameBoy is released under the Expat (MIT) license. The included boot ROMs are SameBoy\'s own open-source replacements; no Nintendo code is included.\n\nTap a game to play it, long-press it for save file options. In a game, use the ☰ button or Back to open the menu.</string>
+    <string name="about_text">A standalone Game Boy and Game Boy Color emulator for Android, powered by SameBoy %1$s by Lior Halphon.\n\nPorted to Android by OOZI.\n\nAchievements are provided by RetroAchievements.org, through its open-source rcheevos library.\n\nSameBoy is released under the Expat (MIT) license. The included boot ROMs are SameBoy\'s own open-source replacements; no Nintendo code is included.\n\nTap a game to play it, long-press it for save file options. In a game, use the ☰ button or Back to open the menu.</string>
 </resources>

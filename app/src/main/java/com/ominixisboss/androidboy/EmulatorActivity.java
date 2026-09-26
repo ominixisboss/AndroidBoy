@@ -29,7 +29,8 @@ import java.io.File;
 import java.io.IOException;
 
 /** Runs a game: screen, on-screen controls, hardware input, save states and the in-game menu. */
-public final class EmulatorActivity extends Activity implements EmulatorThread.Host, SkinView.Listener {
+public final class EmulatorActivity extends Activity
+        implements EmulatorThread.Host, SkinView.Listener, Achievements.Listener {
     static final String EXTRA_ROM = "rom";
     private static final String TAG = "AndroidBoy";
     private static final int REQUEST_IMPORT_SKIN = 1;
@@ -48,6 +49,8 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     private FrameLayout root;
     private GameScreen screen;
     private SkinView skinView;
+    private Achievements achievements;
+    private AchievementPopup achievementPopup;
     private int shownFrameWidth = 160;
     private int shownFrameHeight = 144;
     private EmulatorThread thread;
@@ -101,6 +104,10 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         root.addView(screen.view(), new FrameLayout.LayoutParams(0, 0));
         root.addView(skinView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
+        achievements = Achievements.get(this);
+        achievements.setListener(this);
+        achievementPopup = new AchievementPopup(this);
+        root.addView(achievementPopup, achievementPopup.layoutParams());
         root.setOnApplyWindowInsetsListener(this::applyInsets);
         setContentView(root);
 
@@ -143,7 +150,9 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        if (achievements != null) achievements.removeListener(this);
         if (isFinishing() && rom != null && rom.getPath().equals(loadedRomPath)) {
+            achievements.unloadGame();
             Emulator.nativeUnload();
             loadedRomPath = null;
         }
@@ -176,6 +185,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         }
         loadedRomPath = rom.getPath();
         loadedSampleRate = sampleRate;
+        achievements.loadGame(data);
 
         File battery = library.batteryFile(rom);
         if (battery.isFile()) {
@@ -187,7 +197,12 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         }
 
         File autoState = library.stateFile(rom, RomLibrary.AUTO_SLOT);
-        if (settings.isOn(Settings.AUTO_SAVE) && autoState.isFile()) {
+        // Hardcore RetroAchievements doesn't allow save states, the automatic one included.
+        boolean hardcore = achievements.hasAccount() && achievements.isHardcoreEnabled();
+        if (hardcore && settings.isOn(Settings.AUTO_SAVE) && autoState.isFile()) {
+            Toast.makeText(this, "Hardcore mode: starting from the game's own save", Toast.LENGTH_LONG).show();
+        }
+        if (!hardcore && settings.isOn(Settings.AUTO_SAVE) && autoState.isFile()) {
             try {
                 if (!Emulator.nativeLoadState(RomLibrary.readFile(autoState))) {
                     Log.w(TAG, "Auto-save state could not be loaded");
@@ -206,6 +221,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
      */
     static void forgetLoadedRom(File romFile) {
         if (romFile.getPath().equals(loadedRomPath)) {
+            if (Achievements.isCreated()) Achievements.existing().unloadGame();
             Emulator.nativeUnload();
             loadedRomPath = null;
         }
@@ -254,6 +270,51 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         }
     }
 
+    @Override
+    public void onIdle() {
+        achievements.idle();
+    }
+
+    @Override
+    public void onRewindFinished() {
+        achievements.onGameReset();
+    }
+
+    // ---- RetroAchievements ----
+
+    @Override
+    public void onAchievementEvent(Achievements.Event event) {
+        if (event.type == Achievements.EVENT_RESET) {
+            // Hardcore mode was turned on: the game has to start over.
+            onEmulationThread(() -> {
+                Emulator.nativeReset();
+                achievements.onGameReset();
+            });
+            return;
+        }
+        achievementPopup.show(event);
+    }
+
+    private void showAchievements() {
+        String[] summary = achievements.gameSummary();
+        if (summary == null) {
+            showAchievementAccount();
+            return;
+        }
+        dialogOpened();
+        AchievementDialogs.showList(this, this::showAchievementAccount, this::dialogClosed);
+    }
+
+    private void showAchievementAccount() {
+        dialogOpened();
+        AchievementDialogs.showAccount(this, true, enabled -> {
+            if (enabled && achievements.gameSummary() != null) {
+                Toast.makeText(this, "Hardcore mode: the game restarts", Toast.LENGTH_SHORT).show();
+            }
+            updateRewind();
+        }, this::dialogClosed);
+    }
+
     // ---- Emulation-thread helpers ----
 
     /** Runs on the emulation thread, or right away if emulation is stopped. */
@@ -276,7 +337,24 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
             return false;
         }
         if (slot != RomLibrary.AUTO_SLOT) saveThumbnail(slot);
+        saveAchievementProgress(slot);
         return true;
+    }
+
+    /** Emulation thread (or stopped). */
+    private void saveAchievementProgress(int slot) {
+        File file = library.achievementProgressFile(rom, slot);
+        byte[] progress = achievements.saveProgress();
+        try {
+            if (progress != null) {
+                RomLibrary.writeAtomically(file, progress);
+            } else {
+                file.delete();
+            }
+        } catch (IOException e) {
+            Log.w(TAG, "Could not save achievement progress", e);
+            file.delete();
+        }
     }
 
     /** Emulation thread (or stopped). A missing thumbnail never fails the save itself. */
@@ -298,7 +376,10 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     /** Emulation thread (or stopped). */
     private boolean loadState(int slot) {
         try {
-            return Emulator.nativeLoadState(RomLibrary.readFile(library.stateFile(rom, slot)));
+            if (!Emulator.nativeLoadState(RomLibrary.readFile(library.stateFile(rom, slot)))) return false;
+            File progress = library.achievementProgressFile(rom, slot);
+            achievements.loadProgress(progress.isFile() ? RomLibrary.readFile(progress) : null);
+            return true;
         } catch (IOException e) {
             Log.e(TAG, "Could not read save state", e);
             return false;
@@ -333,6 +414,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                 "Reset",
                 "Skin…",
                 "Settings",
+                "Achievements…",
                 "Quit to game list",
         };
         showDialog(new AlertDialog.Builder(this)
@@ -351,7 +433,8 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                             dialogOpened();
                             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
                             break;
-                        case 7: finish(); break;
+                        case 7: showAchievements(); break;
+                        case 8: finish(); break;
                         default: break;
                     }
                 })
@@ -388,6 +471,10 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
     }
 
     private void showStateSlots(boolean save) {
+        if (!save && achievements.hardcoreActive()) {
+            Toast.makeText(this, "Loading states is off in hardcore mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(save ? "Save state" : "Load state")
                 .setAdapter(new SlotAdapter(this, library, rom), (d, which) -> {
@@ -420,6 +507,7 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
                         } else {
                             Emulator.nativeReset();
                         }
+                        achievements.onGameReset();
                     });
                 })
                 .setNegativeButton("Cancel", null)
@@ -530,6 +618,10 @@ public final class EmulatorActivity extends Activity implements EmulatorThread.H
         boolean rewind = rewindHeld || rewindTouched;
         if (rewind && settings.get(Settings.REWIND) == 0) {
             Toast.makeText(this, "Rewind is off. Turn it on in Settings → Emulation.", Toast.LENGTH_SHORT).show();
+            rewind = false;
+        }
+        if (rewind && achievements.hardcoreActive()) {
+            Toast.makeText(this, "Rewind is off in hardcore mode", Toast.LENGTH_SHORT).show();
             rewind = false;
         }
         if (thread != null) thread.setRewinding(rewind);

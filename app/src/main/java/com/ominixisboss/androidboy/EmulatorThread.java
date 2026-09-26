@@ -19,6 +19,10 @@ final class EmulatorThread extends Thread {
         void onRumble(double amplitude);
         /** Called every few seconds and when stopping, only if the game wrote to its save RAM. */
         void onBatteryDirty();
+        /** Called about once a second while paused (RetroAchievements keeps its session alive). */
+        void onIdle();
+        /** Rewinding stopped: the game is somewhere earlier than it was. */
+        void onRewindFinished();
     }
 
     private static final String TAG = "AndroidBoy";
@@ -120,6 +124,7 @@ final class EmulatorThread extends Thread {
         long nextFrameTime = System.nanoTime();
         int framesSinceBatteryCheck = 0;
         boolean wasMuted = !muted;
+        boolean wasRewinding = false;
 
         try {
             while (running) {
@@ -139,6 +144,10 @@ final class EmulatorThread extends Thread {
                 }
 
                 Emulator.nativeSetKeys(keys);
+                if (wasRewinding != rewinding) {
+                    wasRewinding = rewinding;
+                    if (!wasRewinding) host.onRewindFinished();
+                }
                 if (rewinding) {
                     // Stays on the oldest frame once the history runs out.
                     Emulator.nativeRewindFrame(audio);
@@ -241,10 +250,11 @@ final class EmulatorThread extends Thread {
             synchronized (pauseLock) {
                 while (paused && running && tasks.isEmpty()) {
                     try {
-                        pauseLock.wait();
+                        pauseLock.wait(1000);
                     } catch (InterruptedException e) {
                         return;
                     }
+                    if (paused && running && tasks.isEmpty()) host.onIdle();
                 }
             }
             // Woken up either to resume, to stop, or to run tasks while staying paused.
