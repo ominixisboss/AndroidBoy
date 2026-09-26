@@ -191,9 +191,8 @@ Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 `./gradlew testDebugUnitTest` runs the Robolectric tests: skins (including the press animations),
 cheats and cheat search, box art matching, backups, controls, the camera and printer images, and
-the two-phone link protocol over a real socket. CI uploads
-their preview images, and frame-by-frame strips of a press and release, as the `skin-previews`
-artifact.
+the two-phone link protocol over a real socket. CI uploads the skin tests' preview images, and
+frame-by-frame strips of a press and release, as the `skin-previews` artifact.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
