@@ -222,44 +222,49 @@ final class ThemeSkin extends Skin {
         return p;
     }
 
+    // Categories in the skin picker.
+    static final String CLASSICS = "Game Boy classics";
+    static final String COLOURS = "Colours";
+    static final String MODERN = "Modern & minimal";
+
     static final ThemeSkin[] ALL = {
-            new ThemeSkin("minimal", "Minimal (translucent controls)", MINIMAL),
-            new ThemeSkin("classic", "Classic grey", classic()),
-            new ThemeSkin("pocket", "Pocket silver",
+            new ThemeSkin("minimal", MODERN, "Minimal (translucent controls)", MINIMAL),
+            new ThemeSkin("classic", CLASSICS, "Classic grey", classic()),
+            new ThemeSkin("pocket", CLASSICS, "Pocket silver",
                     palette(0xFFC4C7CA, 0xFF2F3033, 0xFF2A2A2C, 0xFF3A3A3E, 0xFF6E7075, 0xFF26272A)),
-            new ThemeSkin("pocket-black", "Pocket black",
+            new ThemeSkin("pocket-black", CLASSICS, "Pocket black",
                     palette(0xFF2C2C31, 0xFF151517, 0xFF1B1B1E, 0xFF45454C, 0xFF55555C, 0xFFD8D8DE)),
-            new ThemeSkin("pocket-red", "Pocket red", color(0xFFC62A3A)),
-            new ThemeSkin("pocket-pink", "Pocket pink", color(0xFFEA93B8)),
-            new ThemeSkin("light", "Light gold",
+            new ThemeSkin("pocket-red", CLASSICS, "Pocket red", color(0xFFC62A3A)),
+            new ThemeSkin("pocket-pink", CLASSICS, "Pocket pink", color(0xFFEA93B8)),
+            new ThemeSkin("light", CLASSICS, "Light gold",
                     palette(0xFFD6B45C, 0xFF2B2A28, 0xFF2A2A2A, 0xFF3B3A38, 0xFF6D5B30, 0xFF3A2E12)),
-            new ThemeSkin("gold", "Gold edition", gold()),
-            new ThemeSkin("sgb", "Super grey", superGrey()),
-            new ThemeSkin("red-white", "Red & white", redAndWhite()),
-            new ThemeSkin("berry", "Berry", color(0xFFD02A5C)),
-            new ThemeSkin("grape", "Grape", color(0xFF5B3190)),
-            new ThemeSkin("kiwi", "Kiwi", color(0xFF86BE2A)),
-            new ThemeSkin("dandelion", "Dandelion", color(0xFFF2C21C)),
-            new ThemeSkin("teal", "Teal", color(0xFF14A2B2)),
-            new ThemeSkin("ice", "Ice blue", color(0xFF9CCFE8)),
-            new ThemeSkin("coral", "Coral", color(0xFFFF6F61)),
-            new ThemeSkin("mint", "Mint", mint()),
-            new ThemeSkin("lime", "Lime", color(0xFFA4D233)),
-            new ThemeSkin("sakura", "Sakura", sakura()),
-            new ThemeSkin("navy", "Navy & gold", navy()),
-            new ThemeSkin("sunset", "Sunset", sunset()),
-            new ThemeSkin("atomic", "Atomic purple", color(0xFF7B67B5)),
-            new ThemeSkin("indigo", "Advance indigo",
+            new ThemeSkin("gold", CLASSICS, "Gold edition", gold()),
+            new ThemeSkin("sgb", CLASSICS, "Super grey", superGrey()),
+            new ThemeSkin("red-white", COLOURS, "Red & white", redAndWhite()),
+            new ThemeSkin("berry", COLOURS, "Berry", color(0xFFD02A5C)),
+            new ThemeSkin("grape", COLOURS, "Grape", color(0xFF5B3190)),
+            new ThemeSkin("kiwi", COLOURS, "Kiwi", color(0xFF86BE2A)),
+            new ThemeSkin("dandelion", COLOURS, "Dandelion", color(0xFFF2C21C)),
+            new ThemeSkin("teal", COLOURS, "Teal", color(0xFF14A2B2)),
+            new ThemeSkin("ice", COLOURS, "Ice blue", color(0xFF9CCFE8)),
+            new ThemeSkin("coral", COLOURS, "Coral", color(0xFFFF6F61)),
+            new ThemeSkin("mint", COLOURS, "Mint", mint()),
+            new ThemeSkin("lime", COLOURS, "Lime", color(0xFFA4D233)),
+            new ThemeSkin("sakura", COLOURS, "Sakura", sakura()),
+            new ThemeSkin("navy", COLOURS, "Navy & gold", navy()),
+            new ThemeSkin("sunset", COLOURS, "Sunset", sunset()),
+            new ThemeSkin("atomic", CLASSICS, "Atomic purple", color(0xFF7B67B5)),
+            new ThemeSkin("indigo", CLASSICS, "Advance indigo",
                     palette(0xFF474C9E, 0xFF1F1F24, 0xFF2A2A2E, 0xFFD2D2DA, 0xFF2A2A2E, 0xFFE6E6F0)),
-            new ThemeSkin("oled", "OLED black (outlines)", oled()),
-            new ThemeSkin("neon", "Neon", neon()),
-            new ThemeSkin("pastel", "Pastel", pastel()),
-            new ThemeSkin("glass", "Frosted glass", glass()),
-            new ThemeSkin("smoke", "Smoke glass", smoke()),
-            new ThemeSkin("synthwave", "Synthwave", synthwave()),
-            new ThemeSkin("vaporwave", "Vaporwave", vaporwave()),
-            new ThemeSkin("terminal", "Terminal green (outlines)", terminal()),
-            new ThemeSkin("amber", "Amber terminal (outlines)", amber()),
+            new ThemeSkin("oled", MODERN, "OLED black (outlines)", oled()),
+            new ThemeSkin("neon", MODERN, "Neon", neon()),
+            new ThemeSkin("pastel", MODERN, "Pastel", pastel()),
+            new ThemeSkin("glass", MODERN, "Frosted glass", glass()),
+            new ThemeSkin("smoke", MODERN, "Smoke glass", smoke()),
+            new ThemeSkin("synthwave", MODERN, "Synthwave", synthwave()),
+            new ThemeSkin("vaporwave", MODERN, "Vaporwave", vaporwave()),
+            new ThemeSkin("terminal", MODERN, "Terminal green (outlines)", terminal()),
+            new ThemeSkin("amber", MODERN, "Amber terminal (outlines)", amber()),
     };
 
     static ThemeSkin find(String id) {
@@ -282,6 +287,7 @@ final class ThemeSkin extends Skin {
     }
 
     private final String id;
+    private final String category;
     private final String name;
     private final Palette palette;
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -292,8 +298,9 @@ final class ThemeSkin extends Skin {
     private LinearGradient bodyGradient;
     private int gradientHeight;
 
-    private ThemeSkin(String id, String name, Palette palette) {
+    private ThemeSkin(String id, String category, String name, Palette palette) {
         this.id = id;
+        this.category = category;
         this.name = name;
         this.palette = palette;
         text.setTextAlign(Paint.Align.CENTER);
@@ -310,6 +317,11 @@ final class ThemeSkin extends Skin {
     @Override
     String name() {
         return name;
+    }
+
+    /** Which group of the skin picker this theme is listed in. */
+    String category() {
+        return category;
     }
 
     @Override

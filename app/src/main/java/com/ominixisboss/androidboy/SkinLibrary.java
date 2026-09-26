@@ -28,13 +28,21 @@ final class SkinLibrary {
         final String name;
         /** Imported skins have a directory; built-in themes and bundled skins don't. */
         final File dir;
+        /** The group it's listed in; one of {@link #CATEGORIES}. */
+        final String category;
 
-        Entry(String id, String name, File dir) {
+        Entry(String id, String name, File dir, String category) {
             this.id = id;
             this.name = name;
             this.dir = dir;
+            this.category = category;
         }
     }
+
+    static final String ARTWORK = "Artwork";
+    static final String IMPORTED = "Imported";
+    /** Skin picker groups, in the order they're shown. */
+    static final String[] CATEGORIES = {ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
 
     /** Image skins that ship with the app, in assets/skins/<name>/. */
     static final String BUNDLED_ASSETS = "skins";
@@ -131,16 +139,16 @@ final class SkinLibrary {
     List<Entry> list() {
         List<Entry> entries = new ArrayList<>();
         for (ThemeSkin theme : ThemeSkin.ALL) {
-            entries.add(new Entry(theme.id(), theme.name(), null));
+            entries.add(new Entry(theme.id(), theme.name(), null, theme.category()));
         }
         for (String name : bundledNames()) {
-            entries.add(new Entry("bundled:" + name, bundledName(name), null));
+            entries.add(new Entry("bundled:" + name, bundledName(name), null, ARTWORK));
         }
         File[] dirs = skinsDir.listFiles(f -> f.isDirectory() && new File(f, ImageSkin.MANIFEST).isFile());
         if (dirs != null) {
             List<Entry> custom = new ArrayList<>();
             for (File dir : dirs) {
-                custom.add(new Entry("custom:" + dir.getName(), ImageSkin.readName(dir), dir));
+                custom.add(new Entry("custom:" + dir.getName(), ImageSkin.readName(dir), dir, IMPORTED));
             }
             custom.sort((a, b) -> a.name.compareToIgnoreCase(b.name));
             entries.addAll(custom);
@@ -160,6 +168,15 @@ final class SkinLibrary {
         } catch (IOException | org.json.JSONException e) {
             return name;
         }
+    }
+
+    /** The skins in one category, in list order. */
+    List<Entry> list(String category) {
+        List<Entry> entries = new ArrayList<>();
+        for (Entry entry : list()) {
+            if (entry.category.equals(category)) entries.add(entry);
+        }
+        return entries;
     }
 
     String activeId() {
@@ -228,7 +245,7 @@ final class SkinLibrary {
 
             File target = new File(skinsDir, "skin-" + System.currentTimeMillis());
             if (!root.renameTo(target)) throw new IOException("Could not save the skin");
-            return new Entry("custom:" + target.getName(), ImageSkin.readName(target), target);
+            return new Entry("custom:" + target.getName(), ImageSkin.readName(target), target, IMPORTED);
         } finally {
             deleteRecursively(temp);
         }

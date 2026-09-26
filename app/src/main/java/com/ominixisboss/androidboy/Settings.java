@@ -240,12 +240,12 @@ final class Settings {
                 .show();
     }
 
-    private interface OnRowClick {
+    interface OnRowClick {
         void onClick(int position);
     }
 
     /** A list whose rows don't close its dialog when tapped (unlike AlertDialog.setAdapter). */
-    private static ListView listView(Context context, TwoLineAdapter adapter, OnRowClick onClick) {
+    static ListView listView(Context context, TwoLineAdapter adapter, OnRowClick onClick) {
         ListView list = new ListView(context);
         list.setAdapter(adapter);
         list.setOnItemClickListener((parent, view, position, id) -> onClick.onClick(position));
@@ -253,7 +253,7 @@ final class Settings {
     }
 
     /** Rows with a title and a second line (a summary or the current value). */
-    private abstract static class TwoLineAdapter extends ArrayAdapter<Integer> {
+    abstract static class TwoLineAdapter extends ArrayAdapter<Integer> {
         TwoLineAdapter(Context context, int count) {
             super(context, android.R.layout.simple_list_item_2, android.R.id.text1);
             for (int i = 0; i < count; i++) add(i);
