@@ -51,6 +51,8 @@ final class GameToolbars {
     private final ImageView mute;
     private final ImageView lock;
     private final ImageView[] speeds = new ImageView[3];
+    /** Called on any touch of the bars, e.g. to keep them from fading out. */
+    private Runnable onInteraction = () -> { };
 
     GameToolbars(Context context, Actions actions) {
         this.context = context;
@@ -93,7 +95,10 @@ final class GameToolbars {
         for (int i = 0; i < 3; i++) {
             int speed = i;
             ImageView option = icon(icons[i], names[i]);
-            option.setOnClickListener(v -> actions.onSpeed(speed));
+            option.setOnClickListener(v -> {
+                onInteraction.run();
+                actions.onSpeed(speed);
+            });
             speeds[i] = option;
             segment.addView(option, new LinearLayout.LayoutParams(dp(44), dp(40)));
         }
@@ -107,6 +112,13 @@ final class GameToolbars {
         controls.addView(tile(Icons.FULLSCREEN, "Full screen", v -> actions.onFullScreen()));
         bottom.addView(controls);
         setSpeed(SPEED_NORMAL);
+        // They float over the game: a tap between buttons mustn't reach the controls underneath.
+        top.setClickable(true);
+        bottom.setClickable(true);
+    }
+
+    void setOnInteraction(Runnable interaction) {
+        onInteraction = interaction;
     }
 
     void setTitle(String text) {
@@ -166,7 +178,12 @@ final class GameToolbars {
     private ImageView tile(int type, String description, View.OnClickListener onClick) {
         ImageView view = icon(type, description);
         view.setBackground(rounded(TILE));
-        view.setOnClickListener(onClick);
+        if (onClick != null) {
+            view.setOnClickListener(v -> {
+                onInteraction.run();
+                onClick.onClick(v);
+            });
+        }
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(48), dp(48));
         params.setMarginStart(dp(8));
         view.setLayoutParams(params);
@@ -180,6 +197,7 @@ final class GameToolbars {
     private ImageView holdTile(int type, String description, Actions actions) {
         ImageView view = tile(type, description, null);
         view.setOnTouchListener((v, event) -> {
+            onInteraction.run();
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     v.setBackground(rounded(TILE_SELECTED));

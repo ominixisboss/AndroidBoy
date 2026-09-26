@@ -42,7 +42,7 @@ final class SkinLibrary {
     static final String ARTWORK = "Artwork";
     static final String IMPORTED = "Imported";
     /** Skin picker groups, in the order they're shown. */
-    static final String[] CATEGORIES = {SoftSkin.CATEGORY, ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
+    static final String[] CATEGORIES = {SoftSkin.CATEGORY, GlassSkin.CATEGORY, ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
 
     /** Image skins that ship with the app, in assets/skins/<name>/. */
     static final String BUNDLED_ASSETS = "skins";
@@ -141,6 +141,9 @@ final class SkinLibrary {
         for (SoftSkin soft : SoftSkin.ALL) {
             entries.add(new Entry(soft.id(), soft.name(), null, SoftSkin.CATEGORY));
         }
+        for (GlassSkin glass : GlassSkin.ALL) {
+            entries.add(new Entry(glass.id(), glass.name(), null, GlassSkin.CATEGORY));
+        }
         for (ThemeSkin theme : ThemeSkin.ALL) {
             entries.add(new Entry(theme.id(), theme.name(), null, theme.category()));
         }
@@ -183,7 +186,11 @@ final class SkinLibrary {
     }
 
     String activeId() {
-        return prefs.getString(PREF_SKIN, ThemeSkin.fallback().id());
+        String id = prefs.getString(PREF_SKIN, ThemeSkin.fallback().id());
+        // The frosted and smoke glass themes became Glass skins.
+        if (id.equals("theme:glass")) return "glass:frosted";
+        if (id.equals("theme:smoke")) return "glass:smoke";
+        return id;
     }
 
     void setActive(String id) {
@@ -192,14 +199,23 @@ final class SkinLibrary {
 
     /** The active skin; falls back to the minimal theme if an imported skin can't be loaded. */
     Skin loadActive() {
-        String id = activeId();
+        Skin skin = load(activeId());
+        return skin != null ? skin : ThemeSkin.fallback();
+    }
+
+    /** Any listed skin by its id, or null if it's unknown or can't be loaded. */
+    Skin load(String id) {
+        // The frosted and smoke glass themes became Glass skins.
+        if (id.equals("theme:glass")) id = "glass:frosted";
+        if (id.equals("theme:smoke")) id = "glass:smoke";
+        if (id.startsWith("glass:")) {
+            return GlassSkin.find(id.substring("glass:".length()));
+        }
         if (id.startsWith("theme:")) {
-            ThemeSkin theme = ThemeSkin.find(id.substring("theme:".length()));
-            return theme != null ? theme : ThemeSkin.fallback();
+            return ThemeSkin.find(id.substring("theme:".length()));
         }
         if (id.startsWith("soft:")) {
-            SoftSkin soft = SoftSkin.find(id.substring("soft:".length()));
-            if (soft != null) return soft;
+            return SoftSkin.find(id.substring("soft:".length()));
         }
         if (id.startsWith("bundled:")) {
             String name = id.substring("bundled:".length());
@@ -217,7 +233,7 @@ final class SkinLibrary {
                 Log.w(TAG, "Could not load skin " + dir, e);
             }
         }
-        return ThemeSkin.fallback();
+        return null;
     }
 
     void delete(Entry entry) {

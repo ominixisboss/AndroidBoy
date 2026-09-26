@@ -92,10 +92,16 @@ final class Settings {
             new int[] {0, 1, 2},
             0);
 
-    // The bars above and below the game: shown for skins that have no menu button of their own.
+    // The bars above and below the game: for skins that have no menu button of their own (Soft), or
+    // every skin; they fade out after a few seconds, or stay. Stored by index, so new choices go last.
+    static final int TOOLBARS_SKINS_THAT_NEED_THEM = 0;
+    static final int TOOLBARS_EVERY_SKIN = 1;
+    static final int TOOLBARS_NEVER = 2;
+    static final int TOOLBARS_STAY = 3;
     static final Choice TOOLBARS = new Choice("toolbars", "Toolbars",
-            new String[] {"With skins that need them", "Always", "Never"},
-            new int[] {0, 1, 2},
+            new String[] {"With skins that need them, fading out", "With every skin, fading out", "Never",
+                    "With skins that need them, always on screen"},
+            new int[] {TOOLBARS_SKINS_THAT_NEED_THEM, TOOLBARS_EVERY_SKIN, TOOLBARS_NEVER, TOOLBARS_STAY},
             0);
 
     static final Choice SCALING = new Choice("scaling", "Screen scaling",

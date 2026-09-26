@@ -126,6 +126,15 @@ final class SoftSkin extends Skin {
     @Override
     void layout(Layout out, int width, int height, int frameWidth, int frameHeight,
                 boolean controlsVisible, boolean integerScaling) {
+        layoutHandheld(out, width, height, frameWidth, frameHeight, controlsVisible, integerScaling);
+    }
+
+    /**
+     * The layout Soft and Glass skins share: the screen edge to edge at the top (portrait) or in
+     * the middle (landscape), a big d-pad and A/B, and Start/Select; no menu or speed buttons.
+     */
+    static void layoutHandheld(Layout out, int width, int height, int frameWidth, int frameHeight,
+                               boolean controlsVisible, boolean integerScaling) {
         out.reset(width, height, controlsVisible);
         if (!controlsVisible) {
             fitScreen(out.screen, new RectF(0, 0, width, height), frameWidth, frameHeight, integerScaling);
@@ -138,7 +147,7 @@ final class SoftSkin extends Skin {
         }
     }
 
-    private void layoutPortrait(Layout out, int width, int height, int frameWidth, int frameHeight,
+    private static void layoutPortrait(Layout out, int width, int height, int frameWidth, int frameHeight,
                                 boolean integerScaling) {
         // The screen spans the width at the top; the controls fill the rest.
         float screenHeight = Math.min(height * 0.5f, width * frameHeight / (float) frameWidth);
@@ -161,7 +170,7 @@ final class SoftSkin extends Skin {
         addPills(out, width / 2f, pillY, unit * 0.14f, unit * 0.042f, unit * 0.2f);
     }
 
-    private void layoutLandscape(Layout out, int width, int height, int frameWidth, int frameHeight,
+    private static void layoutLandscape(Layout out, int width, int height, int frameWidth, int frameHeight,
                                  boolean integerScaling) {
         // The screen in the middle, full height; controls either side.
         float side = Math.max(width * 0.22f, (width - height * frameWidth / (float) frameHeight) / 2);

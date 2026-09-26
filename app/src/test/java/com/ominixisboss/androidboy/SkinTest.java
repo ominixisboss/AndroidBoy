@@ -66,6 +66,7 @@ public class SkinTest {
         List<Skin> skins = new ArrayList<>();
         for (ThemeSkin theme : ThemeSkin.ALL) skins.add(theme);
         for (SoftSkin soft : SoftSkin.ALL) skins.add(soft);
+        for (GlassSkin glass : GlassSkin.ALL) skins.add(glass);
         skins.add(ImageSkin.load(exampleSkinDir()));
         skins.addAll(bundledSkins());
         return skins;
@@ -131,7 +132,7 @@ public class SkinTest {
                 }
                 assertTrue(what + ": has a d-pad", hasDpad);
 
-                if (skin instanceof ThemeSkin || skin instanceof SoftSkin) {
+                if (skin instanceof ThemeSkin || skin instanceof SoftSkin || skin instanceof GlassSkin) {
                     List<Skin.Control> visible = new ArrayList<>();
                     for (Skin.Control c : layout.controls) if (c.visible) visible.add(c);
                     for (int i = 0; i < visible.size(); i++) {
@@ -303,7 +304,7 @@ public class SkinTest {
         for (String name : bundled) {
             assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
         }
-        assertEquals("every theme is listed", ThemeSkin.ALL.length + SoftSkin.ALL.length + bundled.length, ids.size());
+        assertEquals("every theme is listed", ThemeSkin.ALL.length + SoftSkin.ALL.length + GlassSkin.ALL.length + bundled.length, ids.size());
     }
 
     @Test
@@ -372,7 +373,8 @@ public class SkinTest {
         out.mkdirs();
         Application app = RuntimeEnvironment.getApplication();
         List<Skin> skins = new ArrayList<>();
-        for (String id : new String[] {"classic", "navy", "glass", "neon"}) skins.add(ThemeSkin.find(id));
+        for (String id : new String[] {"classic", "navy", "neon"}) skins.add(ThemeSkin.find(id));
+        skins.add(GlassSkin.find("frosted"));
         skins.add(ImageSkin.load(exampleSkinDir()));
         for (Skin skin : skins) {
             SkinView view = new SkinView(app, skin, new RecordingListener());
@@ -422,8 +424,10 @@ public class SkinTest {
         File out = new File(System.getProperty("skinPreviewDir", "build/skin-previews"));
         out.mkdirs();
         Application app = RuntimeEnvironment.getApplication();
-        for (String id : new String[] {"classic", "sgb", "neon", "oled", "glass", "minimal"}) {
-            Skin skin = ThemeSkin.find(id);
+        List<Skin> animated = new ArrayList<>();
+        for (String id : new String[] {"classic", "sgb", "neon", "oled", "minimal"}) animated.add(ThemeSkin.find(id));
+        animated.add(GlassSkin.find("frosted"));
+        for (Skin skin : animated) {
             SkinView view = new SkinView(app, skin, new RecordingListener());
             view.setHaptics(false);
             view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
@@ -462,7 +466,7 @@ public class SkinTest {
                 skin.drawControls(canvas, layout, i < 5 ? Emulator.KEY_A | Emulator.KEY_RIGHT : 0, view.getMotion());
                 stripCanvas.drawBitmap(frame, crop, new Rect(0, i * crop.height(), crop.width(), (i + 1) * crop.height()), null);
             }
-            try (OutputStream stream = new FileOutputStream(new File(out, "animation-" + id + ".png"))) {
+            try (OutputStream stream = new FileOutputStream(new File(out, "animation-" + skin.id().replace(':', '-') + ".png"))) {
                 strip.compress(Bitmap.CompressFormat.PNG, 100, stream);
             }
         }

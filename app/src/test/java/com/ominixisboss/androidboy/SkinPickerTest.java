@@ -6,10 +6,12 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.GridView;
 import android.widget.ListView;
 import android.widget.TextView;
 
@@ -18,6 +20,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.GraphicsMode;
 import org.robolectric.shadows.ShadowDialog;
 import org.robolectric.shadows.ShadowLooper;
 
@@ -27,6 +30,7 @@ import java.util.List;
 /** The skin picker: skins grouped into categories, and choosing one. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 35)
+@GraphicsMode(GraphicsMode.Mode.NATIVE) // Previews are really drawn.
 public class SkinPickerTest {
 
     @Test
@@ -87,17 +91,78 @@ public class SkinPickerTest {
         idle();
         AlertDialog colourList = latest();
         List<SkinLibrary.Entry> entries = library.list(ThemeSkin.COLOURS);
-        assertEquals(entries.size(), colourList.getListView().getAdapter().getCount());
+        GridView grid = find(colourList.getWindow().getDecorView(), GridView.class);
+        assertNotNull("skins are shown as a grid of previews", grid);
+        assertEquals(entries.size(), grid.getAdapter().getCount());
+        // Each card shows the skin's name; its preview is drawn right after.
+        View card = grid.getAdapter().getView(0, null, grid);
+        assertEquals(entries.get(0).name, find(card, TextView.class).getText().toString());
+        idle();
+        assertNotNull("the first card's preview was drawn", SkinPreviews.cached(entries.get(0).id));
+        writePreview(colourList, "picker-colours.png");
         int berry = -1;
         for (int i = 0; i < entries.size(); i++) if (entries.get(i).id.equals("theme:berry")) berry = i;
         assertTrue(berry >= 0);
-        colourList.getListView().performItemClick(null, berry, berry);
+        grid.performItemClick(null, berry, berry);
         idle();
         assertEquals("theme:berry", library.activeId());
         assertEquals(1, changed[0]);
         assertFalse(colourList.isShowing());
         assertFalse(top.isShowing());
         assertEquals(1, dismissed[0]);
+    }
+
+    @Test
+    public void frostedAndSmokeBecameGlassSkins() {
+        SkinLibrary library = new SkinLibrary(org.robolectric.RuntimeEnvironment.getApplication());
+        library.setActive("theme:glass");
+        assertEquals("glass:frosted", library.activeId());
+        assertTrue(library.loadActive() instanceof GlassSkin);
+        library.setActive("theme:smoke");
+        assertEquals("glass:smoke", library.loadActive().id());
+        assertTrue(library.list(GlassSkin.CATEGORY).size() >= 10);
+    }
+
+    @Test
+    public void previewsLookLikeTheirSkins() {
+        Bitmap soft = SkinPreviews.render(SoftSkin.find("blush"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);
+        Bitmap theme = SkinPreviews.render(ThemeSkin.find("kiwi"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);
+        assertEquals(SkinPreviews.WIDTH, soft.getWidth());
+        assertEquals(SkinPreviews.HEIGHT, soft.getHeight());
+        // Each shows its own colours (bottom corner is background), and the green stand-in screen.
+        int corner = soft.getPixel(4, SkinPreviews.HEIGHT - 4);
+        int background = SoftSkin.find("blush").backgroundColor();
+        // The background's grain varies it a little.
+        assertTrue(Math.abs(android.graphics.Color.red(corner) - android.graphics.Color.red(background)) < 16
+                && Math.abs(android.graphics.Color.blue(corner) - android.graphics.Color.blue(background)) < 16);
+        assertTrue(soft.getPixel(4, SkinPreviews.HEIGHT - 4) != theme.getPixel(4, SkinPreviews.HEIGHT - 4));
+        Skin.Layout layout = new Skin.Layout();
+        ThemeSkin.find("kiwi").layout(layout, SkinPreviews.WIDTH, SkinPreviews.HEIGHT, 160, 144, true, false);
+        assertEquals(0xFF9BBC0F, theme.getPixel(layout.screen.left + 3, layout.screen.top + 3));
+        // Cached once drawn.
+        assertTrue(SkinPreviews.get(SoftSkin.find("sage")) == SkinPreviews.get(SoftSkin.find("sage")));
+    }
+
+    /** A picture of the dialog, next to the skin previews. */
+    private static void writePreview(AlertDialog dialog, String name) {
+        View decor = dialog.getWindow().getDecorView();
+        int width = 1080;
+        int height = 2000;
+        decor.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST));
+        decor.layout(0, 0, decor.getMeasuredWidth(), decor.getMeasuredHeight());
+        idle(); // Previews drawn for the cards just laid out.
+        decor.layout(0, 0, decor.getMeasuredWidth(), decor.getMeasuredHeight());
+        Bitmap bitmap = Bitmap.createBitmap(decor.getMeasuredWidth(), decor.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        bitmap.eraseColor(0xFFFFFFFF);
+        decor.draw(new android.graphics.Canvas(bitmap));
+        java.io.File out = new java.io.File(System.getProperty("skinPreviewDir", "build/skin-previews"));
+        out.mkdirs();
+        try (java.io.OutputStream stream = new java.io.FileOutputStream(new java.io.File(out, name))) {
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+        } catch (java.io.IOException e) {
+            throw new AssertionError(e);
+        }
     }
 
     private static void idle() {
