@@ -130,8 +130,8 @@ final class GlassSkin extends Skin {
     }
 
     @Override
-    boolean hasMenuButton() {
-        return false;
+    boolean usesToolbars() {
+        return true;
     }
 
     @Override
@@ -265,6 +265,11 @@ final class GlassSkin extends Skin {
             text.setTextSize(b.height() * 0.62f);
             canvas.drawText(control.keys == Emulator.KEY_START ? "START" : "SELECT", b.centerX(),
                     b.bottom + b.height() * 1.05f, text);
+            return;
+        }
+        if (control.keys == KEY_MENU) {
+            drawMenuGlyph(canvas, stroke, rect.centerX(), rect.centerY(), rect.width() * 0.46f, variant.label);
+            stroke.setStrokeCap(Paint.Cap.BUTT);
             return;
         }
         String letter = control.keys == Emulator.KEY_A ? "A" : control.keys == Emulator.KEY_B ? "B" : "";

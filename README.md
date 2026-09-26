@@ -38,12 +38,14 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 - **Screenshots** (in-game menu) are saved to Pictures/AndroidBoy at 4× with sharp pixels.
 - **Soft skins** (Slate, Lilac, Sage, Blush, Sand, Ocean, Charcoal and Midnight): a plain, lightly
   textured background with big pastel controls outlined in dark ink, the game screen edge to edge,
-  and **toolbars** instead of buttons on the skin. The top bar has back, the menu, achievements,
+  and **toolbars** for the rest, with a small menu button in the middle, under the screen, like the
+  other skins (above A and B in landscape). The top bar has back, the menu, achievements,
   the link cable, a screenshot button and a rotation lock, with the game's name under it; the
   bottom bar has the speed (slow motion, normal, fast-forward), pause, rewind (hold), sound and
   full screen. The bars float over the game and fade out a few seconds after you last touch them
-  (not while paused); press Back or the small menu button in the top-left corner to bring them
-  back, and Back again for the menu. Settings → Controls → Toolbars can keep them on screen, show
+  (not while paused); press Back or the skin's menu button to bring them back, and press it again
+  for the menu. (With a gamepad, which hides the on-screen controls, a small menu button in the
+  top-left corner brings them back.) Settings → Controls → Toolbars can keep them on screen, show
   them with every skin, or turn them off.
 - **Glass skins** (Frosted, Smoke, Aqua, Rose quartz, Emerald, Amber, Amethyst, Sapphire, Ruby, Sea
   glass, Opal and Obsidian): glass controls over a colourful backdrop. Each is frosted glass, a

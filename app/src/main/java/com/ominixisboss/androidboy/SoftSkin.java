@@ -117,8 +117,8 @@ final class SoftSkin extends Skin {
     }
 
     @Override
-    boolean hasMenuButton() {
-        return false;
+    boolean usesToolbars() {
+        return true;
     }
 
     // ---- Layout ----
@@ -131,7 +131,8 @@ final class SoftSkin extends Skin {
 
     /**
      * The layout Soft and Glass skins share: the screen edge to edge at the top (portrait) or in
-     * the middle (landscape), a big d-pad and A/B, and Start/Select; no menu or speed buttons.
+     * the middle (landscape), a big d-pad and A/B, Start/Select, and a small menu button in the
+     * middle (portrait) or above A and B (landscape); no speed buttons.
      */
     static void layoutHandheld(Layout out, int width, int height, int frameWidth, int frameHeight,
                                boolean controlsVisible, boolean integerScaling) {
@@ -168,6 +169,7 @@ final class SoftSkin extends Skin {
         addFaceButtons(out, ax, ay, bx, by, radius);
         float pillY = top + area * 0.83f;
         addPills(out, width / 2f, pillY, unit * 0.14f, unit * 0.042f, unit * 0.2f);
+        addMenu(out, width / 2f, top + area * 0.09f, unit * 0.042f);
     }
 
     private static void layoutLandscape(Layout out, int width, int height, int frameWidth, int frameHeight,
@@ -191,6 +193,12 @@ final class SoftSkin extends Skin {
                 new RectF(side / 2 - pillWidth / 2, pillY - pillHeight / 2, side / 2 + pillWidth / 2, pillY + pillHeight / 2), true));
         out.controls.add(new Control(Emulator.KEY_START, Control.PILL,
                 new RectF(rightCenter - pillWidth / 2, pillY - pillHeight / 2, rightCenter + pillWidth / 2, pillY + pillHeight / 2), true));
+        addMenu(out, rightCenter, height * 0.12f, unit * 0.045f);
+    }
+
+    /** The menu button: brings the faded toolbars back, or opens the menu while they're showing. */
+    static void addMenu(Layout out, float x, float y, float radius) {
+        out.controls.add(new Control(KEY_MENU, Control.CIRCLE, square(x, y, radius), true));
     }
 
     static void addFaceButtons(Layout out, float ax, float ay, float bx, float by, float radius) {
@@ -376,6 +384,10 @@ final class SoftSkin extends Skin {
         stroke.setColor(variant.ink);
         stroke.setStrokeWidth(2.2f * density);
         canvas.drawCircle(cx, cy, radius, stroke);
+        if (control.keys == KEY_MENU) {
+            drawMenuGlyph(canvas, stroke, cx, cy, radius, variant.label);
+            return;
+        }
         String letter = control.keys == Emulator.KEY_A ? "A" : control.keys == Emulator.KEY_B ? "B" : "";
         text.setColor(variant.label);
         text.setTextSize(radius * 1.05f);

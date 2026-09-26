@@ -121,7 +121,7 @@ public class SkinTest {
                     hasMenu |= control.keys == Skin.KEY_MENU;
                     hasDpad |= control.shape == Skin.Control.DPAD;
                 }
-                assertEquals(what + ": has a menu control unless the toolbars provide one", skin.hasMenuButton(), hasMenu);
+                assertTrue(what + ": has a menu control", hasMenu);
                 if (skin instanceof ThemeSkin) {
                     boolean hasRewind = false;
                     boolean hasFastForward = false;
@@ -419,6 +419,25 @@ public class SkinTest {
             try (OutputStream stream = new FileOutputStream(new File(out, name))) {
                 strip.compress(Bitmap.CompressFormat.PNG, 100, stream);
             }
+        }
+    }
+
+    /** Skins with toolbars still have a menu button, in the middle below the screen like the classic themes. */
+    @Test
+    public void toolbarSkinsHaveACentredMenuButton() {
+        List<Skin> skins = new ArrayList<>();
+        for (SoftSkin soft : SoftSkin.ALL) skins.add(soft);
+        for (GlassSkin glass : GlassSkin.ALL) skins.add(glass);
+        for (ClearSkin clear : ClearSkin.ALL) skins.add(clear);
+        for (Skin skin : skins) {
+            assertTrue(skin.id(), skin.usesToolbars());
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            RectF menu = find(layout, Skin.KEY_MENU).bounds;
+            RectF dpad = find(layout, Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT).bounds;
+            assertEquals(skin.id() + ": centred", PHONE_SHORT / 2f, menu.centerX(), 1f);
+            assertTrue(skin.id() + ": below the screen", menu.top > layout.screen.bottom);
+            assertTrue(skin.id() + ": above the d-pad", menu.bottom < dpad.top);
         }
     }
 

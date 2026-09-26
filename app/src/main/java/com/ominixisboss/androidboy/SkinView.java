@@ -118,6 +118,14 @@ final class SkinView extends View {
         relayout();
     }
 
+    /** Whether a menu button is on screen now (not when a gamepad has hidden the controls). */
+    boolean hasMenuControl() {
+        for (Skin.Control control : layout.controls) {
+            if (control.visible && (control.keys & Skin.KEY_MENU) != 0) return true;
+        }
+        return false;
+    }
+
     Skin getSkin() {
         return skin;
     }

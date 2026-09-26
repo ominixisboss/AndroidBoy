@@ -167,8 +167,8 @@ final class ClearSkin extends Skin {
     }
 
     @Override
-    boolean hasMenuButton() {
-        return false;
+    boolean usesToolbars() {
+        return true;
     }
 
     // ---- Layout ----
@@ -218,6 +218,7 @@ final class ClearSkin extends Skin {
         SoftSkin.addFaceButtons(out, width * 0.81f, padY - radius * 0.75f, width * 0.61f, padY + radius * 0.6f, radius);
         float pillY = top + area * 0.6f;
         SoftSkin.addPills(out, width / 2f, pillY, unit * 0.125f, unit * 0.042f, unit * 0.075f);
+        SoftSkin.addMenu(out, width / 2f, top + area * 0.11f, unit * 0.04f);
         // The speaker in the bottom-right corner, if there's room under the buttons.
         float speaker = unit * 0.11f;
         float speakerY = height - speaker * 1.35f;
@@ -761,6 +762,10 @@ final class ClearSkin extends Skin {
         stroke.setStrokeWidth(r * 0.04f);
         stroke.setColor(dark ? 0xFF000000 : shade(keys, 0.6f));
         canvas.drawCircle(cx, y, radius, stroke);
+        if (control.keys == KEY_MENU) {
+            drawMenuGlyph(canvas, stroke, cx, y, radius, dark ? 0xB0FFFFFF : shade(keys, 0.45f));
+            return;
+        }
         // The letter, moulded in: a light edge under a dark one.
         String letter = control.keys == Emulator.KEY_A ? "A" : control.keys == Emulator.KEY_B ? "B" : "";
         text.setTextSize(radius * 0.85f);
