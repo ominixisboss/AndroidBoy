@@ -19,7 +19,7 @@ $CC $FLAGS -DGB_INTERNAL -c \
     "$ROOT"/sameboy/Core/save_state.c "$ROOT"/sameboy/Core/sgb.c "$ROOT"/sameboy/Core/sm83_cpu.c \
     "$ROOT"/sameboy/Core/timing.c
 $CC $FLAGS "$ROOT/app/src/main/cpp/emulator.c" "$ROOT/tests/host_test.c" "$OUT"/*.o -lm -o "$OUT/host_test"
-"$OUT/host_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs" "$ROOT/tests/printrom.gb"
+"$OUT/host_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs" "$ROOT/tests/printrom.gb" "$ROOT/tests/linkrom.gb"
 
 # RetroAchievements: rcheevos' client against the emulator's memory, with a stand-in server.
 RC="$ROOT/third_party/rcheevos"

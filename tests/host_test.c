@@ -127,7 +127,7 @@ static void test_model(const uint8_t *rom, size_t rom_size, GB_model_t model, co
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <rom> <boot rom dir> [printer test rom]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <rom> <boot rom dir> [printer test rom] [link test rom]\n", argv[0]);
         return 2;
     }
     boot_rom_dir = argv[2];
@@ -309,6 +309,65 @@ int main(int argc, char **argv)
         CHECK(emu_take_printout(&pixels) == 0, "printer: a printout is only handed over once");
         emu_set_link_accessory(EMU_LINK_NOTHING);
         free(print_rom);
+    }
+
+    /* Link cable: two Game Boys pass bytes both ways, and stay in step through save states. */
+    if (argc > 4) {
+        size_t link_rom_size;
+        uint8_t *link_rom = read_file(argv[4], &link_rom_size);
+        CHECK(link_rom != NULL, "link: test cartridge read");
+        for (int leads = 0; leads < 2; leads++) {
+            const char *name = leads ? "link (partner leads)" : "link";
+            emu_load_rom(link_rom, link_rom_size, GB_MODEL_DMG_B, 48000);
+            CHECK(emu_link(link_rom, link_rom_size, leads ? GB_MODEL_CGB_E : GB_MODEL_DMG_B, leads, 1234) && emu_is_linked(),
+                  "%s: a second Game Boy is linked", name);
+            emu_set_keys(1 << GB_KEY_A); /* This one clocks the transfers. */
+            emu_set_partner_keys(0);
+            run_frames(600);
+            uint8_t mine[2];
+            emu_read_achievement_memory(0xA000, mine, 2);
+            uint8_t theirs[0x2000];
+            size_t partner_battery = emu_partner_save_battery(theirs, sizeof(theirs));
+            CHECK(mine[0] == 0x22 && mine[1] > 10, "%s: received the partner's byte (0x%02X, %u times)", name, mine[0], mine[1]);
+            CHECK(partner_battery > 0 && theirs[0] == 0x11 && theirs[1] > 10,
+                  "%s: the partner received this one's byte (0x%02X, %u times)", name, theirs[0], theirs[1]);
+            CHECK(emu_partner_take_battery_dirty(), "%s: the partner's save changed", name);
+
+            /* What a second device does: start from both states, feed the same keys, get the same frames. */
+            size_t size_a = emu_state_size(), size_b = emu_partner_state_size();
+            uint8_t *state_a = malloc(size_a), *state_b = malloc(size_b);
+            emu_save_state(state_a);
+            emu_partner_save_state(state_b);
+            uint32_t hashes[2] = {0, 0};
+            for (int pass = 0; pass < 2; pass++) {
+                CHECK(emu_load_state(state_a, size_a) && emu_partner_load_state(state_b, size_b),
+                      "%s: both states load (pass %d)", name, pass + 1);
+                emu_show_partner(pass == 1);
+                uint32_t hash = 2166136261u;
+                for (int frame = 0; frame < 120; frame++) {
+                    emu_set_partner_keys(frame % 30 < 5 ? (1 << GB_KEY_START) : 0);
+                    run_frames(1);
+                    uint8_t counter;
+                    emu_read_achievement_memory(0xA001, &counter, 1);
+                    hash = (hash ^ counter) * 16777619u;
+                }
+                emu_partner_save_battery(theirs, sizeof(theirs));
+                hash = (hash ^ theirs[1]) * 16777619u;
+                hashes[pass] = hash;
+            }
+            CHECK(hashes[0] == hashes[1], "%s: the same start and keys give the same run (%08X, %08X)", name,
+                  hashes[0], hashes[1]);
+            unsigned width, height;
+            emu_get_frame(&width, &height);
+            CHECK(width == 160 && height == 144, "%s: the partner's screen can be shown", name);
+            free(state_a);
+            free(state_b);
+            emu_unlink();
+            CHECK(!emu_is_linked() && emu_partner_battery_size() == 0, "%s: unlinked", name);
+            run_frames(30);
+            CHECK(emu_is_loaded(), "%s: carries on alone after unlinking", name);
+        }
+        free(link_rom);
     }
 
     emu_unload();

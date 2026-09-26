@@ -73,6 +73,19 @@ final class Emulator {
     static native void nativeSetBorderMode(int mode);
     static native void nativeSetHighpass(int mode);
     static native void nativeSetRumbleMode(int mode);
+    // Link cable: a second Game Boy linked to this one (see emu_link in emulator.h).
+    static native boolean nativeLink(byte[] rom, int model, boolean partnerLeads, long seed);
+    static native void nativeUnlink();
+    static native boolean nativeIsLinked();
+    static native void nativeSetPartnerKeys(int mask);
+    /** Shows and plays the partner Game Boy instead of this one. */
+    static native void nativeShowPartner(boolean show);
+    static native byte[] nativeSavePartnerBattery();
+    static native void nativeLoadPartnerBattery(byte[] data);
+    static native boolean nativeTakePartnerBatteryDirty();
+    static native byte[] nativeSavePartnerState();
+    static native boolean nativeLoadPartnerState(byte[] data);
+
     static final int LINK_NOTHING = 0;
     static final int LINK_PRINTER = 1;
 

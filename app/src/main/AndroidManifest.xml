@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- RetroAchievements: logging in, loading a game's achievements and sending unlocks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The link cable between two phones: showing this phone's address on the network. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Saving screenshots and printouts to Pictures; Android 10 and later need no permission. -->
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"

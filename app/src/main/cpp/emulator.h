@@ -102,6 +102,33 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
  */
 unsigned emu_set_cheats(const char *codes);
 
+/*
+ * Link cable: a second Game Boy (the partner) running another cartridge, connected to the loaded
+ * one and run in lockstep with it, cycle by cycle.
+ *
+ * Both Game Boys are powered on from scratch with RAM randomised from `seed`, in a fixed order,
+ * and each emulated frame is one frame of the leading game (`partner_leads` picks which); so
+ * two devices that link the same two games with the same seed and feed them the same keys stay
+ * exactly in step. That's how two phones play together: each runs both Game Boys and only keys
+ * are exchanged.
+ *
+ * Loading a ROM or emu_unlink() ends the link. Rewinding and cheats should stay off while linked.
+ */
+bool emu_link(const uint8_t *rom, size_t size, GB_model_t model, bool partner_leads, uint64_t seed);
+void emu_unlink(void);
+bool emu_is_linked(void);
+void emu_set_partner_keys(unsigned mask);
+/* Shows (and plays the sound of) the partner instead of the loaded Game Boy. */
+void emu_show_partner(bool show);
+size_t emu_partner_battery_size(void);
+size_t emu_partner_save_battery(uint8_t *buffer, size_t size);
+void emu_partner_load_battery(const uint8_t *buffer, size_t size);
+bool emu_partner_take_battery_dirty(void);
+/* The partner's save state, so a second device can start from exactly this moment. */
+size_t emu_partner_state_size(void);
+void emu_partner_save_state(uint8_t *buffer);
+bool emu_partner_load_state(const uint8_t *buffer, size_t size);
+
 /* What's plugged into the link port. */
 #define EMU_LINK_NOTHING 0
 #define EMU_LINK_PRINTER 1

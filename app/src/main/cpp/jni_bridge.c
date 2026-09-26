@@ -233,6 +233,95 @@ JNIEXPORT jboolean JNICALL JNI_FN(nativeLoadState)(JNIEnv *env, jclass clazz, jb
     return success;
 }
 
+/* ---- Link cable ---- */
+
+JNIEXPORT jboolean JNICALL JNI_FN(nativeLink)(JNIEnv *env, jclass clazz, jbyteArray rom, jint model,
+                                             jboolean partner_leads, jlong seed)
+{
+    (void)clazz;
+    jsize size = (*env)->GetArrayLength(env, rom);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, rom, NULL);
+    if (!bytes) return JNI_FALSE;
+    bool linked = emu_link((const uint8_t *)bytes, (size_t)size, (GB_model_t)model, partner_leads, (uint64_t)seed);
+    (*env)->ReleaseByteArrayElements(env, rom, bytes, JNI_ABORT);
+    return linked;
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeUnlink)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    emu_unlink();
+}
+
+JNIEXPORT jboolean JNICALL JNI_FN(nativeIsLinked)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return emu_is_linked();
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeSetPartnerKeys)(JNIEnv *env, jclass clazz, jint mask)
+{
+    (void)env; (void)clazz;
+    emu_set_partner_keys((unsigned)mask);
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeShowPartner)(JNIEnv *env, jclass clazz, jboolean show)
+{
+    (void)env; (void)clazz;
+    emu_show_partner(show);
+}
+
+JNIEXPORT jbyteArray JNICALL JNI_FN(nativeSavePartnerBattery)(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    size_t size = emu_partner_battery_size();
+    if (!size) return NULL;
+    uint8_t *buffer = malloc(size);
+    if (!buffer) return NULL;
+    size_t written = emu_partner_save_battery(buffer, size);
+    jbyteArray result = written ? to_byte_array(env, buffer, written) : NULL;
+    free(buffer);
+    return result;
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeLoadPartnerBattery)(JNIEnv *env, jclass clazz, jbyteArray data)
+{
+    (void)clazz;
+    jsize size = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    emu_partner_load_battery((const uint8_t *)bytes, (size_t)size);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+}
+
+JNIEXPORT jboolean JNICALL JNI_FN(nativeTakePartnerBatteryDirty)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return emu_partner_take_battery_dirty();
+}
+
+JNIEXPORT jbyteArray JNICALL JNI_FN(nativeSavePartnerState)(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    size_t size = emu_partner_state_size();
+    if (!size) return NULL;
+    uint8_t *buffer = malloc(size);
+    if (!buffer) return NULL;
+    emu_partner_save_state(buffer);
+    jbyteArray result = to_byte_array(env, buffer, size);
+    free(buffer);
+    return result;
+}
+
+JNIEXPORT jboolean JNICALL JNI_FN(nativeLoadPartnerState)(JNIEnv *env, jclass clazz, jbyteArray data)
+{
+    (void)clazz;
+    jsize size = (*env)->GetArrayLength(env, data);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
+    bool success = emu_partner_load_state((const uint8_t *)bytes, (size_t)size);
+    (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+    return success;
+}
+
 JNIEXPORT void JNICALL JNI_FN(nativeSetColorCorrection)(JNIEnv *env, jclass clazz, jint mode)
 {
     (void)env; (void)clazz;

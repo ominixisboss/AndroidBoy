@@ -11,7 +11,16 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   Game Boy Color and Game Boy Advance. By default, Game Boy games run on a Game Boy Color, as in SameBoy.
 - **No BIOS files needed.** SameBoy's own open-source boot ROMs are built in, so no Nintendo code is included.
 - **Game library.** Add `.gb`/`.gbc` ROMs, or `.zip` files containing them, from any storage provider.
-  You can also use "Open with" from a file manager.
+  You can also use "Open with" from a file manager. Favourites and recently played games get their
+  own sections, and each game shows its box art and when you last played it. Long-press a game to
+  favourite it or add it to your home screen; long-pressing the app icon offers the last few games.
+- **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
+  (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
+  cartridges, which gives the exact name its picture is filed under; failing that, by its file
+  name. You can pick your own picture, and turn downloading off under Settings → Game list.
+- **Backup & restore** (main menu) puts saves, save states, cheats, imported skins, box art,
+  settings and favourites (and the games, if you like) in one zip, to keep or move to a new phone.
+  The RetroAchievements login is never included.
 - **Saving.** Battery saves (including the RTC) are written automatically every few seconds.
   There are 9 save-state slots, each showing a screenshot from when it was saved, plus an automatic
   "resume where you left off" state.
@@ -20,7 +29,13 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   sliding between A and B presses both. Buttons spring down and bounce back when released, and the
   d-pad rocks towards the direction you hold (turn off under Settings → Controls → Button
   animations; they also follow the system's animation setting). Physical gamepads and keyboards
-  work too, and the touch controls hide while one is in use.
+  work too, and the touch controls hide while one is in use. **Move on-screen buttons** (in-game
+  menu) lets you drag the buttons anywhere and pinch to resize them, for each skin in portrait and
+  landscape. **Controller buttons…** lets you choose which button does what.
+- **Turbo.** The in-game menu's **Turbo buttons…** makes on-screen A and/or B fire repeatedly
+  while held; on a controller, Y is turbo A and X is turbo B. The speed is a setting.
+- **Slow motion** at 75%, 50% or 25% speed, from the in-game menu.
+- **Screenshots** (in-game menu) are saved to Pictures/AndroidBoy at 4× with sharp pixels.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
   buttons, a moulded d-pad and slanted rubber Start/Select: Classic grey, Pocket silver, black, red
   and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
@@ -48,7 +63,10 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   each save state. Only a login token is kept on the device, never your password, and it's left
   out of backups. The **RetroAchievements** page in the main menu shows your points and every
   Game Boy and Game Boy Color game you've unlocked achievements in, with your progress; tap a game
-  to open it on the website.
+  to open it on the website. In a game, the achievements list shows what the game says you're doing
+  (rich presence, which is also shown on your profile) and its **Leaderboards**, each with the top
+  ten and the players around you. During a leaderboard attempt its live score or time sits in the
+  corner, as does an achievement's progress when it changes.
 - **Free homebrew games.** Main menu → **Free homebrew games** browses and searches
   [Homebrew Hub](https://hh.gbdev.io), the gbdev community's archive of freely distributed
   homebrew games, demos and music for Game Boy and Game Boy Color. Pick one to read about it, then
@@ -57,8 +75,27 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   type them in, or **Find online** to search the [libretro cheat database](https://github.com/libretro/libretro-database)
   (the one RetroArch uses) and pick the cheats you want. Tap a cheat to switch it on or off;
   long-press to edit or delete it. Cheats are saved per game in RetroArch's `.cht` format, and
-  are off while RetroAchievements hardcore mode is on.
-- **Settings** are grouped into Display, Emulation, Controls and Sound.
+  are off while RetroAchievements hardcore mode is on. **Cheat search…** finds where a game keeps a
+  number (lives, money, health): start a search, play until the number changes, say how it changed,
+  and repeat until a few addresses are left; tap one to make a cheat that holds it at a value.
+- **Link cable.** The in-game menu's **Link cable…** connects two Game Boys, for trading and
+  battling:
+  - **Another game on this phone**, e.g. to trade between your own Red and Blue saves. Both games
+    run, linked; switch between them from the menu.
+  - **Two phones on the same Wi-Fi.** One hosts, the other joins (they find each other, or you
+    type in the address the host shows). Each phone runs both Game Boys in lockstep and only the
+    players' buttons cross the network, so the link's timing is exact however slow the Wi-Fi; the
+    hosting phone sets both games up and sends the other the exact state of both, so they stay in
+    step. Buttons take effect 4 frames (about 70 ms) after you press them. Each phone keeps its
+    own game's save.
+
+  While linked, save states, reset, rewind and (between phones) cheats are off, as they'd put the
+  two Game Boys out of step.
+- **Game Boy Printer.** The in-game menu's **Link port…** plugs in a Game Boy Printer; printouts
+  (Pokédex entries, Game Boy Camera pictures…) are saved to Pictures/AndroidBoy.
+- **Game Boy Camera.** A Game Boy Camera cartridge sees through your phone's camera (front or back,
+  switchable from the menu). The camera permission is only asked for when one is running.
+- **Settings** are grouped into Display, Emulation, Controls, Sound and Game list.
 - **Rumble** for rumble cartridges, optionally for all games.
 
 ### Controls
@@ -70,6 +107,7 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 | B | A (south) | Z / K |
 | Start | Start | Enter |
 | Select | Select | Backspace / Right Shift |
+| Turbo A / turbo B | Y / X | |
 | Fast-forward (hold) | R1 / R2 | Space |
 | Rewind (hold) | L1 / L2 | R |
 | Menu | Mode / Menu, or Back | Esc |
@@ -78,7 +116,8 @@ The built-in themes also have on-screen rewind and fast-forward buttons next to 
 Custom skins can include them too.
 
 The face buttons are mapped by position, not by label. The right face button is A and the bottom
-one is B, matching the Game Boy's layout.
+one is B, matching the Game Boy's layout. All of these can be changed with **Controller buttons…**
+in the in-game menu.
 
 ## Building
 
@@ -150,17 +189,23 @@ Each release's notes include the signing certificate's SHA-256 fingerprint.
 
 ### Tests
 
-`./gradlew testDebugUnitTest` runs the skin tests, including the press animations. CI uploads
+`./gradlew testDebugUnitTest` runs the Robolectric tests: skins (including the press animations),
+cheats and cheat search, box art matching, backups, controls, the camera and printer images, and
+the two-phone link protocol over a real socket. CI uploads
 their preview images, and frame-by-frame strips of a press and release, as the `skin-previews`
 artifact.
 
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
 loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
-the frame parity used for frame blending, and GameShark and Game Genie cheats. It also runs rcheevos against the emulator with a
-stand-in server (`tests/achievements_test.c`): logging in, identifying the cartridge by its MD5,
-unlocking achievements from what the game writes to memory, and fetching your progress for the
-achievements page. You only need a C compiler.
+the frame parity used for frame blending, and GameShark and Game Genie cheats. Two more cartridges
+test accessories: `tests/printrom.asm` prints on the Game Boy Printer, and `tests/linkrom.asm`
+passes bytes over the link cable between a Game Boy and a Game Boy Color, which must then run
+identically from saved states with the same buttons (what two linked phones rely on). The ROMs are
+checked in; each `.asm` says how to rebuild it with RGBDS. It also runs rcheevos against the
+emulator with a stand-in server (`tests/achievements_test.c`): logging in, identifying the
+cartridge by its MD5, unlocking achievements from what the game writes to memory, rich presence,
+leaderboards, and fetching your progress for the achievements page. You only need a C compiler.
 
 ## Project layout
 
@@ -184,6 +229,15 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   Achievements            RetroAchievements login, web requests and events; the banner and screens
   AchievementsActivity    Your RetroAchievements points and progress in each game
   Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
+  GameStore, BoxArt       Favourites and recently played; box art matching and downloads
+  Backup                  Backup and restore
+  ControllerMapping,      Controller buttons; where the on-screen buttons are
+    ControlLayout
+  CheatSearch             Finding a number in RAM and turning it into a cheat
+  CameraFeed              The phone camera as the Game Boy Camera's sensor
+  Gallery                 Saving screenshots and printouts to Pictures
+  LinkSession, NetLink,   The link cable: two games on one phone, or two phones over the network
+    LinkDialogs
   Cheat, CheatDatabase,   Cheat codes and .cht files; the libretro cheat database;
     CheatDialogs          the in-game cheat screens
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
@@ -195,7 +249,7 @@ app/src/test/             Robolectric tests for skins (layout, touch, import), a
 docs/skins.md             The skin file format; docs/skins/example is a complete example
 tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)
 tools/make_skins.py       Draws the example skin and the bundled image skins (needs Pillow)
-tests/                    Host-side smoke test for the core wrapper
+tests/                    Host-side tests for the core wrapper, with test cartridges (link, printer)
 ```
 
 To update SameBoy, replace `sameboy/Core`, `sameboy/BootROMs` and `sameboy/version.mk` with the new

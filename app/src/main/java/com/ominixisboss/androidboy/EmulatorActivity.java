@@ -86,6 +86,10 @@ public final class EmulatorActivity extends Activity
     /** The phone's camera, while a Game Boy Camera cartridge is running. */
     private CameraFeed cameraFeed;
     private boolean cameraPermissionAsked;
+    /** The link cable, while plugged in. */
+    private volatile LinkSession link;
+    /** "Waiting for the other phone…", shown when a linked game is held up. */
+    private android.widget.TextView linkWaitingView;
     /** Shown while the on-screen buttons are being moved. */
     private View editBar;
     private boolean controlsHiddenByGamepad;
@@ -159,6 +163,7 @@ public final class EmulatorActivity extends Activity
         thread = new EmulatorThread(this, loadedSampleRate);
         thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
         thread.setTurboPeriod(settings.get(Settings.TURBO_SPEED));
+        thread.setLink(link);
         updateSpeed();
         thread.setMuted(!settings.isOn(Settings.SOUND));
         thread.setPaused(openDialogs > 0);
@@ -186,6 +191,12 @@ public final class EmulatorActivity extends Activity
     protected void onDestroy() {
         super.onDestroy();
         if (achievements != null) achievements.removeListener(this);
+        if (link != null) {
+            // Emulation has stopped (onPause), so this runs right here.
+            link.close();
+            link = null;
+            Emulator.nativeUnlink();
+        }
         if (isFinishing() && rom != null && rom.getPath().equals(loadedRomPath)) {
             achievements.unloadGame();
             Emulator.nativeUnload();
@@ -324,6 +335,8 @@ public final class EmulatorActivity extends Activity
         if (trackerOverlay.handle(event)) return;
         if (event.type == Achievements.EVENT_RESET) {
             trackerOverlay.clear();
+            // Restarting one side would put two phones out of step.
+            if (link instanceof NetLink) unplugLink("Hardcore mode restarted the game, so the link cable was unplugged");
             // Hardcore mode was turned on: the game has to start over.
             onEmulationThread(() -> {
                 Emulator.nativeReset();
@@ -411,7 +424,9 @@ public final class EmulatorActivity extends Activity
     /** Sends the game's enabled cheats to the core; none in hardcore mode. */
     private void applyCheats() {
         boolean hardcore = achievements.hasAccount() && achievements.isHardcoreEnabled();
-        String codes = hardcore ? "" : Cheat.activeCodes(Cheat.load(library.cheatFile(rom)));
+        // Linked to another phone, a cheat here would put the two out of step.
+        boolean off = hardcore || link instanceof NetLink;
+        String codes = off ? "" : Cheat.activeCodes(Cheat.load(library.cheatFile(rom)));
         onEmulationThread(() -> Emulator.nativeSetCheats(codes));
     }
 
@@ -513,8 +528,23 @@ public final class EmulatorActivity extends Activity
         List<String> labels = new ArrayList<>();
         List<Runnable> actions = new ArrayList<>();
         addMenuItem(labels, actions, "Resume", () -> { });
-        addMenuItem(labels, actions, "Save state…", () -> showStateSlots(true));
-        addMenuItem(labels, actions, "Load state…", () -> showStateSlots(false));
+        LinkSession session = link;
+        if (session instanceof LinkSession.Local) {
+            LinkSession.Local local = (LinkSession.Local) session;
+            boolean other = local.showingPartner();
+            addMenuItem(labels, actions, "Play " + (other ? RomLibrary.baseName(rom) : local.partnerName), () -> {
+                local.setControlPartner(!other);
+                skinView.releaseAll();
+            });
+        }
+        if (session != null) {
+            addMenuItem(labels, actions, "Unplug the link cable", () -> unplugLink(null));
+        } else {
+            // States would unlink the two Game Boys in time, so they're only for a game on its own.
+            addMenuItem(labels, actions, "Save state…", () -> showStateSlots(true));
+            addMenuItem(labels, actions, "Load state…", () -> showStateSlots(false));
+            addMenuItem(labels, actions, "Link cable…", this::showLinkCable);
+        }
         addMenuItem(labels, actions, fastForward ? "Stop fast-forward" : "Fast-forward", () -> {
             fastForwardToggled = !fastForward;
             updateFastForward();
@@ -525,14 +555,14 @@ public final class EmulatorActivity extends Activity
             updateSpeed();
         });
         addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
-        addMenuItem(labels, actions, "Link port…", this::showLinkPort);
+        if (session == null) addMenuItem(labels, actions, "Link port…", this::showLinkPort);
         if (cameraFeed != null) {
             boolean front = cameraFeed.isFront();
             addMenuItem(labels, actions, front ? "Camera: use the back camera" : "Camera: use the front camera",
                     () -> cameraFeed.setFront(!front));
         }
         addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
-        addMenuItem(labels, actions, "Reset", this::confirmReset);
+        if (session == null) addMenuItem(labels, actions, "Reset", this::confirmReset);
         addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
         addMenuItem(labels, actions, "Move on-screen buttons", this::startEditingControls);
         addMenuItem(labels, actions, "Controller buttons…", () -> {
@@ -546,7 +576,7 @@ public final class EmulatorActivity extends Activity
         });
         addMenuItem(labels, actions, "Achievements…", this::showAchievements);
         addMenuItem(labels, actions, "Cheats…", this::showCheats);
-        addMenuItem(labels, actions, "Cheat search…", this::showCheatSearch);
+        if (session == null) addMenuItem(labels, actions, "Cheat search…", this::showCheatSearch);
         addMenuItem(labels, actions, "Quit to game list", this::finish);
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(RomLibrary.baseName(rom))
@@ -585,6 +615,218 @@ public final class EmulatorActivity extends Activity
                     toastFromAnyThread("Could not save the screenshot");
                 }
             }, "Screenshot").start();
+        });
+    }
+
+    // ---- Link cable ----
+
+    private void showLinkCable() {
+        dialogOpened();
+        LinkDialogs.show(this, new LinkDialogs.Callbacks() {
+            @Override
+            public List<File> otherGames() {
+                List<File> games = library.list();
+                games.removeIf(game -> game.getName().equals(rom.getName()));
+                return games;
+            }
+
+            @Override
+            public void linkLocal(File partner) {
+                startLocalLink(partner);
+            }
+
+            @Override
+            public void hostConnected(NetLink.Connection connection) {
+                startHostedLink(connection);
+            }
+
+            @Override
+            public void joinConnected(NetLink.Connection connection) {
+                startJoinedLink(connection);
+            }
+        }, this::dialogClosed);
+    }
+
+    /** Two games on this phone: power both on, linked, from their saves. */
+    private void startLocalLink(File partner) {
+        byte[] partnerRom;
+        try {
+            partnerRom = RomLibrary.readFile(partner);
+        } catch (IOException e) {
+            Toast.makeText(this, "Could not read " + RomLibrary.baseName(partner), Toast.LENGTH_LONG).show();
+            return;
+        }
+        File partnerSave = library.batteryFile(partner);
+        boolean partnerCgb = partnerRom.length > 0x143 && (partnerRom[0x143] & 0x80) != 0;
+        int model = settings.get(partnerCgb ? Settings.CGB_MODEL : Settings.DMG_MODEL);
+        LinkSession.Local session = new LinkSession.Local(partnerSave, RomLibrary.baseName(partner));
+        onEmulationThread(() -> {
+            flushBattery();
+            if (!Emulator.nativeLink(partnerRom, model, false, System.nanoTime())) {
+                toastFromAnyThread("Could not start " + session.partnerName);
+                return;
+            }
+            if (partnerSave.isFile()) {
+                try {
+                    Emulator.nativeLoadPartnerBattery(RomLibrary.readFile(partnerSave));
+                } catch (IOException e) {
+                    Log.w(TAG, "Could not read " + partnerSave, e);
+                }
+            }
+            linkStarted(session, "Linked with " + session.partnerName + ". Switch games from the menu.");
+        });
+    }
+
+    /** Hosting: power both games on, linked, and send the other phone everything it needs to run the same. */
+    private void startHostedLink(NetLink.Connection connection) {
+        Toast.makeText(this, "Connected. Setting up the link…", Toast.LENGTH_SHORT).show();
+        byte[] myRom;
+        try {
+            myRom = RomLibrary.readFile(rom);
+        } catch (IOException e) {
+            connection.close();
+            return;
+        }
+        new Thread(() -> {
+            NetLink.Game guest;
+            try {
+                guest = NetLink.hostReceive(connection);
+            } catch (IOException e) {
+                connection.close();
+                toastFromAnyThread("The link failed: " + e.getMessage());
+                return;
+            }
+            onEmulationThread(() -> {
+                flushBattery();
+                if (!Emulator.nativeLink(guest.rom, guest.model, false, System.nanoTime())) {
+                    connection.close();
+                    toastFromAnyThread("Could not start " + guest.name);
+                    return;
+                }
+                if (guest.data.length > 0) Emulator.nativeLoadPartnerBattery(guest.data);
+                byte[] myState = Emulator.nativeSaveState();
+                byte[] guestState = Emulator.nativeSavePartnerState();
+                NetLink.Game mine = new NetLink.Game(RomLibrary.baseName(rom), Emulator.nativeGetModel(), myRom, myState);
+                try {
+                    NetLink session = NetLink.hostSend(connection, guest, mine, guestState);
+                    linkStarted(session, "Linked with " + guest.name);
+                } catch (IOException e) {
+                    connection.close();
+                    Emulator.nativeUnlink();
+                    toastFromAnyThread("The link failed: " + e.getMessage());
+                }
+            });
+        }, "Link setup").start();
+    }
+
+    /** Joining: send this game, then run both exactly as the hosting phone set them up. */
+    private void startJoinedLink(NetLink.Connection connection) {
+        Toast.makeText(this, "Connected. Setting up the link…", Toast.LENGTH_SHORT).show();
+        byte[] myRom;
+        try {
+            myRom = RomLibrary.readFile(rom);
+        } catch (IOException e) {
+            connection.close();
+            return;
+        }
+        onEmulationThread(() -> {
+            flushBattery();
+            byte[] save = Emulator.nativeSaveBattery();
+            NetLink.Game mine = new NetLink.Game(RomLibrary.baseName(rom), Emulator.nativeGetModel(), myRom,
+                    save != null ? save : new byte[0]);
+            new Thread(() -> {
+                NetLink.JoinResult result;
+                try {
+                    result = NetLink.join(connection, mine);
+                } catch (IOException e) {
+                    connection.close();
+                    toastFromAnyThread("The link failed: " + e.getMessage());
+                    return;
+                }
+                onEmulationThread(() -> {
+                    boolean ok = Emulator.nativeLink(result.host.rom, result.host.model, true, 0)
+                            && Emulator.nativeLoadState(result.guestState)
+                            && Emulator.nativeLoadPartnerState(result.host.data);
+                    if (!ok) {
+                        result.link.close();
+                        Emulator.nativeUnlink();
+                        toastFromAnyThread("The link failed: the games didn't start the same on both phones");
+                        return;
+                    }
+                    linkStarted(result.link, "Linked with " + result.host.name);
+                });
+            }, "Link setup").start();
+        });
+    }
+
+    /**
+     * Emulation thread (or stopped): the Game Boys are linked; start playing. The session takes
+     * over the keys from the very next frame, so both phones count frames from the same moment.
+     */
+    private void linkStarted(LinkSession session, String message) {
+        if (session instanceof NetLink) ((NetLink) session).start();
+        link = session;
+        Thread current = Thread.currentThread();
+        if (current instanceof EmulatorThread) ((EmulatorThread) current).setLink(session);
+        // Otherwise emulation is stopped, and onResume hands the session to the new thread.
+        achievements.onGameReset(); // Both Game Boys were powered on afresh.
+        mainHandler.post(() -> {
+            applyCheats();
+            updateRewind();
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        });
+    }
+
+    /** Unplugs the cable; the game carries on alone. {@code reason} is shown if given. */
+    private void unplugLink(String reason) {
+        LinkSession session = link;
+        if (session == null) return;
+        link = null;
+        if (thread != null) thread.setLink(null);
+        onEmulationThread(() -> {
+            session.close();
+            Emulator.nativeUnlink();
+        });
+        onLinkWaiting(false);
+        applyCheats();
+        Toast.makeText(this, reason != null ? reason : "Link cable unplugged", Toast.LENGTH_LONG).show();
+    }
+
+    /** Emulation thread (or stopped): writes the game's save now, before it's powered off and on. */
+    private void flushBattery() {
+        if (Emulator.nativeTakeBatteryDirty()) onBatteryDirty();
+    }
+
+    @Override
+    public void onLinkEnded(String reason) {
+        // Emulation thread: the other phone went away. Carry on alone.
+        LinkSession session = link;
+        if (session != null) session.close();
+        Emulator.nativeUnlink();
+        mainHandler.post(() -> {
+            link = null;
+            onLinkWaiting(false);
+            applyCheats();
+            Toast.makeText(this, reason != null ? reason : "Link cable unplugged", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    @Override
+    public void onLinkWaiting(boolean waiting) {
+        mainHandler.post(() -> {
+            if (waiting && linkWaitingView == null) {
+                linkWaitingView = new android.widget.TextView(this);
+                linkWaitingView.setText("Waiting for the other player…");
+                linkWaitingView.setTextColor(0xFFFFFFFF);
+                linkWaitingView.setBackgroundColor(0xCC000000);
+                int pad = Math.round(12 * getResources().getDisplayMetrics().density);
+                linkWaitingView.setPadding(pad, pad / 2, pad, pad / 2);
+                root.addView(linkWaitingView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+            } else if (!waiting && linkWaitingView != null) {
+                root.removeView(linkWaitingView);
+                linkWaitingView = null;
+            }
         });
     }
 
@@ -943,6 +1185,10 @@ public final class EmulatorActivity extends Activity
         boolean rewind = rewindHeld || rewindTouched;
         if (rewind && settings.get(Settings.REWIND) == 0) {
             Toast.makeText(this, "Rewind is off. Turn it on in Settings → Emulation.", Toast.LENGTH_SHORT).show();
+            rewind = false;
+        }
+        if (rewind && link != null) {
+            Toast.makeText(this, "Rewind is off while the link cable is plugged in", Toast.LENGTH_SHORT).show();
             rewind = false;
         }
         if (rewind && achievements.hardcoreActive()) {
