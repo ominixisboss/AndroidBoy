@@ -41,8 +41,10 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   and **toolbars** instead of buttons on the skin. The top bar has back, the menu, achievements,
   the link cable, a screenshot button and a rotation lock, with the game's name under it; the
   bottom bar has the speed (slow motion, normal, fast-forward), pause, rewind (hold), sound and
-  full screen (a small button in the corner brings the bars back). Settings → Controls → Toolbars
-  shows them with every skin, or never.
+  full screen. The bars float over the game and fade out a few seconds after you last touch them
+  (not while paused); press Back or the small menu button in the top-left corner to bring them
+  back, and Back again for the menu. Settings → Controls → Toolbars can keep them on screen, show
+  them with every skin, or turn them off.
 - **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
   Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style

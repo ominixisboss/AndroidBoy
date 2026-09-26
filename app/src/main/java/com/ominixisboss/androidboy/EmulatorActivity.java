@@ -41,6 +41,8 @@ public final class EmulatorActivity extends Activity
     private static final int REQUEST_CAMERA = 3;
     /** Screenshots are saved at 4× the Game Boy's resolution, with sharp pixels. */
     private static final int SCREENSHOT_SCALE = 4;
+    /** Toolbars fade out this long after they were last touched. */
+    private static final long TOOLBAR_FADE_DELAY_MS = 3500;
 
     // The core is a process-wide singleton; remember which ROM it holds.
     private static String loadedRomPath;
@@ -59,9 +61,11 @@ public final class EmulatorActivity extends Activity
     private FrameLayout frame;
     private GameToolbars toolbars;
     private GameMenuView menuView;
-    /** Hidden with the full-screen button; a small button in the corner brings them back. */
-    private boolean toolbarsHidden;
-    private View showToolbarsButton;
+    /** Whether the toolbars are on screen now (they fade out, and Back or the corner button brings them back). */
+    private boolean toolbarsShown = true;
+    /** The small menu button in the top-left corner while the toolbars are faded out. */
+    private View toolbarsButton;
+    private final Runnable fadeToolbars = () -> fadeToolbars(false);
     private boolean pausedByPlayer;
     private boolean rotationLocked;
     private GameScreen screen;
@@ -156,13 +160,21 @@ public final class EmulatorActivity extends Activity
         root.addView(trackerOverlay, trackerOverlay.layoutParams());
         toolbars = new GameToolbars(this, toolbarActions());
         toolbars.setTitle(RomLibrary.baseName(rom));
-        LinearLayout column = new LinearLayout(this);
-        column.setOrientation(LinearLayout.VERTICAL);
-        column.addView(toolbars.top);
-        column.addView(root, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
-        column.addView(toolbars.bottom);
+        toolbars.setOnInteraction(this::keepToolbars);
+        // The toolbars float over the game, so the screen doesn't move as they come and go; when
+        // they stay on screen for good, the game area makes room for them instead.
         frame = new FrameLayout(this);
-        frame.addView(column);
+        frame.addView(root, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        frame.addView(toolbars.top, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP));
+        frame.addView(toolbars.bottom, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.BOTTOM));
+        toolbarsButton = createToolbarsButton();
+        frame.addView(toolbarsButton, toolbarsButton.getLayoutParams());
+        View.OnLayoutChangeListener barsMoved = (v, l, t, r, b, ol, ot, orr, ob) -> makeRoomForToolbars();
+        toolbars.top.addOnLayoutChangeListener(barsMoved);
+        toolbars.bottom.addOnLayoutChangeListener(barsMoved);
         frame.setOnApplyWindowInsetsListener(this::applyInsets);
         setContentView(frame);
 
@@ -543,6 +555,11 @@ public final class EmulatorActivity extends Activity
             closeMenu();
             return;
         }
+        // Faded-out toolbars come back first; Back again opens the menu.
+        if (toolbarsWanted() && !toolbarsShown) {
+            showToolbars();
+            return;
+        }
         showMenu();
     }
 
@@ -619,8 +636,6 @@ public final class EmulatorActivity extends Activity
             dialogOpened();
             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
         });
-        display.add(Icons.FULLSCREEN, toolbarsHidden ? "Show toolbars" : "Hide toolbars",
-                "The bars above and below the game", () -> setToolbarsHidden(!toolbarsHidden));
         sections.add(display);
 
         GameMenuView.Section speed = new GameMenuView.Section("Speed");
@@ -721,50 +736,123 @@ public final class EmulatorActivity extends Activity
             }
 
             @Override public void onFullScreen() {
-                setToolbarsHidden(true);
+                fadeToolbars(true);
             }
         };
     }
 
-    /** Shows the toolbars if they're wanted: always, never, or for skins without their own menu button. */
-    private void updateToolbars() {
+    /** Whether the toolbars are wanted with this skin: for every skin, never, or skins without a menu button. */
+    private boolean toolbarsWanted() {
         int mode = settings.get(Settings.TOOLBARS);
-        boolean wanted = mode == 1 || (mode == 0 && !skinView.getSkin().hasMenuButton());
-        boolean visible = wanted && !toolbarsHidden;
-        toolbars.setVisible(visible);
+        return mode == Settings.TOOLBARS_EVERY_SKIN
+                || (mode != Settings.TOOLBARS_NEVER && !skinView.getSkin().hasMenuButton());
+    }
+
+    /** Whether they fade out after a few seconds (or stay on screen). */
+    private boolean toolbarsFade() {
+        return settings.get(Settings.TOOLBARS) != Settings.TOOLBARS_STAY;
+    }
+
+    /** Brings the toolbars up to date with the skin and settings, and shows them. */
+    private void updateToolbars() {
         toolbars.setMuted(!settings.isOn(Settings.SOUND));
         toolbars.setPaused(pausedByPlayer);
         toolbars.setRotationLocked(rotationLocked);
         showSpeed();
-        // Around the notch and system bars: the toolbars' colour, or the skin's.
-        frame.setBackgroundColor(visible ? GameToolbars.BAR : skinView.getSkin().backgroundColor());
-        // Hidden with the full-screen button: a small way back in the corner.
-        boolean showButton = wanted && toolbarsHidden;
-        if (showButton && showToolbarsButton == null) {
-            android.widget.ImageView button = new android.widget.ImageView(this);
-            button.setImageDrawable(Icons.drawable(Icons.FULLSCREEN, GameToolbars.ICON));
-            button.setContentDescription("Show toolbars");
-            int pad = Math.round(10 * getResources().getDisplayMetrics().density);
-            button.setPadding(pad, pad, pad, pad);
-            android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
-            background.setColor(0x99000000);
-            background.setCornerRadius(pad * 1.2f);
-            button.setBackground(background);
-            button.setOnClickListener(v -> setToolbarsHidden(false));
-            int size = Math.round(44 * getResources().getDisplayMetrics().density);
-            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, android.view.Gravity.TOP | android.view.Gravity.END);
-            params.setMargins(pad, pad, pad, pad);
-            root.addView(button, params);
-            showToolbarsButton = button;
-        } else if (!showButton && showToolbarsButton != null) {
-            root.removeView(showToolbarsButton);
-            showToolbarsButton = null;
+        frame.setBackgroundColor(skinView.getSkin().backgroundColor());
+        if (toolbarsWanted()) {
+            showToolbars();
+        } else {
+            mainHandler.removeCallbacks(fadeToolbars);
+            toolbarsShown = false;
+            toolbars.setVisible(false);
+            toolbarsButton.setVisibility(View.GONE);
+        }
+        makeRoomForToolbars();
+    }
+
+    /** Shows the toolbars, and fades them out again after a while if they fade. */
+    private void showToolbars() {
+        toolbarsShown = true;
+        makeRoomForToolbars();
+        toolbars.setVisible(true);
+        fadeTo(toolbars.top, 1f, null);
+        fadeTo(toolbars.bottom, 1f, null);
+        fadeTo(toolbarsButton, 0f, () -> toolbarsButton.setVisibility(View.GONE));
+        keepToolbars();
+    }
+
+    /** The player is using the toolbars: put off fading them out. */
+    private void keepToolbars() {
+        mainHandler.removeCallbacks(fadeToolbars);
+        if (toolbarsWanted() && toolbarsFade()) mainHandler.postDelayed(fadeToolbars, TOOLBAR_FADE_DELAY_MS);
+    }
+
+    /**
+     * Fades the toolbars out, leaving the small menu button in the corner to bring them back.
+     * {@code now} is the full-screen button: straight away, even if they'd otherwise stay.
+     */
+    private void fadeToolbars(boolean now) {
+        mainHandler.removeCallbacks(fadeToolbars);
+        if (!toolbarsWanted()) return;
+        if (!now && !toolbarsFade()) return;
+        // Not while paused, holding rewind, or in a dialog: they're in use.
+        if (!now && (pausedByPlayer || rewindTouched || openDialogs > 0)) {
+            keepToolbars();
+            return;
+        }
+        toolbarsShown = false;
+        fadeTo(toolbars.top, 0f, () -> toolbars.top.setVisibility(toolbarsShown ? View.VISIBLE : View.INVISIBLE));
+        fadeTo(toolbars.bottom, 0f, () -> toolbars.bottom.setVisibility(toolbarsShown ? View.VISIBLE : View.INVISIBLE));
+        toolbarsButton.setVisibility(View.VISIBLE);
+        fadeTo(toolbarsButton, 1f, null);
+        makeRoomForToolbars();
+    }
+
+    private static void fadeTo(View view, float alpha, Runnable then) {
+        view.animate().cancel();
+        if (!android.animation.ValueAnimator.areAnimatorsEnabled()) {
+            view.setAlpha(alpha);
+            if (then != null) then.run();
+            return;
+        }
+        view.animate().alpha(alpha).setDuration(alpha > 0 ? 150 : 350).withEndAction(then).start();
+    }
+
+    /** Toolbars that stay on screen get room of their own; ones that fade float over the game. */
+    private void makeRoomForToolbars() {
+        boolean pinned = toolbarsWanted() && !toolbarsFade() && toolbarsShown;
+        FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) root.getLayoutParams();
+        int top = pinned ? toolbars.top.getHeight() : 0;
+        int bottom = pinned ? toolbars.bottom.getHeight() : 0;
+        if (params.topMargin != top || params.bottomMargin != bottom) {
+            params.topMargin = top;
+            params.bottomMargin = bottom;
+            root.setLayoutParams(params);
         }
     }
 
-    private void setToolbarsHidden(boolean hidden) {
-        toolbarsHidden = hidden;
-        updateToolbars();
+    /** A small menu button for the top-left corner: brings the faded toolbars back. */
+    private View createToolbarsButton() {
+        android.widget.ImageView button = new android.widget.ImageView(this);
+        button.setImageDrawable(Icons.drawable(Icons.MENU, GameToolbars.ICON));
+        button.setContentDescription("Show the menu bars");
+        float density = getResources().getDisplayMetrics().density;
+        int pad = Math.round(10 * density);
+        button.setPadding(pad, pad, pad, pad);
+        android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
+        background.setColor(0x99000000);
+        background.setCornerRadius(12 * density);
+        button.setBackground(background);
+        button.setOnClickListener(v -> showToolbars());
+        int size = Math.round(44 * density);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size,
+                android.view.Gravity.TOP | android.view.Gravity.START);
+        params.setMargins(pad, pad, pad, pad);
+        button.setLayoutParams(params);
+        button.setVisibility(View.GONE);
+        button.setAlpha(0f);
+        return button;
     }
 
     /** Keeps the screen the way it's turned now, or lets it follow the phone again. */

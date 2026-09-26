@@ -71,9 +71,12 @@ public class GameChromeTest {
             column.addView(toolbars.bottom);
             Bitmap bitmap = render(column);
             write(bitmap, "chrome-" + skin.id().replace(':', '-') + ".png");
-            // Every toolbar button does something.
+            // Every toolbar button does something, and counts as using the bars (so they don't fade).
+            int[] touches = {0};
+            toolbars.setOnInteraction(() -> touches[0]++);
             clickAll(toolbars.top, recorder);
             clickAll(toolbars.bottom, recorder);
+            assertTrue("touches keep the bars up (" + touches[0] + ")", touches[0] >= 12);
             assertTrue(recorder.calls.toString(), recorder.calls.containsAll(java.util.Arrays.asList(
                     "back", "menu", "achievements", "link", "screenshot", "lock", "speed0", "speed1", "speed2",
                     "pause", "mute", "fullscreen")));
@@ -123,6 +126,16 @@ public class GameChromeTest {
         assertEquals(1, chosen.size());
         clickDescribed(menu, "Close the menu");
         assertTrue(closed[0]);
+    }
+
+    @Test
+    public void toolbarChoicesKeepTheirPlace() {
+        // Choices are stored by position: existing players' choices must keep their meaning.
+        assertEquals(Settings.TOOLBARS_SKINS_THAT_NEED_THEM, Settings.TOOLBARS.values[0]);
+        assertEquals(Settings.TOOLBARS_EVERY_SKIN, Settings.TOOLBARS.values[1]);
+        assertEquals(Settings.TOOLBARS_NEVER, Settings.TOOLBARS.values[2]);
+        assertEquals(Settings.TOOLBARS_STAY, Settings.TOOLBARS.values[3]);
+        assertEquals(0, Settings.TOOLBARS.defaultIndex);
     }
 
     @Test
