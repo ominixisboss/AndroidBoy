@@ -2,16 +2,30 @@ package com.ominixisboss.androidboy;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.TypedValue;
+import android.view.Gravity;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.BaseAdapter;
+import android.widget.GridView;
+import android.widget.ImageView;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /** The skin chooser dialog, and importing skins from .zip files. Shared by both activities. */
 final class SkinPicker {
@@ -59,27 +73,69 @@ final class SkinPicker {
         top[0].show();
     }
 
+    /** Preview cards per row in a category. */
+    static final int COLUMNS = 3;
+
+    /** The skins in a category, as preview cards; tap one to use it, long-press an imported one to delete it. */
     private static void showCategory(Activity activity, SkinLibrary library, String category, Callbacks callbacks,
                                      AlertDialog top, Settings.TwoLineAdapter categoryList) {
-        List<SkinLibrary.Entry> entries = library.list(category);
-        String[] labels = new String[entries.size()];
-        int checked = -1;
-        for (int i = 0; i < entries.size(); i++) {
-            labels[i] = entries.get(i).name;
-            if (entries.get(i).id.equals(library.activeId())) checked = i;
-        }
+        List<SkinLibrary.Entry> entries = new ArrayList<>(library.list(category));
+        GridView grid = new GridView(activity);
+        grid.setNumColumns(COLUMNS);
+        int gap = dp(activity, 10);
+        grid.setHorizontalSpacing(gap);
+        grid.setVerticalSpacing(gap);
+        grid.setPadding(gap * 2, gap, gap * 2, gap);
+        grid.setClipToPadding(false);
+        grid.setStretchMode(GridView.STRETCH_COLUMN_WIDTH);
+        ExecutorService loader = Executors.newSingleThreadExecutor();
+        Handler main = new Handler(Looper.getMainLooper());
+        BaseAdapter adapter = new BaseAdapter() {
+            @Override
+            public int getCount() {
+                return entries.size();
+            }
+
+            @Override
+            public SkinLibrary.Entry getItem(int position) {
+                return entries.get(position);
+            }
+
+            @Override
+            public long getItemId(int position) {
+                return position;
+            }
+
+            @Override
+            public View getView(int position, View convertView, ViewGroup parent) {
+                PreviewCard card = convertView instanceof PreviewCard ? (PreviewCard) convertView : new PreviewCard(activity);
+                SkinLibrary.Entry entry = entries.get(position);
+                card.bind(entry, entry.id.equals(library.activeId()));
+                Bitmap preview = SkinPreviews.cached(entry.id);
+                if (preview != null) {
+                    card.image.setImageBitmap(preview);
+                } else {
+                    card.image.setImageDrawable(null);
+                    loadPreview(library, entry, card, loader, main);
+                }
+                return card;
+            }
+        };
+        grid.setAdapter(adapter);
+
         AlertDialog dialog = new AlertDialog.Builder(activity)
                 .setTitle(category)
-                .setSingleChoiceItems(labels, checked, (d, which) -> {
-                    library.setActive(entries.get(which).id);
-                    callbacks.onSkinChanged();
-                    d.dismiss();
-                    top.dismiss();
-                })
+                .setView(grid)
                 .setNegativeButton(R.string.back, null)
                 .create();
-        dialog.show();
-        dialog.getListView().setOnItemLongClickListener((parent, view, position, id) -> {
+        dialog.setOnDismissListener(d -> loader.shutdownNow());
+        grid.setOnItemClickListener((parent, view, position, id) -> {
+            library.setActive(entries.get(position).id);
+            callbacks.onSkinChanged();
+            dialog.dismiss();
+            top.dismiss();
+        });
+        grid.setOnItemLongClickListener((parent, view, position, id) -> {
             SkinLibrary.Entry entry = entries.get(position);
             if (entry.dir == null) return false; // Only imported skins can be deleted.
             new AlertDialog.Builder(activity)
@@ -94,6 +150,99 @@ final class SkinPicker {
                     .show();
             return true;
         });
+        dialog.show();
+    }
+
+    /**
+     * Draws a card's preview. Built-in skins are shared with the game screen and quick to draw,
+     * so they're drawn on the main thread; image skins load their artwork in the background, each
+     * into its own copy.
+     */
+    private static void loadPreview(SkinLibrary library, SkinLibrary.Entry entry, PreviewCard card,
+                                    ExecutorService loader, Handler main) {
+        card.pendingId = entry.id;
+        boolean builtIn = entry.id.startsWith("theme:") || entry.id.startsWith("soft:");
+        Runnable show = () -> {
+            // The card may have been reused for another skin meanwhile.
+            Bitmap preview = SkinPreviews.cached(entry.id);
+            if (preview != null && entry.id.equals(card.pendingId)) card.image.setImageBitmap(preview);
+        };
+        if (builtIn) {
+            main.post(() -> {
+                Skin skin = library.load(entry.id);
+                if (skin != null) SkinPreviews.get(skin);
+                show.run();
+            });
+            return;
+        }
+        try {
+            loader.execute(() -> {
+                Skin skin = library.load(entry.id);
+                if (skin == null) return;
+                try {
+                    SkinPreviews.get(skin);
+                } catch (RuntimeException | OutOfMemoryError e) {
+                    return; // No preview; the name is still there.
+                }
+                main.post(show);
+            });
+        } catch (java.util.concurrent.RejectedExecutionException e) {
+            // The dialog closed.
+        }
+    }
+
+    /** A skin's preview with its name underneath; the one in use is outlined. */
+    private static final class PreviewCard extends LinearLayout {
+        final ImageView image;
+        final TextView name;
+        String pendingId;
+
+        PreviewCard(Context context) {
+            super(context);
+            setOrientation(VERTICAL);
+            setGravity(Gravity.CENTER_HORIZONTAL);
+            int pad = dp(context, 4);
+            setPadding(pad, pad, pad, pad);
+            image = new ImageView(context) {
+                @Override
+                protected void onMeasure(int widthSpec, int heightSpec) {
+                    // Phone-shaped, whatever the column width.
+                    int width = MeasureSpec.getSize(widthSpec);
+                    setMeasuredDimension(width, width * SkinPreviews.HEIGHT / SkinPreviews.WIDTH);
+                }
+            };
+            image.setScaleType(ImageView.ScaleType.FIT_XY);
+            image.setClipToOutline(true);
+            image.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override
+                public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(view.getContext(), 8));
+                }
+            });
+            addView(image, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+            name = new TextView(context);
+            name.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+            name.setGravity(Gravity.CENTER);
+            name.setMaxLines(2);
+            name.setEllipsize(android.text.TextUtils.TruncateAt.END);
+            name.setPadding(0, dp(context, 6), 0, dp(context, 2));
+            addView(name, new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT));
+        }
+
+        void bind(SkinLibrary.Entry entry, boolean active) {
+            name.setText(active ? "✓ " + entry.name : entry.name);
+            name.setTypeface(active ? Typeface.DEFAULT_BOLD : Typeface.DEFAULT);
+            GradientDrawable background = new GradientDrawable();
+            background.setCornerRadius(dp(getContext(), 12));
+            background.setColor(active ? 0x2233B5E5 : 0x00000000);
+            if (active) background.setStroke(dp(getContext(), 2), 0xFF33B5E5);
+            setBackground(background);
+            setContentDescription(entry.name + (active ? ", in use" : ""));
+        }
+    }
+
+    private static int dp(Context context, int value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 
     static void startImport(Activity activity, int requestCode) {

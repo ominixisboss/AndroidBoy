@@ -192,14 +192,17 @@ final class SkinLibrary {
 
     /** The active skin; falls back to the minimal theme if an imported skin can't be loaded. */
     Skin loadActive() {
-        String id = activeId();
+        Skin skin = load(activeId());
+        return skin != null ? skin : ThemeSkin.fallback();
+    }
+
+    /** Any listed skin by its id, or null if it's unknown or can't be loaded. */
+    Skin load(String id) {
         if (id.startsWith("theme:")) {
-            ThemeSkin theme = ThemeSkin.find(id.substring("theme:".length()));
-            return theme != null ? theme : ThemeSkin.fallback();
+            return ThemeSkin.find(id.substring("theme:".length()));
         }
         if (id.startsWith("soft:")) {
-            SoftSkin soft = SoftSkin.find(id.substring("soft:".length()));
-            if (soft != null) return soft;
+            return SoftSkin.find(id.substring("soft:".length()));
         }
         if (id.startsWith("bundled:")) {
             String name = id.substring("bundled:".length());
@@ -217,7 +220,7 @@ final class SkinLibrary {
                 Log.w(TAG, "Could not load skin " + dir, e);
             }
         }
-        return ThemeSkin.fallback();
+        return null;
     }
 
     void delete(Entry entry) {

@@ -54,7 +54,8 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
   and Marble), and you can import your own as a `.zip` of images plus a layout file;
   see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Game Boy classics,
-  Colours, Modern & minimal, Artwork (the image skins) and Imported.
+  Colours, Modern & minimal, Artwork (the image skins) and Imported, and shows each group as a
+  grid of previews: every skin drawn as it looks in a game, with the one in use outlined.
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
   CRT, flat CRT, bilinear, Scale2x/4x, HQ2x, OmniScale and more. There's also SameBoy's frame
   blending, which some games rely on for flicker transparency.
@@ -237,6 +238,7 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
     GameMenuView, Icons
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
   SkinView                Draws the active skin and handles touch
+  SkinPicker, SkinPreviews  The skin picker and its preview pictures
   Achievements            RetroAchievements login, web requests and events; the banner and screens
   AchievementsActivity    Your RetroAchievements points and progress in each game
   Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
