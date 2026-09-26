@@ -295,16 +295,19 @@ JNIEXPORT jstring JNICALL JNI_FN(nativeGameSummary)(JNIEnv *env, jclass clazz)
     if (!game || !rc_client_is_game_loaded(client)) return NULL;
     rc_client_user_game_summary_t summary;
     rc_client_get_user_game_summary(client, &summary);
-    char buffer[512];
-    snprintf(buffer, sizeof(buffer), "%s\x1f%u\x1f%u\x1f%u\x1f%u", game->title ? game->title : "",
+    char buffer[1024];
+    snprintf(buffer, sizeof(buffer), "%s\x1f%u\x1f%u\x1f%u\x1f%u\x1f%u\x1f%s", game->title ? game->title : "",
              summary.num_unlocked_achievements, summary.num_core_achievements,
-             summary.points_unlocked, summary.points_core);
+             summary.points_unlocked, summary.points_core,
+             game->id, game->badge_url ? game->badge_url : "");
     return (*env)->NewStringUTF(env, buffer);
 }
 
 /*
  * The current game's achievements, one string each, fields separated by \x1f:
- * unlocked (0 or 1), points, title, description, badge URL, progress text.
+ * unlocked (0 or 1), points, title, description, badge URL, progress text, id, unlock time
+ * (seconds, 0 if locked), percent of players who unlocked it, and in hardcore, type, progress
+ * percent, unlocked flags (1 softcore, 2 hardcore), the group it's listed under, unlocked badge URL.
  */
 JNIEXPORT jobjectArray JNICALL JNI_FN(nativeAchievementList)(JNIEnv *env, jclass clazz)
 {
@@ -319,16 +322,19 @@ JNIEXPORT jobjectArray JNICALL JNI_FN(nativeAchievementList)(JNIEnv *env, jclass
     }
     jobjectArray result = (*env)->NewObjectArray(env, (jsize)count, string_class, NULL);
     jsize index = 0;
-    char buffer[1024];
+    char buffer[2048];
     for (uint32_t b = 0; list && b < list->num_buckets; b++) {
+        const char *label = list->buckets[b].label ? list->buckets[b].label : "";
         for (uint32_t i = 0; i < list->buckets[b].num_achievements; i++) {
             const rc_client_achievement_t *a = list->buckets[b].achievements[i];
             int unlocked = (a->unlocked & (rc_client_get_hardcore_enabled(client)
                     ? RC_CLIENT_ACHIEVEMENT_UNLOCKED_HARDCORE : RC_CLIENT_ACHIEVEMENT_UNLOCKED_BOTH)) != 0;
-            snprintf(buffer, sizeof(buffer), "%d\x1f%u\x1f%s\x1f%s\x1f%s\x1f%s", unlocked, a->points,
+            snprintf(buffer, sizeof(buffer), "%d\x1f%u\x1f%s\x1f%s\x1f%s\x1f%s\x1f%u\x1f%lld\x1f%.2f\x1f%.2f\x1f%u\x1f%.2f\x1f%u\x1f%s\x1f%s",
+                     unlocked, a->points,
                      a->title ? a->title : "", a->description ? a->description : "",
                      unlocked ? (a->badge_url ? a->badge_url : "") : (a->badge_locked_url ? a->badge_locked_url : ""),
-                     a->measured_progress);
+                     a->measured_progress, a->id, (long long)a->unlock_time, a->rarity, a->rarity_hardcore,
+                     a->type, a->measured_percent, a->unlocked, label, a->badge_url ? a->badge_url : "");
             jstring row = (*env)->NewStringUTF(env, buffer);
             (*env)->SetObjectArrayElement(env, result, index++, row);
             (*env)->DeleteLocalRef(env, row);

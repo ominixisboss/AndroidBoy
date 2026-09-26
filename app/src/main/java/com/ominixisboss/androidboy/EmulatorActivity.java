@@ -72,6 +72,8 @@ public final class EmulatorActivity extends Activity
     private SkinView skinView;
     private Achievements achievements;
     private AchievementPopup achievementPopup;
+    /** The RetroAchievements profile was opened over the game. */
+    private boolean returningFromProfile;
     private TrackerOverlay trackerOverlay;
     private int shownFrameWidth = 160;
     private int shownFrameHeight = 144;
@@ -208,6 +210,10 @@ public final class EmulatorActivity extends Activity
         pushKeys();
         thread.start();
         startCameraIfNeeded();
+        if (returningFromProfile) {
+            returningFromProfile = false;
+            applyCheats(); // Logging in or out there can switch hardcore mode.
+        }
     }
 
     @Override
@@ -390,8 +396,7 @@ public final class EmulatorActivity extends Activity
     }
 
     private void showAchievements() {
-        String[] summary = achievements.gameSummary();
-        if (summary == null) {
+        if (!achievements.hasAccount()) {
             showAchievementAccount();
             return;
         }
@@ -404,9 +409,16 @@ public final class EmulatorActivity extends Activity
                     dialogClosed();
                     return;
                 }
-                AchievementDialogs.showList(this, presence, this::showAchievementAccount, this::dialogClosed);
+                AchievementDialogs.showList(this, presence, this::showAchievementAccount, this::showAchievementProfile,
+                        this::dialogClosed);
             });
         });
+    }
+
+    /** The player's whole RetroAchievements profile, over the game. */
+    private void showAchievementProfile() {
+        returningFromProfile = true;
+        startActivity(new Intent(this, AchievementsActivity.class));
     }
 
     private void showAchievementAccount() {

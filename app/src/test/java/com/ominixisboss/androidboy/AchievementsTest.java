@@ -47,6 +47,83 @@ public class AchievementsTest {
     }
 
     @Test
+    public void parsesAchievementDetails() {
+        Achievements.Achievement a = Achievements.Achievement.parse(String.join(S, "0", "25", "Speedrunner",
+                "Beat the game in an hour", "https://media/b_lock.png", "12/60", "4321", "1700000000", "12.50",
+                "3.25", "3", "20.00", "1", "Almost There", "https://media/b.png"));
+        assertFalse(a.unlocked);
+        assertEquals(4321, a.id);
+        assertEquals(1700000000L, a.unlockTime);
+        assertEquals(12.5f, a.rarity, 0.001f);
+        assertEquals(3.25f, a.rarityHardcore, 0.001f);
+        assertEquals(Achievements.Achievement.TYPE_WIN, a.type);
+        assertEquals(20f, a.percent, 0.001f);
+        assertEquals(Achievements.Achievement.UNLOCKED_SOFTCORE, a.unlockedIn);
+        assertEquals("Almost There", a.group);
+        assertEquals("https://media/b_lock.png", a.badgeUrl);
+        assertEquals("https://media/b.png", a.unlockedBadgeUrl);
+        assertEquals("https://retroachievements.org/achievement/4321", a.pageUrl());
+        // Old-style rows still parse.
+        Achievements.Achievement old = Achievements.Achievement.parse("1" + S + "5" + S + "T" + S + "D" + S + "u" + S + "");
+        assertEquals(0, old.id);
+        assertEquals("", old.group);
+        assertEquals("u", old.unlockedBadgeUrl);
+        assertEquals(Achievements.Achievement.UNLOCKED_SOFTCORE, old.unlockedIn);
+    }
+
+    private static Achievements.Achievement achievement(boolean unlocked, String group, int unlockedIn, long time,
+                                                        String progress, float percent, int type, float rarity) {
+        return new Achievements.Achievement(unlocked, 10, "T", "D", "", progress, 1, time, rarity, rarity / 2,
+                type, percent, unlockedIn, group, "");
+    }
+
+    @Test
+    public void groupsTheListUnderHeadings() {
+        List<Achievements.Achievement> list = new ArrayList<>();
+        list.add(achievement(false, "Locked", 0, 0, "", 0, 0, 0));
+        list.add(achievement(false, "Locked", 0, 0, "", 0, 0, 0));
+        list.add(achievement(true, "Unlocked", 3, 5, "", 0, 0, 0));
+        List<Object> items = AchievementDialogs.group(list);
+        assertEquals(5, items.size());
+        assertEquals("Locked  ·  2", items.get(0));
+        assertEquals(list.get(0), items.get(1));
+        assertEquals("Unlocked  ·  1", items.get(3));
+        // Without group names from rcheevos: by whether they're unlocked.
+        List<Achievements.Achievement> plain = new ArrayList<>();
+        plain.add(achievement(true, "", 1, 0, "", 0, 0, 0));
+        plain.add(achievement(false, "", 0, 0, "", 0, 0, 0));
+        List<Object> plainItems = AchievementDialogs.group(plain);
+        assertEquals("Unlocked  ·  1", plainItems.get(0));
+        assertEquals("Locked  ·  1", plainItems.get(2));
+        assertTrue(AchievementDialogs.group(new ArrayList<>()).isEmpty());
+    }
+
+    @Test
+    public void describesAnAchievement() {
+        java.text.DateFormat dates = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT);
+        dates.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+        List<String> locked = AchievementDialogs.detailLines(
+                achievement(false, "", 0, 0, "3/10", 30, Achievements.Achievement.TYPE_MISSABLE, 12.5f), false, dates);
+        assertEquals("Locked", locked.get(0));
+        assertEquals("Progress: 3/10 (30%)", locked.get(1));
+        assertTrue(locked.get(2).startsWith("Missable"));
+        assertEquals("Unlocked by 12.5% of players (6.3% in hardcore)", locked.get(3));
+
+        List<String> hardcore = AchievementDialogs.detailLines(
+                achievement(true, "", 3, 86400, "", 0, 0, 0), true, dates);
+        assertEquals(java.util.Arrays.asList("✓ Unlocked in hardcore on 1970-01-02"), hardcore);
+
+        List<String> softcoreOnly = AchievementDialogs.detailLines(
+                achievement(false, "", 1, 86400, "", 0, Achievements.Achievement.TYPE_PROGRESSION, 0), true, dates);
+        assertTrue(softcoreOnly.get(0).startsWith("Unlocked in softcore on 1970-01-02."));
+        assertTrue(softcoreOnly.get(1).startsWith("Progression"));
+
+        assertEquals("<0.1%", AchievementDialogs.percent(0.05f));
+        assertEquals("3%", AchievementDialogs.percent(3f));
+        assertEquals("45.2%", AchievementDialogs.percent(45.21f));
+    }
+
+    @Test
     public void combinesProgressFromBothConsoles() {
         // id, total, unlocked, unlocked hardcore
         List<int[]> progress = new ArrayList<>();

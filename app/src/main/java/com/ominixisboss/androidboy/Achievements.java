@@ -85,27 +85,91 @@ final class Achievements {
 
     /** One of the current game's achievements. */
     static final class Achievement {
+        // What kind of achievement it is (rc_client.h).
+        static final int TYPE_STANDARD = 0;
+        static final int TYPE_MISSABLE = 1;
+        static final int TYPE_PROGRESSION = 2;
+        static final int TYPE_WIN = 3;
+        // Unlocked flags.
+        static final int UNLOCKED_SOFTCORE = 1;
+        static final int UNLOCKED_HARDCORE = 2;
+
+        /** Unlocked in the current mode (hardcore when hardcore is on). */
         final boolean unlocked;
         final int points;
         final String title;
         final String description;
+        /** The badge as it looks now: greyed out while locked. */
         final String badgeUrl;
         /** E.g. "3/10" for achievements that count something; empty otherwise. */
         final String progress;
+        final int id;
+        /** When it was unlocked, in seconds since 1970; 0 if it isn't. */
+        final long unlockTime;
+        /** Percent of players who've unlocked it, and in hardcore; 0 if unknown. */
+        final float rarity;
+        final float rarityHardcore;
+        final int type;
+        /** How far along a counting achievement is, 0 to 100. */
+        final float percent;
+        /** UNLOCKED_SOFTCORE and UNLOCKED_HARDCORE, whichever it's been unlocked in. */
+        final int unlockedIn;
+        /** The group it's listed under ("Locked", "Recently Unlocked", …). */
+        final String group;
+        /** The full-colour badge, whether or not it's unlocked. */
+        final String unlockedBadgeUrl;
 
         Achievement(boolean unlocked, int points, String title, String description, String badgeUrl, String progress) {
+            this(unlocked, points, title, description, badgeUrl, progress, 0, 0, 0, 0, TYPE_STANDARD, 0,
+                    unlocked ? UNLOCKED_SOFTCORE : 0, "", badgeUrl);
+        }
+
+        Achievement(boolean unlocked, int points, String title, String description, String badgeUrl, String progress,
+                    int id, long unlockTime, float rarity, float rarityHardcore, int type, float percent,
+                    int unlockedIn, String group, String unlockedBadgeUrl) {
             this.unlocked = unlocked;
             this.points = points;
             this.title = title;
             this.description = description;
             this.badgeUrl = badgeUrl;
             this.progress = progress;
+            this.id = id;
+            this.unlockTime = unlockTime;
+            this.rarity = rarity;
+            this.rarityHardcore = rarityHardcore;
+            this.type = type;
+            this.percent = percent;
+            this.unlockedIn = unlockedIn;
+            this.group = group;
+            this.unlockedBadgeUrl = unlockedBadgeUrl;
         }
 
         /** Parses a row from nativeAchievementList. */
         static Achievement parse(String row) {
             String[] f = row.split(SEPARATOR, -1);
-            return new Achievement("1".equals(f[0]), Integer.parseInt(f[1]), f[2], f[3], f[4], f.length > 5 ? f[5] : "");
+            boolean unlocked = "1".equals(f[0]);
+            String badge = f[4];
+            return new Achievement(unlocked, Integer.parseInt(f[1]), f[2], f[3], badge, field(f, 5),
+                    (int) number(f, 6), (long) number(f, 7), (float) number(f, 8), (float) number(f, 9),
+                    (int) number(f, 10), (float) number(f, 11),
+                    f.length > 12 ? (int) number(f, 12) : unlocked ? UNLOCKED_SOFTCORE : 0,
+                    field(f, 13), f.length > 14 && !f[14].isEmpty() ? f[14] : badge);
+        }
+
+        private static String field(String[] f, int index) {
+            return index < f.length ? f[index] : "";
+        }
+
+        private static double number(String[] f, int index) {
+            try {
+                return index < f.length ? Double.parseDouble(f[index]) : 0;
+            } catch (NumberFormatException e) {
+                return 0;
+            }
+        }
+
+        String pageUrl() {
+            return SITE + "/achievement/" + id;
         }
     }
 
@@ -158,6 +222,7 @@ final class Achievements {
     // rc_consoles.h
     static final int CONSOLE_GAMEBOY = 4;
     static final int CONSOLE_GAMEBOY_COLOR = 6;
+    static final int CONSOLE_GAMEBOY_ADVANCE = 5;
     static final String SITE = "https://retroachievements.org";
 
     /** The player's progress in one game, for the achievements page. */
@@ -323,7 +388,7 @@ final class Achievements {
     }
 
     /**
-     * Fetches the player's Game Boy and Game Boy Color progress: the games they've unlocked
+     * Fetches the player's Game Boy, Game Boy Color and Game Boy Advance progress: the games they've unlocked
      * something in, with titles and badges. Main thread; a new request replaces one in flight.
      */
     void fetchProgress(ProgressCallback callback) {
@@ -554,6 +619,8 @@ final class Achievements {
             self.progressResults.add(values);
             if (console == CONSOLE_GAMEBOY) {
                 nativeFetchProgress(CONSOLE_GAMEBOY_COLOR);
+            } else if (console == CONSOLE_GAMEBOY_COLOR) {
+                nativeFetchProgress(CONSOLE_GAMEBOY_ADVANCE);
             } else {
                 nativeFetchTitles(playedGames(self.progressResults));
             }
