@@ -12,6 +12,7 @@
     <string name="play">Play</string>
     <string name="import_save">Import save file (.sav)</string>
     <string name="export_save">Export save file</string>
+    <string name="back">Back</string>
     <string name="delete">Delete</string>
     <string name="delete_title">Delete %1$s?</string>
     <string name="delete_message">The game, its save file and its save states will be removed from this device.</string>
