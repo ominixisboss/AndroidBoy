@@ -95,7 +95,8 @@ public final class MainActivity extends Activity {
         menu.add(0, 1, 0, R.string.add_game).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
-        menu.add(0, 3, 3, R.string.about);
+        menu.add(0, 5, 3, R.string.retroachievements);
+        menu.add(0, 3, 4, R.string.about);
         return true;
     }
 
@@ -110,6 +111,9 @@ public final class MainActivity extends Activity {
                 return true;
             case 3:
                 showAbout();
+                return true;
+            case 5:
+                AchievementDialogs.showAccount(this, false, null, () -> {});
                 return true;
             case 4:
                 SkinPicker.show(this, new SkinLibrary(this), REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {
@@ -236,11 +240,17 @@ public final class MainActivity extends Activity {
     }
 
     private void showLicense() {
-        String text;
-        try (InputStream in = getAssets().open("licenses/SameBoy.txt")) {
-            text = new String(readSmallFile(in), java.nio.charset.StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            text = e.getMessage();
+        StringBuilder text = new StringBuilder();
+        // SameBoy (the emulator core) and rcheevos (RetroAchievements), both MIT-style licenses.
+        String[][] licenses = {{"SameBoy", "licenses/SameBoy.txt"}, {"rcheevos (RetroAchievements)", "licenses/rcheevos.txt"}};
+        for (String[] license : licenses) {
+            if (text.length() > 0) text.append("\n\n");
+            text.append(license[0]).append("\n\n");
+            try (InputStream in = getAssets().open(license[1])) {
+                text.append(new String(readSmallFile(in), java.nio.charset.StandardCharsets.UTF_8).trim());
+            } catch (IOException e) {
+                text.append(e.getMessage());
+            }
         }
         new AlertDialog.Builder(this)
                 .setTitle(R.string.licenses)

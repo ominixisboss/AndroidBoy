@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "achievements.h"
 #include "emulator.h"
 
 #define LOG_TAG "AndroidBoy"
@@ -116,6 +117,7 @@ JNIEXPORT jint JNICALL JNI_FN(nativeRunFrame)(JNIEnv *env, jclass clazz, jshortA
 {
     (void)clazz;
     emu_run_frame();
+    achievements_do_frame();
     jsize capacity = (*env)->GetArrayLength(env, audio);
     jshort *samples = (*env)->GetPrimitiveArrayCritical(env, audio, NULL);
     if (!samples) return 0;

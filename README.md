@@ -40,6 +40,13 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   Fast-forward runs at 2×, 3×, 4×, 8× or unlimited speed.
 - **Rewind.** Hold rewind to play backwards through the last 30 seconds (adjustable from 10 seconds
   to 5 minutes, or off), using SameBoy's rewind.
+- **RetroAchievements.** Log in with a free [retroachievements.org](https://retroachievements.org)
+  account (main menu → RetroAchievements) and games with achievement sets unlock them as you play,
+  with a banner and the badge. The in-game menu's **Achievements…** lists the game's achievements
+  and your progress. **Hardcore mode** counts unlocks as hardcore; loading save states (including
+  the automatic resume) and rewinding are off while it's on. Achievement progress is saved with
+  each save state. Only a login token is kept on the device, never your password, and it's left
+  out of backups.
 - **Settings** are grouped into Display, Emulation, Controls and Sound.
 - **Rumble** for rumble cartridges, optionally for all games.
 
@@ -139,15 +146,19 @@ artifact.
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
 loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
-the frame parity used for frame blending. You only need a C compiler.
+the frame parity used for frame blending. It also runs rcheevos against the emulator with a
+stand-in server (`tests/achievements_test.c`): logging in, identifying the cartridge by its MD5,
+and unlocking achievements from what the game writes to memory. You only need a C compiler.
 
 ## Project layout
 
 ```
 sameboy/                  SameBoy 1.0.3: Core/ and BootROMs/ sources, unmodified
+third_party/rcheevos/     rcheevos 12.5.0 (RetroAchievements client library, MIT), unmodified
 app/src/main/cpp/         Native code
   emulator.c/.h           Platform-independent wrapper around the core
   jni_bridge.c            JNI bindings, boot ROMs from assets, frame output
+  achievements.c          RetroAchievements: rcheevos client, memory map, web requests via Java
   CMakeLists.txt
 app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   MainActivity            Game library, save import/export
@@ -158,6 +169,7 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   Skin, ThemeSkin         Skin layout and drawing; the built-in themes
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
   SkinView                Draws the active skin and handles touch
+  Achievements            RetroAchievements login, web requests and events; the banner and screens
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
 app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
 app/src/main/assets/skins/      Image skins bundled with the app
@@ -178,7 +190,8 @@ release's copies, and copy its `Shaders/*.fsh` files (except `MasterShader.fsh`)
 
 SameBoy is © Lior Halphon and licensed under the Expat (MIT) license; see `sameboy/LICENSE`.
 That includes the filter shaders in `app/src/main/assets/shaders/`, and `Master.glsl` there is a port
-of SameBoy's master shader. The app shows the license under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
+of SameBoy's master shader. rcheevos (`third_party/rcheevos`) is © RetroAchievements.org, MIT license.
+The app shows both licenses under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
 so its extra distribution condition doesn't apply. The rest of this repository is released under
 CC0 (see `LICENSE`).
 

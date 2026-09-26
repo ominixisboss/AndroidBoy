@@ -20,3 +20,15 @@ $CC $FLAGS -DGB_INTERNAL -c \
     "$ROOT"/sameboy/Core/timing.c
 $CC $FLAGS "$ROOT/app/src/main/cpp/emulator.c" "$ROOT/tests/host_test.c" "$OUT"/*.o -lm -o "$OUT/host_test"
 "$OUT/host_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs"
+
+# RetroAchievements: rcheevos' client against the emulator's memory, with a stand-in server.
+RC="$ROOT/third_party/rcheevos"
+RC_FLAGS="-std=gnu11 -O2 -DRC_CLIENT_SUPPORTS_HASH -DRC_HASH_NO_DISC -DRC_HASH_NO_ENCRYPTED -DRC_HASH_NO_ZIP -I$RC/include"
+mkdir -p "$OUT/rcheevos"
+(cd "$OUT/rcheevos" && $CC $RC_FLAGS -w -c "$RC"/src/rapi/*.c "$RC"/src/rcheevos/*.c "$RC/src/rc_client.c" \
+    "$RC/src/rc_compat.c" "$RC/src/rc_util.c" "$RC/src/rc_version.c" \
+    "$RC/src/rhash/hash.c" "$RC/src/rhash/hash_rom.c" "$RC/src/rhash/md5.c")
+$CC $FLAGS $RC_FLAGS "$ROOT/app/src/main/cpp/emulator.c" "$ROOT/tests/achievements_test.c" "$OUT"/*.o \
+    "$OUT"/rcheevos/*.o -lm -lpthread -o "$OUT/achievements_test"
+MD5="$(md5sum "$ROOT/tests/testrom.gb" | cut -d' ' -f1)"
+"$OUT/achievements_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs" "$MD5"

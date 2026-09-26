@@ -87,6 +87,14 @@ void emu_set_border_mode(GB_border_mode_t mode);
 void emu_set_highpass(GB_highpass_mode_t mode);
 void emu_set_rumble_mode(GB_rumble_mode_t mode);
 
+/*
+ * Reads memory for RetroAchievements, in its Game Boy (Color) address map: $0000-$FFFF is the
+ * CPU's view (read without side effects), $10000-$15FFF the Color's work RAM banks 2-7, and
+ * $16000-$33FFF cartridge RAM banks 1-15. Returns how many bytes were read, stopping at the
+ * first address that doesn't exist on this game (e.g. more cartridge RAM than it has).
+ */
+uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t num_bytes);
+
 double emu_get_rumble(void);
 void emu_get_title(char title[17]);
 

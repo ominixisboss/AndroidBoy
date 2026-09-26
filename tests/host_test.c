@@ -203,7 +203,35 @@ int main(int argc, char **argv)
     run_frames(10);
     CHECK(!emu_rewind_frame(), "rewind: off records nothing");
 
+    /* RetroAchievements' view of memory. */
+    for (int color = 0; color < 2; color++) {
+        const char *name = color ? "achievements (CGB)" : "achievements (DMG)";
+        emu_load_rom(rom, rom_size, color ? GB_MODEL_CGB_E : GB_MODEL_DMG_B, 48000);
+        run_frames(400); /* past the boot animation, into the game */
+        uint8_t bytes[0x50];
+        CHECK(emu_read_achievement_memory(0x100, bytes, 0x50) == 0x50 && memcmp(bytes, rom + 0x100, 0x50) == 0,
+              "%s: $0100-$014F reads the cartridge header", name);
+        CHECK(emu_read_achievement_memory(0xA000, bytes, 4) == 4 && bytes[0] == 0x42,
+              "%s: $A000 reads cartridge RAM (0x%02X)", name, bytes[0]);
+        uint8_t sram[0x2000];
+        emu_save_battery(sram, sizeof(sram));
+        CHECK(bytes[2] == sram[2] && bytes[3] == sram[3] && (bytes[2] | bytes[3]) != 0 && bytes[3] != 0xFF,
+              "%s: the frame counter matches the save RAM", name);
+        CHECK(emu_read_achievement_memory(0xFFFF, bytes, 1) == 1 && bytes[0] == 0x01,
+              "%s: $FFFF reads the interrupt enable register (0x%02X)", name, bytes[0]);
+        uint32_t banks = emu_read_achievement_memory(0x10000, bytes, 16);
+        CHECK(color ? banks == 16 : banks == 0, "%s: Color work RAM banks 2-7 %s (read %u)", name,
+              color ? "readable" : "absent", banks);
+        CHECK(emu_read_achievement_memory(0xFFFE, bytes, 4) == (color ? 4u : 2u),
+              "%s: reads stop where memory ends", name);
+        CHECK(emu_read_achievement_memory(0x16000, bytes, 1) == 0,
+              "%s: no cartridge RAM bank 1 on an 8 KB cartridge", name);
+        CHECK(emu_read_achievement_memory(0x40000, bytes, 1) == 0, "%s: nothing past the map", name);
+    }
+
     emu_unload();
+    uint8_t unused;
+    CHECK(emu_read_achievement_memory(0xC000, &unused, 1) == 0, "achievements: nothing to read with no game");
     free(rom);
     printf(failures ? "\n%d check(s) failed\n" : "\nAll checks passed\n", failures);
     return failures != 0;
