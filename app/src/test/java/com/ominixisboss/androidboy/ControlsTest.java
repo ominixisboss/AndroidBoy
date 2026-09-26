@@ -82,4 +82,18 @@ public class ControlsTest {
         assertEquals(ControlLayout.MAX_SCALE, ControlLayout.clampScale(9), 0);
         assertEquals(ControlLayout.MIN_SCALE, ControlLayout.clampScale(0.1f), 0);
     }
+
+    @Test
+    public void shoulderButtonsOnlyInGbaGames() {
+        ControllerMapping mapping = new ControllerMapping(RuntimeEnvironment.getApplication());
+        mapping.reset();
+        assertEquals(ControllerMapping.Action.REWIND, mapping.table().get(KeyEvent.KEYCODE_BUTTON_L1));
+        assertEquals(ControllerMapping.Action.FAST_FORWARD, mapping.table(false).get(KeyEvent.KEYCODE_BUTTON_R1));
+        assertEquals(ControllerMapping.Action.L, mapping.table(true).get(KeyEvent.KEYCODE_BUTTON_L1));
+        assertEquals(ControllerMapping.Action.R, mapping.table(true).get(KeyEvent.KEYCODE_BUTTON_R1));
+        // L2 and R2 still rewind and fast-forward in GBA games.
+        assertEquals(ControllerMapping.Action.REWIND, mapping.table(true).get(KeyEvent.KEYCODE_BUTTON_L2));
+        assertEquals(Emulator.KEY_L, ControllerMapping.Action.L.gameKey);
+        assertEquals(0x3FF, Skin.GAME_KEYS);
+    }
 }

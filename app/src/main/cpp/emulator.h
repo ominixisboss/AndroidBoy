@@ -1,5 +1,9 @@
 /*
- * Platform-independent wrapper around the SameBoy core.
+ * Platform-independent wrapper around the emulator cores: SameBoy for Game Boy and Game Boy
+ * Color games, and mGBA (gba_core.c) for Game Boy Advance games. Loading a ROM picks the core
+ * from its header, and every call below goes to that core; calls that only make sense on a
+ * Game Boy (models, palettes, borders, the link cable, printer and camera) do nothing while a
+ * GBA game is loaded.
  *
  * The JNI bridge (jni_bridge.c) is a thin layer over this API, which keeps
  * everything in here testable on a desktop host (see tests/host_test.c).
@@ -14,7 +18,7 @@
 
 #include "Core/gb.h"
 
-/* Largest possible frame (Super Game Boy border enabled). */
+/* Largest possible frame (Super Game Boy border enabled; a GBA screen is 240x160). */
 #define EMU_MAX_WIDTH  256
 #define EMU_MAX_HEIGHT 224
 
@@ -35,8 +39,17 @@ void emu_set_log_sink(emu_log_sink_t sink);
 /* Returns the model a ROM should run on, given the user's model preferences. */
 GB_model_t emu_pick_model(const uint8_t *rom, size_t size, GB_model_t dmg_model, GB_model_t cgb_model);
 
-/* (Re)initializes the emulator with a ROM. Returns false on failure. */
+/*
+ * (Re)initializes the emulator with a ROM: a Game Boy Advance ROM runs on mGBA (`model` is then
+ * ignored), anything else on SameBoy. Returns false on failure.
+ */
 bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned sample_rate);
+
+#define EMU_SYSTEM_GB  0
+#define EMU_SYSTEM_GBA 1
+
+/* Which system the loaded game is for. */
+int emu_get_system(void);
 bool emu_is_loaded(void);
 void emu_unload(void);
 
@@ -44,7 +57,11 @@ void emu_reset(void);
 void emu_switch_model(GB_model_t model);
 GB_model_t emu_get_model(void);
 
-/* Bitmask of (1 << GB_KEY_*). */
+/* The Game Boy Advance's shoulder buttons, after the Game Boy's eight keys. */
+#define EMU_KEY_L (1 << 8)
+#define EMU_KEY_R (1 << 9)
+
+/* Bitmask of (1 << GB_KEY_*), plus EMU_KEY_L and EMU_KEY_R for GBA games. */
 void emu_set_keys(unsigned mask);
 
 /* Runs the emulator until the next frame is ready. */
@@ -75,7 +92,7 @@ size_t emu_save_battery(uint8_t *buffer, size_t size);
 void emu_load_battery(const uint8_t *buffer, size_t size);
 bool emu_take_battery_dirty(void);
 
-/* Save states (BESS-compatible SameBoy format). */
+/* Save states (BESS-compatible SameBoy format, or mGBA's own for GBA games). */
 size_t emu_state_size(void);
 void emu_save_state(uint8_t *buffer);
 bool emu_load_state(const uint8_t *buffer, size_t size);
@@ -88,7 +105,8 @@ void emu_set_highpass(GB_highpass_mode_t mode);
 void emu_set_rumble_mode(GB_rumble_mode_t mode);
 
 /*
- * Reads memory for RetroAchievements, in its Game Boy (Color) address map: $0000-$FFFF is the
+ * Reads memory for RetroAchievements, in its address map for the system. GBA: see gba_core.h.
+ * Game Boy (Color): $0000-$FFFF is the
  * CPU's view (read without side effects), $10000-$15FFF the Color's work RAM banks 2-7, and
  * $16000-$33FFF cartridge RAM banks 1-15. Returns how many bytes were read, stopping at the
  * first address that doesn't exist on this game (e.g. more cartridge RAM than it has).
@@ -97,7 +115,8 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
 
 /*
  * Replaces the game's cheats with `codes`: GameShark (01VVAAAA) and Game Genie (VVA-AAA or
- * VVA-AAA-OOO) codes, one per line. Returns how many codes were accepted; lines that aren't a
+ * VVA-AAA-OOO) codes for Game Boy games, GameShark, Action Replay and CodeBreaker codes for GBA
+ * games, one per line. Returns how many codes were accepted; lines that aren't a
  * valid code are skipped. Loading a ROM clears the cheats; an empty string turns them off.
  */
 unsigned emu_set_cheats(const char *codes);

@@ -586,6 +586,9 @@ final class ThemeSkin extends Skin {
                 case Control.PILL:
                     drawPill(canvas, g, control, press);
                     break;
+                case Control.SHOULDER:
+                    drawShoulderButton(canvas, control, press);
+                    break;
                 default:
                     if (control.keys == KEY_MENU || control.keys == KEY_REWIND || control.keys == KEY_FAST_FORWARD) {
                         drawUtility(canvas, control.bounds, control.keys, press);
@@ -875,6 +878,23 @@ final class ThemeSkin extends Skin {
     }
 
     // ---- Start and Select ----
+
+    /** L and R, in the Start and Select buttons' colours and this theme's style. */
+    private void drawShoulderButton(Canvas canvas, Control control, float press) {
+        int color = palette.startSelect;
+        switch (palette.style) {
+            case SOLID:
+                drawShoulder(canvas, control, press, lighten(color, 0.22f), shade(color, 0.75f), shade(color, 0.5f),
+                        luminance(color) > 0.5f ? 0xFF303030 : 0xFFF0F0F0);
+                break;
+            case TRANSLUCENT:
+                drawShoulder(canvas, control, press, color, color, palette.rim, palette.label);
+                break;
+            default: // Outlines, glowing or not.
+                drawShoulder(canvas, control, press, 0, 0, color, color);
+                break;
+        }
+    }
 
     private void drawPill(Canvas canvas, Geometry g, Control control, float press) {
         RectF b = control.bounds;

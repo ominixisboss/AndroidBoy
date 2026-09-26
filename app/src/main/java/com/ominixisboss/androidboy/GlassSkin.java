@@ -243,7 +243,8 @@ final class GlassSkin extends Skin {
 
     private void drawButton(Canvas canvas, Control control, float press, float density) {
         RectF b = control.bounds;
-        boolean pill = control.shape == Control.PILL;
+        boolean shoulder = control.shape == Control.SHOULDER;
+        boolean pill = control.shape == Control.PILL || shoulder;
         float shrink = 1 - 0.035f * Math.min(1, press);
         float halfWidth = b.width() / 2 * shrink;
         float halfHeight = b.height() / 2 * shrink;
@@ -260,6 +261,13 @@ final class GlassSkin extends Skin {
         drawGlare(canvas, rect, 0, press * 0.9f);
         canvas.restore();
         drawRim(canvas, shape, rect, density);
+        if (shoulder) {
+            text.setColor(variant.label);
+            text.setTextSize(rect.height() * 0.6f);
+            canvas.drawText(control.keys == Emulator.KEY_L ? "L" : "R", rect.centerX(),
+                    rect.centerY() - (text.descent() + text.ascent()) / 2, text);
+            return;
+        }
         if (pill) {
             text.setColor(withAlpha(variant.label, 0xC0));
             text.setTextSize(b.height() * 0.62f);

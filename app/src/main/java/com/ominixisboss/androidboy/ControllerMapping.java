@@ -24,6 +24,9 @@ final class ControllerMapping {
         START("Start", Emulator.KEY_START, KeyEvent.KEYCODE_BUTTON_START, KeyEvent.KEYCODE_ENTER),
         SELECT("Select", Emulator.KEY_SELECT, KeyEvent.KEYCODE_BUTTON_SELECT, KeyEvent.KEYCODE_SHIFT_RIGHT,
                 KeyEvent.KEYCODE_DEL),
+        // Game Boy Advance games only; in Game Boy games these buttons do what they're set to below.
+        L("L (Game Boy Advance)", Emulator.KEY_L, KeyEvent.KEYCODE_BUTTON_L1, KeyEvent.KEYCODE_Q),
+        R("R (Game Boy Advance)", Emulator.KEY_R, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_E),
         TURBO_A("Turbo A", Emulator.KEY_A, KeyEvent.KEYCODE_BUTTON_Y),
         TURBO_B("Turbo B", Emulator.KEY_B, KeyEvent.KEYCODE_BUTTON_X),
         FAST_FORWARD("Fast-forward (hold)", 0, KeyEvent.KEYCODE_BUTTON_R1, KeyEvent.KEYCODE_BUTTON_R2,
@@ -68,10 +71,25 @@ final class ControllerMapping {
         return keys;
     }
 
-    /** Every button's action, for looking up key presses quickly. */
+    /** Every button's action for a Game Boy game, for looking up key presses quickly. */
     android.util.SparseArray<Action> table() {
+        return table(false);
+    }
+
+    /**
+     * Every button's action, for looking up key presses quickly. In a Game Boy Advance game
+     * ({@code gba}) L and R come first, so L1 and R1 are the shoulder buttons; in a Game Boy
+     * game they're left out, and those buttons rewind and fast-forward.
+     */
+    android.util.SparseArray<Action> table(boolean gba) {
         android.util.SparseArray<Action> table = new android.util.SparseArray<>();
+        if (gba) {
+            for (Action action : new Action[] {Action.L, Action.R}) {
+                for (int key : keys(action)) table.put(key, action);
+            }
+        }
         for (Action action : Action.values()) {
+            if (action == Action.L || action == Action.R) continue;
             for (int key : keys(action)) {
                 if (table.get(key) == null) table.put(key, action);
             }

@@ -48,6 +48,8 @@ final class SkinView extends View {
     private int frameHeight = 144;
     private boolean controlsVisible = true;
     private boolean integerScaling;
+    /** L and R for Game Boy Advance games (see {@link Skin#addShoulderButtons}). */
+    private boolean shoulderButtons;
     private boolean haptics = true;
     private int mask;
 
@@ -149,6 +151,13 @@ final class SkinView extends View {
         relayout();
     }
 
+    /** Adds L and R, for Game Boy Advance games. */
+    void setShoulderButtons(boolean shown) {
+        if (shoulderButtons == shown) return;
+        shoulderButtons = shown;
+        relayout();
+    }
+
     void setHaptics(boolean enabled) {
         haptics = enabled;
     }
@@ -183,6 +192,7 @@ final class SkinView extends View {
     private void relayout() {
         if (getWidth() == 0 || getHeight() == 0) return;
         skin.layout(layout, getWidth(), getHeight(), frameWidth, frameHeight, controlsVisible, integerScaling);
+        if (shoulderButtons) Skin.addShoulderButtons(layout);
         baseBounds.clear();
         for (Skin.Control control : layout.controls) baseBounds.add(new RectF(control.bounds));
         if (controlLayout != null && skin.movableControls()) {

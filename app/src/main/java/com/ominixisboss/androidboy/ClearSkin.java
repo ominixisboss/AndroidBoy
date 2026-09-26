@@ -658,6 +658,11 @@ final class ClearSkin extends Skin {
                 drawDpad(canvas, control.bounds, motion.tiltX, motion.tiltY);
             } else if (control.shape == Control.PILL) {
                 drawPill(canvas, control.bounds, press);
+            } else if (control.shape == Control.SHOULDER) {
+                // Rubber, like Start and Select.
+                int color = variant.pills;
+                drawShoulder(canvas, control, press, lighten(color, 0.22f), shade(color, 0.8f), 0x70000000,
+                        luminance(color) > 0.5f ? 0xFF303030 : 0xE0FFFFFF);
             } else {
                 drawButton(canvas, control, press);
             }

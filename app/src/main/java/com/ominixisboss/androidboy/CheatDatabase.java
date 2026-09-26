@@ -20,7 +20,7 @@ import java.util.Set;
 
 /**
  * Cheats from the libretro database (github.com/libretro/libretro-database, the collection
- * RetroArch downloads): one .cht file per game, for Game Boy and Game Boy Color.
+ * RetroArch downloads): one .cht file per game, for Game Boy, Game Boy Color and Game Boy Advance.
  */
 final class CheatDatabase {
     static final String SITE = "https://github.com/libretro/libretro-database";
@@ -28,6 +28,7 @@ final class CheatDatabase {
     private static final String RAW = "https://raw.githubusercontent.com/libretro/libretro-database/master/cht/";
     static final String FOLDER_GB = "Nintendo - Game Boy";
     static final String FOLDER_GBC = "Nintendo - Game Boy Color";
+    static final String FOLDER_GBA = "Nintendo - Game Boy Advance";
     /** The list of games changes rarely; GitHub allows few requests an hour without an account. */
     static final long INDEX_MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000;
     private static final Set<String> SMALL_WORDS = new HashSet<>(Arrays.asList("the", "a", "an", "of", "and"));
@@ -47,6 +48,10 @@ final class CheatDatabase {
             return name.endsWith(".cht") ? name.substring(0, name.length() - 4) : name;
         }
 
+        boolean isGba() {
+            return FOLDER_GBA.equals(folder);
+        }
+
         boolean isColor() {
             return FOLDER_GBC.equals(folder);
         }
@@ -62,7 +67,10 @@ final class CheatDatabase {
     static List<Entry> index(File cache) throws IOException {
         if (cache.isFile() && System.currentTimeMillis() - cache.lastModified() < INDEX_MAX_AGE_MS) {
             List<Entry> cached = parseIndex(new String(RomLibrary.readFile(cache), StandardCharsets.UTF_8));
-            if (!cached.isEmpty()) return cached;
+            // Lists from before Game Boy Advance support have no GBA files: fetch a new one.
+            boolean hasGba = false;
+            for (Entry entry : cached) hasGba |= entry.isGba();
+            if (!cached.isEmpty() && hasGba) return cached;
         }
         try {
             List<Entry> entries = fetchIndex();
@@ -78,13 +86,13 @@ final class CheatDatabase {
         }
     }
 
-    /** Walks the repository tree: root → cht → the two Game Boy folders. */
+    /** Walks the repository tree: root → cht → the Game Boy, Color and Advance folders. */
     private static List<Entry> fetchIndex() throws IOException {
         try {
             String cht = childSha(get(TREES + "master"), "cht");
             String chtTree = get(TREES + cht);
             List<Entry> entries = new ArrayList<>();
-            for (String folder : new String[] {FOLDER_GB, FOLDER_GBC}) {
+            for (String folder : new String[] {FOLDER_GB, FOLDER_GBC, FOLDER_GBA}) {
                 for (String name : fileNames(get(TREES + childSha(chtTree, folder)))) {
                     if (name.toLowerCase(Locale.ROOT).endsWith(".cht")) entries.add(new Entry(folder, name));
                 }
@@ -138,12 +146,18 @@ final class CheatDatabase {
      * finds "Pokemon - Red Version"). Closest titles first, then the console the game is for.
      */
     static List<Entry> search(List<Entry> index, String query, boolean preferColor, int limit) {
+        return search(index, query, preferColor, false, limit);
+    }
+
+    /** As above, but only Game Boy Advance files for a GBA game ({@code gba}), and none for a Game Boy one. */
+    static List<Entry> search(List<Entry> index, String query, boolean preferColor, boolean gba, int limit) {
         List<String> wanted = words(query);
         if (wanted.isEmpty()) return Collections.emptyList();
         String wantedTitle = String.join(" ", wanted);
         List<Entry> matches = new ArrayList<>();
         List<int[]> ranks = new ArrayList<>();
         for (Entry entry : index) {
+            if (entry.isGba() != gba) continue;
             List<String> have = words(entry.title());
             if (!matchesAll(wanted, have)) continue;
             // Exact game name (ignoring region and version tags) first, then the fewest extra words.

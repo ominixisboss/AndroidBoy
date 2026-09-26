@@ -26,8 +26,9 @@ final class RomLibrary {
     static final int STATE_SLOTS = 9;
 
     // The largest official cartridges are 8 MiB; allow some headroom for homebrew mappers.
-    private static final int MAX_ROM_SIZE = 16 * 1024 * 1024;
-    private static final String[] ROM_EXTENSIONS = {".gb", ".gbc", ".sgb", ".cgb", ".dmg"};
+    /** The largest Game Boy Advance cartridge; Game Boy ones are at most 8 MB. */
+    private static final int MAX_ROM_SIZE = 32 * 1024 * 1024;
+    private static final String[] ROM_EXTENSIONS = {".gb", ".gbc", ".sgb", ".cgb", ".dmg", ".gba", ".agb"};
 
     private final File romsDir;
     private final File savesDir;
@@ -108,7 +109,7 @@ final class RomLibrary {
      * Returns the new file. Call off the main thread.
      */
     File addRom(String name, byte[] data) throws IOException {
-        if (data.length > MAX_ROM_SIZE * 4) throw new IOException("This file is too large to be a Game Boy ROM");
+        if (data.length > MAX_ROM_SIZE * 4) throw new IOException("This file is too large to be a game");
         if (isZip(data)) {
             try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(data))) {
                 data = null;
@@ -121,14 +122,14 @@ final class RomLibrary {
                     }
                 }
             }
-            if (data == null) throw new IOException("The zip file doesn't contain a Game Boy ROM");
+            if (data == null) throw new IOException("The zip file doesn't contain a Game Boy or Game Boy Advance game");
         }
 
-        if (data.length < 0x150) throw new IOException("This file is too small to be a Game Boy ROM");
+        if (data.length < 0x150) throw new IOException("This file is too small to be a game");
         if (name == null || name.isEmpty()) name = "Game.gb";
         name = name.replaceAll("[/\\\\:*?\"<>|\\p{Cntrl}]", "_");
         if (!hasRomExtension(name)) {
-            name += (data[0x143] & 0x80) != 0 ? ".gbc" : ".gb";
+            name += isGbaRom(data) ? ".gba" : (data[0x143] & 0x80) != 0 ? ".gbc" : ".gb";
         }
 
         File target = new File(romsDir, name);
@@ -159,6 +160,18 @@ final class RomLibrary {
         String name = file.getName();
         int dot = name.lastIndexOf('.');
         return dot > 0 ? name.substring(0, dot) : name;
+    }
+
+    /** Whether a ROM is a Game Boy Advance cartridge, by its header (as gba_core.c decides). */
+    static boolean isGbaRom(byte[] data) {
+        return data.length >= 0xC0 && (data[4] & 0xFF) == 0x24 && (data[5] & 0xFF) == 0xFF && (data[6] & 0xFF) == 0xAE
+                && (data[7] & 0xFF) == 0x51 && (data[0xB2] & 0xFF) == 0x96;
+    }
+
+    /** Whether a file in the library is a Game Boy Advance game, by its extension. */
+    static boolean isGbaFile(File file) {
+        String lower = file.getName().toLowerCase(Locale.ROOT);
+        return lower.endsWith(".gba") || lower.endsWith(".agb");
     }
 
     private static boolean hasRomExtension(String name) {

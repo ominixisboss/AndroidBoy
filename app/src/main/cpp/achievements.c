@@ -14,6 +14,7 @@
 #include "rc_consoles.h"
 #include "achievements.h"
 #include "emulator.h"
+#include "gba_core.h"
 
 #define TAG "AndroidBoy"
 #define JNI_FN(name) Java_com_ominixisboss_androidboy_Achievements_##name
@@ -275,8 +276,10 @@ JNIEXPORT void JNICALL JNI_FN(nativeLoadGame)(JNIEnv *env, jclass clazz, jbyteAr
     rom_copy = malloc(size > 0 ? (size_t)size : 1);
     if (!rom_copy) return;
     (*env)->GetByteArrayRegion(env, rom, 0, size, (jbyte *)rom_copy);
-    /* Games with the Color flag are listed under Game Boy Color; the hash is the same either way. */
-    uint32_t console = size > 0x143 && (rom_copy[0x143] & 0x80) ? RC_CONSOLE_GAMEBOY_COLOR : RC_CONSOLE_GAMEBOY;
+    /* Games with the Color flag are listed under Game Boy Color; the hash is the same either way.
+       GBA games hash the same way too (the whole ROM), but are listed under their own console. */
+    uint32_t console = gba_is_rom(rom_copy, (size_t)size) ? RC_CONSOLE_GAMEBOY_ADVANCE
+        : size > 0x143 && (rom_copy[0x143] & 0x80) ? RC_CONSOLE_GAMEBOY_COLOR : RC_CONSOLE_GAMEBOY;
     rc_client_begin_identify_and_load_game(client, console, NULL, rom_copy, (size_t)size, game_loaded, NULL);
 }
 

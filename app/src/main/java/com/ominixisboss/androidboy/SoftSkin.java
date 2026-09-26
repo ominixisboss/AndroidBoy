@@ -257,6 +257,10 @@ final class SoftSkin extends Skin {
                 case Control.PILL:
                     drawPill(canvas, control, press, density);
                     break;
+                case Control.SHOULDER:
+                    drawShoulder(canvas, control, press, blend(variant.button, Color.WHITE, 0.18f),
+                            blend(variant.button, Color.BLACK, 0.08f), variant.ink, variant.label);
+                    break;
                 default:
                     drawButton(canvas, control, press, density);
                     break;

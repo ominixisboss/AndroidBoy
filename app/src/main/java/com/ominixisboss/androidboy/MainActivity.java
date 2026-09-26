@@ -658,8 +658,9 @@ public final class MainActivity extends Activity {
 
     private void showLicense() {
         StringBuilder text = new StringBuilder();
-        // SameBoy (the emulator core) and rcheevos (RetroAchievements), both MIT-style licenses.
-        String[][] licenses = {{"SameBoy", "licenses/SameBoy.txt"}, {"rcheevos (RetroAchievements)", "licenses/rcheevos.txt"}};
+        // SameBoy (the Game Boy core) and rcheevos (RetroAchievements), MIT-style; mGBA (the GBA core), MPL-2.0.
+        String[][] licenses = {{"SameBoy", "licenses/SameBoy.txt"}, {"mGBA", "licenses/mGBA.txt"},
+                {"rcheevos (RetroAchievements)", "licenses/rcheevos.txt"}};
         for (String[] license : licenses) {
             if (text.length() > 0) text.append("\n\n");
             text.append(license[0]).append("\n\n");

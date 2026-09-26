@@ -191,6 +191,10 @@ public final class EmulatorActivity extends Activity
             finish();
             return;
         }
+        // L and R, on screen and on a controller, for Game Boy Advance games.
+        boolean gba = isGba();
+        skinView.setShoulderButtons(gba);
+        keyTable = controllerMapping.table(gba);
         screen.onResume();
         thread = new EmulatorThread(this, loadedSampleRate);
         thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
@@ -258,7 +262,7 @@ public final class EmulatorActivity extends Activity
         settings.applyToCore();
         int sampleRate = EmulatorThread.outputSampleRate();
         if (!Emulator.nativeLoadRom(data, preferredModel(), sampleRate)) {
-            Toast.makeText(this, "This doesn't look like a Game Boy game", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "This doesn't look like a Game Boy or Game Boy Advance game", Toast.LENGTH_LONG).show();
             return false;
         }
         loadedRomPath = rom.getPath();
@@ -305,6 +309,11 @@ public final class EmulatorActivity extends Activity
             Emulator.nativeUnload();
             loadedRomPath = null;
         }
+    }
+
+    /** Whether the loaded game is a Game Boy Advance one (mGBA runs it; the Game Boy extras don't apply). */
+    private static boolean isGba() {
+        return Emulator.nativeGetSystem() == Emulator.SYSTEM_GBA;
     }
 
     private int preferredModel() {
@@ -418,7 +427,7 @@ public final class EmulatorActivity extends Activity
 
     private void showCheats() {
         dialogOpened();
-        CheatDialogs.show(this, library.cheatFile(rom), RomLibrary.baseName(rom), loadedRomIsCgb,
+        CheatDialogs.show(this, library.cheatFile(rom), RomLibrary.baseName(rom), loadedRomIsCgb, isGba(),
                 achievements.hasAccount() && achievements.isHardcoreEnabled(), this::applyCheats, this::dialogClosed);
     }
 
@@ -600,6 +609,7 @@ public final class EmulatorActivity extends Activity
     private List<GameMenuView.Section> menuSections() {
         LinkSession session = link;
         boolean linked = session != null;
+        boolean gba = isGba();
         List<GameMenuView.Section> sections = new ArrayList<>();
 
         GameMenuView.Section quick = new GameMenuView.Section("Quick access");
@@ -618,7 +628,7 @@ public final class EmulatorActivity extends Activity
             quick.add(Icons.LOAD, "Load state", "Go back to a saved moment", () -> showStateSlots(false));
         }
         quick.add(Icons.CHEAT, "Cheats", "Add, turn on or find cheat codes", this::showCheats);
-        if (!linked) {
+        if (!linked && !gba) {
             quick.add(Icons.SEARCH, "Cheat search", "Find where the game keeps lives, money or health",
                     this::showCheatSearch);
         }
@@ -628,7 +638,7 @@ public final class EmulatorActivity extends Activity
         GameMenuView.Section input = new GameMenuView.Section("Input");
         input.add(Icons.GAMEPAD, "Controller buttons", "Choose what each button does", () -> {
             dialogOpened();
-            ControllerDialog.show(this, controllerMapping, () -> keyTable = controllerMapping.table(),
+            ControllerDialog.show(this, controllerMapping, () -> keyTable = controllerMapping.table(isGba()),
                     this::dialogClosed);
         });
         input.add(Icons.TOUCH, "Touch controls", "Move and resize the on-screen buttons", this::startEditingControls);
@@ -660,7 +670,7 @@ public final class EmulatorActivity extends Activity
 
         GameMenuView.Section system = new GameMenuView.Section("System");
         if (!linked) system.add(Icons.RESET, "Reset", "Start the game again from its last save", this::confirmReset);
-        if (!linked) system.add(Icons.PRINTER, "Link port", "Plug in a Game Boy Printer", this::showLinkPort);
+        if (!linked && !gba) system.add(Icons.PRINTER, "Link port", "Plug in a Game Boy Printer", this::showLinkPort);
         if (cameraFeed != null) {
             boolean front = cameraFeed.isFront();
             system.add(Icons.CAMERA, front ? "Use the back camera" : "Use the front camera",
@@ -672,7 +682,7 @@ public final class EmulatorActivity extends Activity
         more.add(Icons.TROPHY, "Achievements", "RetroAchievements for this game", this::showAchievements);
         if (linked) {
             more.add(Icons.UNPLUG, "Unplug the link cable", "Carry on playing alone", () -> unplugLink(null));
-        } else {
+        } else if (!gba) {
             more.add(Icons.LINK, "Link cable", "Connect two games, or two phones", this::showLinkCable);
         }
         more.add(Icons.EXIT, "Quit to game list", "Your game is saved as you leave", this::finish);
@@ -904,12 +914,17 @@ public final class EmulatorActivity extends Activity
     // ---- Link cable ----
 
     private void showLinkCable() {
+        if (isGba()) {
+            Toast.makeText(this, "The link cable is for Game Boy games", Toast.LENGTH_SHORT).show();
+            return;
+        }
         dialogOpened();
         LinkDialogs.show(this, new LinkDialogs.Callbacks() {
             @Override
             public List<File> otherGames() {
                 List<File> games = library.list();
-                games.removeIf(game -> game.getName().equals(rom.getName()));
+                // Only Game Boy games can be linked.
+                games.removeIf(game -> game.getName().equals(rom.getName()) || RomLibrary.isGbaFile(game));
                 return games;
             }
 

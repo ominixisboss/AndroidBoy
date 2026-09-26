@@ -36,9 +36,10 @@ final class CheatDialogs {
 
     /**
      * Shows the cheat list for a game. {@code romName} seeds the online search, {@code isColor}
-     * ranks Game Boy Color results first; {@code hardcore} explains that cheats are off.
+     * ranks Game Boy Color results first, {@code gba} is for a Game Boy Advance game (its own
+     * codes and cheat files); {@code hardcore} explains that cheats are off.
      */
-    static void show(Activity activity, File file, String romName, boolean isColor, boolean hardcore,
+    static void show(Activity activity, File file, String romName, boolean isColor, boolean gba, boolean hardcore,
                      Runnable onChanged, Runnable onDismiss) {
         List<Cheat> cheats = Cheat.load(file);
         LinearLayout content = column(activity);
@@ -46,7 +47,9 @@ final class CheatDialogs {
             content.addView(text(activity, "Cheats are off in RetroAchievements hardcore mode. "
                     + "You can still set them up; they apply when hardcore mode is off.", 13));
         }
-        TextView empty = text(activity, "No cheats yet. Find some online, or add a GameShark or Game Genie code.", 14);
+        TextView empty = text(activity, gba
+                ? "No cheats yet. Find some online, or add a GameShark, Action Replay or CodeBreaker code."
+                : "No cheats yet. Find some online, or add a GameShark or Game Genie code.", 14);
         content.addView(empty);
         ListView list = new ListView(activity);
         content.addView(list, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -88,7 +91,7 @@ final class CheatDialogs {
                     .setTitle(cheat.description)
                     .setItems(new String[] {"Edit", "Delete"}, (d, which) -> {
                         if (which == 0) {
-                            showEditor(activity, cheat, edited -> {
+                            showEditor(activity, cheat, gba, edited -> {
                                 save.run();
                                 refresh.run();
                             });
@@ -114,13 +117,13 @@ final class CheatDialogs {
         dialog.show();
         // These open another dialog over this one rather than closing it.
         dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v ->
-                showEditor(activity, null, added -> {
+                showEditor(activity, null, gba, added -> {
                     cheats.add(added);
                     save.run();
                     refresh.run();
                 }));
         dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(v ->
-                showSearch(activity, romName, isColor, found -> {
+                showSearch(activity, romName, isColor, gba, found -> {
                     int added = Cheat.merge(cheats, found);
                     Toast.makeText(activity, added == 1 ? "Added 1 cheat" : "Added " + added + " cheats",
                             Toast.LENGTH_SHORT).show();
@@ -158,7 +161,7 @@ final class CheatDialogs {
         box.setText(cheat.description);
         box.setChecked(valid && cheat.enabled);
         box.setEnabled(valid);
-        code.setText(valid ? cheat.code : cheat.code + "\nCan't use this code: it has ?s to fill in, or isn't GameShark or Game Genie. "
+        code.setText(valid ? cheat.code : cheat.code + "\nCan't use this code: it has ?s to fill in, or isn't a code this game's system understands. "
                 + "Long-press to edit.");
         return row;
     }
@@ -168,7 +171,7 @@ final class CheatDialogs {
     }
 
     /** Adds a cheat ({@code existing} null) or edits one. */
-    private static void showEditor(Activity activity, Cheat existing, CheatCallback callback) {
+    private static void showEditor(Activity activity, Cheat existing, boolean gba, CheatCallback callback) {
         LinearLayout form = column(activity);
         EditText description = new EditText(activity);
         description.setHint("Description (optional)");
@@ -183,8 +186,10 @@ final class CheatDialogs {
             description.setText(existing.description);
             code.setText(existing.code);
         }
-        TextView hint = text(activity, "GameShark codes have 8 digits, Game Genie codes 6 or 9. "
-                + "Join several codes with +.", 13);
+        TextView hint = text(activity, gba
+                ? "GameShark and Action Replay codes have 8 + 8 digits, CodeBreaker codes 8 + 4. "
+                        + "Join several codes with +."
+                : "GameShark codes have 8 digits, Game Genie codes 6 or 9. Join several codes with +.", 13);
         form.addView(description);
         form.addView(code);
         form.addView(hint);
@@ -200,7 +205,8 @@ final class CheatDialogs {
             String codeText = code.getText().toString().trim();
             Cheat cheat = new Cheat("", codeText, true);
             if (!cheat.isValid()) {
-                hint.setText("That isn't a GameShark (8 digits) or Game Genie (6 or 9 digits) code.");
+                hint.setText(gba ? "That isn't a GameShark, Action Replay or CodeBreaker code."
+                        : "That isn't a GameShark (8 digits) or Game Genie (6 or 9 digits) code.");
                 return;
             }
             String name = description.getText().toString().trim();
@@ -221,7 +227,8 @@ final class CheatDialogs {
     }
 
     /** Searches the cheat database, then lets the player pick cheats from one game. */
-    private static void showSearch(Activity activity, String romName, boolean isColor, FoundCallback callback) {
+    private static void showSearch(Activity activity, String romName, boolean isColor, boolean gba,
+                                   FoundCallback callback) {
         LinearLayout content = column(activity);
         EditText query = new EditText(activity);
         query.setHint("Game name");
@@ -244,7 +251,8 @@ final class CheatDialogs {
                 TextView view = convertView instanceof TextView ? (TextView) convertView : text(activity, "", 15);
                 view.setPadding(0, dp(activity, 10), 0, dp(activity, 10));
                 CheatDatabase.Entry entry = getItem(position);
-                view.setText(entry.title() + (entry.isColor() ? "  ·  Game Boy Color" : "  ·  Game Boy"));
+                view.setText(entry.title() + (entry.isGba() ? "  ·  Game Boy Advance"
+                        : entry.isColor() ? "  ·  Game Boy Color" : "  ·  Game Boy"));
                 return view;
             }
         };
@@ -259,7 +267,7 @@ final class CheatDialogs {
         Runnable search = () -> {
             if (index.isEmpty()) return;
             shown.clear();
-            shown.addAll(CheatDatabase.search(index.get(0), query.getText().toString(), isColor, SEARCH_RESULTS));
+            shown.addAll(CheatDatabase.search(index.get(0), query.getText().toString(), isColor, gba, SEARCH_RESULTS));
             adapter.notifyDataSetChanged();
             status.setText(shown.isEmpty() ? "No games found. Try fewer or shorter words." : "Tap a game to see its cheats.");
         };

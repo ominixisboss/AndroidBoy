@@ -94,6 +94,31 @@ public class CheatTest {
     }
 
     @Test
+    public void validatesGbaCodes() {
+        assertTrue(Cheat.isValidCode("D8BAE4D9 4864DCE5")); // GameShark / Action Replay
+        assertTrue(Cheat.isValidCode("32000010 0055"));     // CodeBreaker
+        assertTrue(Cheat.isValidCode("02000010:55"));       // VBA
+        assertFalse(Cheat.isValidCode("02000010:"));
+        // Cheat files split GBA codes into halves joined with +.
+        assertTrue(new Cheat("", "D8BAE4D9+4864DCE5+A86CDBA5+19BB7B06", true).isValid());
+        assertTrue(new Cheat("", "32000010+0055", true).isValid());
+        assertFalse(new Cheat("", "0055", true).isValid());
+        assertEquals("32000010\n0055\n", Cheat.activeCodes(Arrays.asList(new Cheat("x", "32000010+0055", true))));
+    }
+
+    @Test
+    public void searchesGbaCheatsOnlyForGbaGames() {
+        List<CheatDatabase.Entry> index = CheatDatabase.parseIndex(
+                CheatDatabase.FOLDER_GB + "\tPokemon - Red Version (USA, Europe).cht\n"
+                + CheatDatabase.FOLDER_GBA + "\tPokemon - Ruby Version (USA, Europe).cht\n"
+                + CheatDatabase.FOLDER_GBA + "\tPokemon - Emerald Version (USA, Europe).cht\n");
+        assertEquals(1, CheatDatabase.search(index, "pokemon", false, 10).size());
+        List<CheatDatabase.Entry> gba = CheatDatabase.search(index, "pokemon", false, true, 10);
+        assertEquals(2, gba.size());
+        assertTrue(gba.get(0).isGba() && !gba.get(0).isColor());
+    }
+
+    @Test
     public void searchesTheDatabase() {
         List<CheatDatabase.Entry> index = CheatDatabase.parseIndex(
                 CheatDatabase.FOLDER_GB + "\tTetris (World) (Rev A).cht\n"

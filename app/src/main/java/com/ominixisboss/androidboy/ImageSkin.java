@@ -294,6 +294,12 @@ final class ImageSkin extends Skin {
                 canvas.drawOval(control.bounds, highlight);
             }
         }
+        // L and R for Game Boy Advance games: the artwork has none, so draw them plainly.
+        for (int index = 0; index < layout.controls.size(); index++) {
+            Control control = layout.controls.get(index);
+            if (control.shape != Control.SHOULDER || !control.visible) continue;
+            drawShoulder(canvas, control, Math.min(1, motion.press(index)), 0x66FFFFFF, 0x40FFFFFF, 0x99FFFFFF, 0xE6FFFFFF);
+        }
     }
 
     private final RectF armSource = new RectF();

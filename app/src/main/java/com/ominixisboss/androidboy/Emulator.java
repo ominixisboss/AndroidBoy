@@ -36,6 +36,13 @@ final class Emulator {
     static final int KEY_B = 1 << 5;
     static final int KEY_SELECT = 1 << 6;
     static final int KEY_START = 1 << 7;
+    /** The Game Boy Advance's shoulder buttons. */
+    static final int KEY_L = 1 << 8;
+    static final int KEY_R = 1 << 9;
+
+    /** What the loaded game is for, from {@link #nativeGetSystem()}. */
+    static final int SYSTEM_GB = 0;
+    static final int SYSTEM_GBA = 1;
 
     private static boolean initialized;
 
@@ -48,6 +55,7 @@ final class Emulator {
     static native void nativeInit(AssetManager assets);
     static native int nativePickModel(byte[] rom, int dmgModel, int cgbModel);
     static native boolean nativeLoadRom(byte[] rom, int model, int sampleRate);
+    static native int nativeGetSystem();
     static native void nativeUnload();
     static native void nativeReset();
     static native void nativeSwitchModel(int model);
