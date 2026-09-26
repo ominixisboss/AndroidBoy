@@ -60,7 +60,7 @@ static uint32_t RC_CCONV read_memory(uint32_t address, uint8_t *buffer, uint32_t
 static const char *game_data = "{\"Success\":true,"
     "\"GameId\":1234,\"Title\":\"Test Cartridge\",\"ConsoleId\":4,"
     "\"ImageIconUrl\":\"http://server/Images/000001.png\","
-    "\"RichPresenceGameId\":1234,\"RichPresencePatch\":\"\",\"Sets\":[{"
+    "\"RichPresenceGameId\":1234,\"RichPresencePatch\":\"Display:\\r\\nHello from the test\",\"Sets\":[{"
       "\"AchievementSetId\":1111,\"GameId\":1234,\"Title\":null,\"Type\":\"core\","
       "\"ImageIconUrl\":\"http://server/Images/000001.png\","
       "\"Achievements\":["
@@ -71,7 +71,9 @@ static const char *game_data = "{\"Success\":true,"
         "\"MemAddr\":\"0xHa001=246\",\"Author\":\"Test\",\"BadgeName\":\"00002\","
         "\"Created\":1367266583,\"Modified\":1376929305}"
       "],"
-      "\"Leaderboards\":[]"
+      "\"Leaderboards\":[{\"ID\":7,\"Title\":\"Speedrun\",\"Description\":\"Fastest start\","
+        "\"Mem\":\"STA:0=2::CAN:0=1::SUB:0=1::VAL:0\",\"Format\":\"SCORE\",\"LowerIsBetter\":false,"
+        "\"Hidden\":false}]"
     "}]}";
 
 static void RC_CCONV server_call(const rc_api_request_t *request, rc_client_server_callback_t callback,
@@ -109,6 +111,14 @@ static void RC_CCONV server_call(const rc_api_request_t *request, rc_client_serv
         body = "{\"Success\":true,\"Response\":[{\"ID\":1234,\"Title\":\"Test Cartridge\","
                "\"ImageIcon\":\"/Images/000001.png\",\"ImageUrl\":\"http://server/Images/000001.png\"}]}";
     }
+    else if (strstr(post, "r=lbinfo")) {
+        body = "{\"Success\":true,\"LeaderboardData\":{\"LBID\":7,\"LBFormat\":\"SCORE\",\"LowerIsBetter\":0,"
+               "\"LBTitle\":\"Speedrun\",\"LBDesc\":\"Fastest start\",\"LBMem\":\"\",\"GameID\":1234,"
+               "\"LBAuthor\":\"Test\",\"LBCreated\":\"2013-10-20 22:12:21\",\"LBUpdated\":\"2021-06-14 08:18:19\","
+               "\"Entries\":[{\"User\":\"Champion\",\"Score\":4321,\"Rank\":1,\"Index\":1,\"DateSubmitted\":1615654895},"
+               "{\"User\":\"Tester\",\"Score\":1234,\"Rank\":2,\"Index\":2,\"DateSubmitted\":1615654896}],"
+               "\"TotalEntries\":2}}";
+    }
     else if (strstr(post, "r=ping")) {
         body = "{\"Success\":true}";
     }
@@ -138,6 +148,20 @@ static void RC_CCONV on_progress(int result, const char *error, rc_client_all_us
 }
 
 static char title_result[128];
+static char leaderboard_result[128];
+
+static void RC_CCONV on_leaderboard(int result, const char *error, rc_client_leaderboard_entry_list_t *list,
+                                    rc_client_t *client, void *userdata)
+{
+    (void)client; (void)userdata;
+    if (error) printf("leaderboard error: %s\n", error);
+    if (result == RC_OK && list && list->num_entries == 2) {
+        snprintf(leaderboard_result, sizeof(leaderboard_result), "%u %s %s / %u %s %s of %u",
+                 list->entries[0].rank, list->entries[0].user, list->entries[0].display,
+                 list->entries[1].rank, list->entries[1].user, list->entries[1].display, list->total_entries);
+    }
+    if (list) rc_client_destroy_leaderboard_entry_list(list);
+}
 
 static void RC_CCONV on_titles(int result, const char *error, rc_client_game_title_list_t *list,
                                rc_client_t *client, void *userdata)
@@ -235,6 +259,22 @@ int main(int argc, char **argv)
     rc_client_get_user_game_summary(client, &summary);
     CHECK(summary.num_unlocked_achievements == 2 && summary.points_unlocked == 15, "summary: 2 of %u, %u points",
           summary.num_core_achievements, summary.points_unlocked);
+
+    /* Rich presence: what the game says the player is doing, sent with pings. */
+    char presence[64] = "";
+    rc_client_get_rich_presence_message(client, presence, sizeof(presence));
+    CHECK(rc_client_has_rich_presence(client) && strcmp(presence, "Hello from the test") == 0,
+          "rich presence: %s", presence);
+
+    /* Leaderboards: the game's list, and a page of entries. */
+    rc_client_leaderboard_list_t *boards = rc_client_create_leaderboard_list(client,
+                                                                             RC_CLIENT_LEADERBOARD_LIST_GROUPING_NONE);
+    CHECK(boards && boards->num_buckets == 1 && boards->buckets[0].num_leaderboards == 1
+          && boards->buckets[0].leaderboards[0]->id == 7, "the game has one leaderboard");
+    if (boards) rc_client_destroy_leaderboard_list(boards);
+    rc_client_begin_fetch_leaderboard_entries(client, 7, 1, 10, on_leaderboard, NULL);
+    CHECK(strcmp(leaderboard_result, "1 Champion 004321 / 2 Tester 001234 of 2") == 0, "leaderboard entries: %s",
+          leaderboard_result);
 
     /* The achievements page: progress for every game on a console, then the played games' titles. */
     int progress_gb[6] = {0}, progress_gbc[6] = {0};

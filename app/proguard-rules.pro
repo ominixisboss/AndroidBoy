@@ -14,3 +14,6 @@
     static void onProgress(int, int, java.lang.String, int[]);
     static void onTitles(int, java.lang.String, int[], java.lang.String[], java.lang.String[]);
 }
+-keep class com.ominixisboss.androidboy.Achievements {
+    static void onLeaderboardEntries(int, int, java.lang.String, java.lang.String[], int, int);
+}

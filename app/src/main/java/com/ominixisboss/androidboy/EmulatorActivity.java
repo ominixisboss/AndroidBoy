@@ -56,6 +56,7 @@ public final class EmulatorActivity extends Activity
     private SkinView skinView;
     private Achievements achievements;
     private AchievementPopup achievementPopup;
+    private TrackerOverlay trackerOverlay;
     private int shownFrameWidth = 160;
     private int shownFrameHeight = 144;
     private EmulatorThread thread;
@@ -128,6 +129,8 @@ public final class EmulatorActivity extends Activity
         achievements.setListener(this);
         achievementPopup = new AchievementPopup(this);
         root.addView(achievementPopup, achievementPopup.layoutParams());
+        trackerOverlay = new TrackerOverlay(this);
+        root.addView(trackerOverlay, trackerOverlay.layoutParams());
         root.setOnApplyWindowInsetsListener(this::applyInsets);
         setContentView(root);
 
@@ -307,7 +310,9 @@ public final class EmulatorActivity extends Activity
 
     @Override
     public void onAchievementEvent(Achievements.Event event) {
+        if (trackerOverlay.handle(event)) return;
         if (event.type == Achievements.EVENT_RESET) {
+            trackerOverlay.clear();
             // Hardcore mode was turned on: the game has to start over.
             onEmulationThread(() -> {
                 Emulator.nativeReset();
@@ -326,7 +331,17 @@ public final class EmulatorActivity extends Activity
             return;
         }
         dialogOpened();
-        AchievementDialogs.showList(this, this::showAchievementAccount, this::dialogClosed);
+        // Rich presence reads game memory: ask on the emulation thread, then show the list.
+        onEmulationThread(() -> {
+            String presence = achievements.richPresence();
+            mainHandler.post(() -> {
+                if (isFinishing()) {
+                    dialogClosed();
+                    return;
+                }
+                AchievementDialogs.showList(this, presence, this::showAchievementAccount, this::dialogClosed);
+            });
+        });
     }
 
     private void showAchievementAccount() {

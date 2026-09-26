@@ -33,6 +33,16 @@ final class Achievements {
     static final int EVENT_LEADERBOARD_STARTED = 2;
     static final int EVENT_LEADERBOARD_FAILED = 3;
     static final int EVENT_LEADERBOARD_SUBMITTED = 4;
+    // Shown in the corner rather than as a banner: an achievement's progress, and the live value of a
+    // leaderboard attempt (the event's points carry the tracker's id).
+    static final int EVENT_PROGRESS_SHOW = 7;
+    static final int EVENT_PROGRESS_HIDE = 8;
+    static final int EVENT_PROGRESS_UPDATE = 9;
+    static final int EVENT_TRACKER_SHOW = 10;
+    static final int EVENT_TRACKER_HIDE = 11;
+    static final int EVENT_TRACKER_UPDATE = 12;
+    /** A submitted score's rank (points carry the rank). */
+    static final int EVENT_SCOREBOARD = 13;
     static final int EVENT_RESET = 14;
     static final int EVENT_GAME_COMPLETED = 15;
     static final int EVENT_SERVER_ERROR = 16;
@@ -97,6 +107,52 @@ final class Achievements {
             String[] f = row.split(SEPARATOR, -1);
             return new Achievement("1".equals(f[0]), Integer.parseInt(f[1]), f[2], f[3], f[4], f.length > 5 ? f[5] : "");
         }
+    }
+
+    /** One of the current game's leaderboards. */
+    static final class Leaderboard {
+        final int id;
+        final String title;
+        final String description;
+
+        Leaderboard(int id, String title, String description) {
+            this.id = id;
+            this.title = title;
+            this.description = description;
+        }
+
+        /** Parses a row from nativeLeaderboardList. */
+        static Leaderboard parse(String row) {
+            String[] f = row.split(SEPARATOR, -1);
+            return new Leaderboard(Integer.parseInt(f[0]), f[1], f.length > 2 ? f[2] : "");
+        }
+
+        String pageUrl() {
+            return SITE + "/leaderboardinfo.php?i=" + id;
+        }
+    }
+
+    /** A leaderboard entry: rank, player and their score or time. */
+    static final class LeaderboardEntry {
+        final int rank;
+        final String user;
+        final String score;
+
+        LeaderboardEntry(int rank, String user, String score) {
+            this.rank = rank;
+            this.user = user;
+            this.score = score;
+        }
+
+        static LeaderboardEntry parse(String row) {
+            String[] f = row.split(SEPARATOR, -1);
+            return new LeaderboardEntry(Integer.parseInt(f[0]), f[1], f.length > 2 ? f[2] : "");
+        }
+    }
+
+    interface LeaderboardCallback {
+        /** Main thread. {@code entries} is null if the request failed, with {@code error} saying why. */
+        void onEntries(List<LeaderboardEntry> entries, int total, String error);
     }
 
     // rc_consoles.h
@@ -204,6 +260,8 @@ final class Achievements {
     private LoginCallback pendingLogin;
     private ProgressCallback pendingProgress;
     private final List<int[]> progressResults = new ArrayList<>();
+    /** Waiting leaderboard requests, by leaderboard id (one at a time for each). */
+    private final java.util.Map<Integer, LeaderboardCallback> pendingLeaderboards = new java.util.HashMap<>();
     private volatile boolean loggedIn;
     private volatile boolean loggingIn;
     private volatile boolean gameLoaded;
@@ -348,6 +406,40 @@ final class Achievements {
     String[] gameSummary() {
         String summary = nativeGameSummary();
         return summary == null ? null : summary.split(SEPARATOR, -1);
+    }
+
+    /**
+     * What the game says the player is doing ("World 1-2, 3 lives"), or null. Reads game memory,
+     * so call on the emulation thread (or while it's stopped).
+     */
+    String richPresence() {
+        return gameLoaded ? nativeRichPresence() : null;
+    }
+
+    List<Leaderboard> leaderboards() {
+        List<Leaderboard> list = new ArrayList<>();
+        if (!gameLoaded) return list;
+        for (String row : nativeLeaderboardList()) list.add(Leaderboard.parse(row));
+        return list;
+    }
+
+    /** The top {@code count} entries, or those around the player. Main thread. */
+    void fetchLeaderboard(int id, boolean aroundPlayer, int count, LeaderboardCallback callback) {
+        boolean running = pendingLeaderboards.containsKey(id);
+        pendingLeaderboards.put(id, callback);
+        if (!running) nativeFetchLeaderboard(id, aroundPlayer, count);
+    }
+
+    @SuppressWarnings("unused")
+    private static void onLeaderboardEntries(int id, int result, String error, String[] rows, int total, int userIndex) {
+        Achievements self = instance;
+        List<LeaderboardEntry> entries = new ArrayList<>();
+        for (String row : rows) entries.add(LeaderboardEntry.parse(row));
+        String message = result == RC_OK ? null : error != null ? error : "Could not load the leaderboard (" + result + ")";
+        self.main.post(() -> {
+            LeaderboardCallback callback = self.pendingLeaderboards.remove(id);
+            if (callback != null) callback.onEntries(message == null ? entries : null, total, message);
+        });
     }
 
     List<Achievement> achievementList() {
@@ -529,4 +621,7 @@ final class Achievements {
     private static native void nativeLoadProgress(byte[] progress);
     private static native void nativeFetchProgress(int console);
     private static native void nativeFetchTitles(int[] gameIds);
+    private static native String nativeRichPresence();
+    private static native String[] nativeLeaderboardList();
+    private static native void nativeFetchLeaderboard(int id, boolean aroundUser, int count);
 }

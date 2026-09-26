@@ -87,6 +87,38 @@ public class AchievementsTest {
     }
 
     @Test
+    public void leaderboards() {
+        String S = Achievements.SEPARATOR;
+        Achievements.Leaderboard board = Achievements.Leaderboard.parse("7" + S + "Speedrun" + S + "Fastest start");
+        assertEquals(7, board.id);
+        assertEquals("Speedrun", board.title);
+        assertEquals("https://retroachievements.org/leaderboardinfo.php?i=7", board.pageUrl());
+        List<Achievements.LeaderboardEntry> entries = new ArrayList<>();
+        entries.add(Achievements.LeaderboardEntry.parse("1" + S + "Champion" + S + "004321"));
+        entries.add(Achievements.LeaderboardEntry.parse("2" + S + "Tester" + S + "001234"));
+        assertEquals("    1  Champion         004321\n▶   2  Tester           001234\n\n2 players",
+                AchievementDialogs.formatEntries(entries, "tester", 2));
+        assertEquals("No scores yet.", AchievementDialogs.formatEntries(new ArrayList<>(), "me", 0));
+        assertEquals(new String[] {"LEADERBOARD RANK", "Speedrun", "Rank 2 of 9"}[2],
+                AchievementPopup.describe(event(Achievements.EVENT_SCOREBOARD, "Speedrun", "Rank 2 of 9", 2))[2]);
+    }
+
+    @Test
+    public void trackersAndProgressStayOffTheBanner() {
+        TrackerOverlay overlay = new TrackerOverlay(org.robolectric.RuntimeEnvironment.getApplication());
+        assertTrue(overlay.handle(event(Achievements.EVENT_TRACKER_SHOW, null, "0:12.34", 7)));
+        assertEquals(2, overlay.getChildCount()); // The progress box, then the tracker.
+        assertTrue(overlay.handle(event(Achievements.EVENT_TRACKER_UPDATE, null, "0:13.00", 7)));
+        assertEquals("0:13.00", ((TextView) overlay.getChildAt(1)).getText().toString());
+        assertTrue(overlay.handle(event(Achievements.EVENT_TRACKER_HIDE, null, null, 7)));
+        assertEquals(1, overlay.getChildCount());
+        assertTrue(overlay.handle(event(Achievements.EVENT_PROGRESS_SHOW, "Collector", "3/10", 0)));
+        assertEquals(View.VISIBLE, overlay.getChildAt(0).getVisibility());
+        assertFalse(overlay.handle(event(Achievements.EVENT_ACHIEVEMENT, "Marker", "", 5)));
+        assertNull(AchievementPopup.describe(event(Achievements.EVENT_TRACKER_SHOW, null, "1", 1)));
+    }
+
+    @Test
     public void bannerText() {
         assertArrayEquals(new String[] {"ACHIEVEMENT UNLOCKED · 5 POINTS", "Marker", "Write the marker"},
                 AchievementPopup.describe(event(Achievements.EVENT_ACHIEVEMENT, "Marker", "Write the marker", 5)));
