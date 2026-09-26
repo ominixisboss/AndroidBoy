@@ -15,6 +15,7 @@ final class GameStore {
 
     private static final String PLAYED = "played:";
     private static final String FAVOURITE = "favourite:";
+    private static final String LINK = "link:";
 
     /** A row in the game list: a section heading or a game. */
     static final class Row {
@@ -65,9 +66,18 @@ final class GameStore {
         }
     }
 
+    /** What the game has plugged into its link port (Emulator.LINK_*). */
+    int linkAccessory(File rom) {
+        return prefs.getInt(LINK + rom.getName(), Emulator.LINK_NOTHING);
+    }
+
+    void setLinkAccessory(File rom, int accessory) {
+        prefs.edit().putInt(LINK + rom.getName(), accessory).apply();
+    }
+
     /** Forgets a deleted game. */
     void forget(File rom) {
-        prefs.edit().remove(PLAYED + rom.getName()).remove(FAVOURITE + rom.getName()).apply();
+        prefs.edit().remove(PLAYED + rom.getName()).remove(FAVOURITE + rom.getName()).remove(LINK + rom.getName()).apply();
     }
 
     /** The most recently played games, newest first. */

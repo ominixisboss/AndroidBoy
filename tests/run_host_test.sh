@@ -15,11 +15,11 @@ cd "$OUT"
 $CC $FLAGS -DGB_INTERNAL -c \
     "$ROOT"/sameboy/Core/apu.c "$ROOT"/sameboy/Core/camera.c "$ROOT"/sameboy/Core/display.c \
     "$ROOT"/sameboy/Core/gb.c "$ROOT"/sameboy/Core/joypad.c "$ROOT"/sameboy/Core/mbc.c \
-    "$ROOT"/sameboy/Core/memory.c "$ROOT"/sameboy/Core/random.c "$ROOT"/sameboy/Core/rewind.c "$ROOT"/sameboy/Core/rumble.c "$ROOT"/sameboy/Core/cheats.c \
+    "$ROOT"/sameboy/Core/memory.c "$ROOT"/sameboy/Core/random.c "$ROOT"/sameboy/Core/rewind.c "$ROOT"/sameboy/Core/rumble.c "$ROOT"/sameboy/Core/cheats.c "$ROOT"/sameboy/Core/printer.c \
     "$ROOT"/sameboy/Core/save_state.c "$ROOT"/sameboy/Core/sgb.c "$ROOT"/sameboy/Core/sm83_cpu.c \
     "$ROOT"/sameboy/Core/timing.c
 $CC $FLAGS "$ROOT/app/src/main/cpp/emulator.c" "$ROOT/tests/host_test.c" "$OUT"/*.o -lm -o "$OUT/host_test"
-"$OUT/host_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs"
+"$OUT/host_test" "$ROOT/tests/testrom.gb" "$ROOT/app/src/main/assets/BootROMs" "$ROOT/tests/printrom.gb"
 
 # RetroAchievements: rcheevos' client against the emulator's memory, with a stand-in server.
 RC="$ROOT/third_party/rcheevos"

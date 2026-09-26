@@ -127,7 +127,7 @@ static void test_model(const uint8_t *rom, size_t rom_size, GB_model_t model, co
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <rom> <boot rom dir>\n", argv[0]);
+        fprintf(stderr, "Usage: %s <rom> <boot rom dir> [printer test rom]\n", argv[0]);
         return 2;
     }
     boot_rom_dir = argv[2];
@@ -279,6 +279,36 @@ int main(int argc, char **argv)
         CHECK(emu_is_loaded(), "camera: pictures can be set and cleared while running");
         emu_set_camera_image(NULL);
         free(camera_rom);
+    }
+
+    /* Game Boy Printer: a cartridge prints a strip, black on top and white below. */
+    if (argc > 3) {
+        size_t print_rom_size;
+        uint8_t *print_rom = read_file(argv[3], &print_rom_size);
+        CHECK(print_rom != NULL, "printer: test cartridge read");
+        uint32_t *pixels = NULL;
+        emu_set_link_accessory(EMU_LINK_NOTHING);
+        emu_load_rom(print_rom, print_rom_size, GB_MODEL_DMG_B, 48000);
+        run_frames(400);
+        CHECK(emu_take_printout(&pixels) == 0, "printer: nothing prints with nothing plugged in");
+        emu_set_link_accessory(EMU_LINK_PRINTER);
+        emu_load_rom(print_rom, print_rom_size, GB_MODEL_DMG_B, 48000);
+        unsigned rows = 0;
+        for (int second = 0; second < 20 && rows == 0; second++) {
+            run_frames(60);
+            rows = emu_take_printout(&pixels);
+        }
+        CHECK(rows == 16, "printer: a 16-row printout comes out (%u)", rows);
+        if (rows == 16) {
+            uint32_t black = pixels[0], white = pixels[15 * EMU_PRINTOUT_WIDTH + 159];
+            CHECK((black & 0xFFFFFF) == 0 && (white & 0xFFFFFF) == 0xFFFFFF && pixels[7 * EMU_PRINTOUT_WIDTH] == black
+                  && pixels[8 * EMU_PRINTOUT_WIDTH] == white,
+                  "printer: black on top, white below (0x%08X, 0x%08X)", black, white);
+        }
+        free(pixels);
+        CHECK(emu_take_printout(&pixels) == 0, "printer: a printout is only handed over once");
+        emu_set_link_accessory(EMU_LINK_NOTHING);
+        free(print_rom);
     }
 
     emu_unload();

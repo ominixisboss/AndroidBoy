@@ -102,6 +102,23 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
  */
 unsigned emu_set_cheats(const char *codes);
 
+/* What's plugged into the link port. */
+#define EMU_LINK_NOTHING 0
+#define EMU_LINK_PRINTER 1
+
+/* Plugs something into the link port; kept across loading ROMs. */
+void emu_set_link_accessory(int accessory);
+
+/* Game Boy Printer paper is 160 pixels wide. */
+#define EMU_PRINTOUT_WIDTH 160
+
+/*
+ * A finished printout, as 0xAABBGGRR pixels EMU_PRINTOUT_WIDTH wide: once the printer feeds the
+ * paper out, or a couple of seconds after the last strip printed. Returns the number of rows and
+ * sets *pixels to a buffer the caller frees, or returns 0 if nothing's ready.
+ */
+unsigned emu_take_printout(uint32_t **pixels);
+
 /* The Game Boy Camera's sensor size. */
 #define EMU_CAMERA_WIDTH 128
 #define EMU_CAMERA_HEIGHT 112

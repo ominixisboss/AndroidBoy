@@ -155,6 +155,72 @@ GB_model_t emu_pick_model(const uint8_t *rom, size_t size, GB_model_t dmg_model,
     return dmg_model;
 }
 
+/* The Game Boy Printer: strips printed so far, joined into one printout. */
+#define PRINTOUT_MAX_ROWS 4096
+#define PRINTOUT_IDLE_FRAMES 120
+static int link_accessory;
+static uint32_t *printout;
+static unsigned printout_rows;
+static bool printout_fed;
+static unsigned frames_since_print;
+
+static void printout_add_rows(const uint32_t *rows, unsigned count)
+{
+    if (printout_rows + count > PRINTOUT_MAX_ROWS) count = PRINTOUT_MAX_ROWS - printout_rows;
+    if (count == 0) return;
+    uint32_t *grown = realloc(printout, (size_t)(printout_rows + count) * EMU_PRINTOUT_WIDTH * sizeof(uint32_t));
+    if (!grown) return;
+    printout = grown;
+    if (rows) {
+        memcpy(printout + (size_t)printout_rows * EMU_PRINTOUT_WIDTH, rows, (size_t)count * EMU_PRINTOUT_WIDTH * sizeof(uint32_t));
+    } else {
+        /* Blank paper. */
+        uint32_t white = rgb_encode(gb, 0xFF, 0xFF, 0xFF);
+        for (size_t i = 0; i < (size_t)count * EMU_PRINTOUT_WIDTH; i++) printout[(size_t)printout_rows * EMU_PRINTOUT_WIDTH + i] = white;
+    }
+    printout_rows += count;
+}
+
+static void print_image(GB_gameboy_t *g, uint32_t *image, uint8_t height, uint8_t top_margin,
+                        uint8_t bottom_margin, uint8_t exposure)
+{
+    (void)g;
+    (void)exposure;
+    /* Margins are paper feeds; show a little space for them between strips, not before the first. */
+    if (printout_rows > 0) printout_add_rows(NULL, top_margin * 4u);
+    printout_add_rows(image, height);
+    if (bottom_margin > 0) printout_fed = true;
+    frames_since_print = 0;
+}
+
+static void apply_link_accessory(void)
+{
+    if (!gb || !GB_is_inited(gb)) return;
+    if (link_accessory == EMU_LINK_PRINTER) {
+        GB_connect_printer(gb, print_image, NULL);
+    } else {
+        GB_disconnect_serial(gb);
+    }
+}
+
+void emu_set_link_accessory(int accessory)
+{
+    link_accessory = accessory;
+    apply_link_accessory();
+}
+
+unsigned emu_take_printout(uint32_t **pixels)
+{
+    *pixels = NULL;
+    if (printout_rows == 0 || (!printout_fed && frames_since_print < PRINTOUT_IDLE_FRAMES)) return 0;
+    unsigned rows = printout_rows;
+    *pixels = printout;
+    printout = NULL;
+    printout_rows = 0;
+    printout_fed = false;
+    return rows;
+}
+
 static uint8_t camera_image[EMU_CAMERA_WIDTH * EMU_CAMERA_HEIGHT];
 static bool camera_has_image;
 static bool cartridge_has_camera;
@@ -190,6 +256,7 @@ bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned ra
     GB_apu_set_sample_callback(gb, sample_callback);
     GB_set_rumble_callback(gb, rumble_callback);
     if (camera_has_image) GB_set_camera_get_pixel_callback(gb, camera_get_pixel);
+    apply_link_accessory();
     cartridge_has_camera = size > 0x147 && rom[0x147] == 0xFC; /* Pocket Camera */
 
     sample_rate = rate ? rate : 48000;
@@ -255,6 +322,7 @@ void emu_run_frame(void)
     for (unsigned i = 0; !vblank_occurred && i < 1000000; i++) {
         GB_run(gb);
     }
+    if (frames_since_print < PRINTOUT_IDLE_FRAMES) frames_since_print++;
 }
 
 void emu_set_rewind_length(unsigned seconds)

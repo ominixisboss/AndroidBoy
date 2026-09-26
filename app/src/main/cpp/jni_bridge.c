@@ -263,6 +263,25 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetRumbleMode)(JNIEnv *env, jclass clazz, ji
     emu_set_rumble_mode((GB_rumble_mode_t)mode);
 }
 
+JNIEXPORT void JNICALL JNI_FN(nativeSetLinkAccessory)(JNIEnv *env, jclass clazz, jint accessory)
+{
+    (void)env; (void)clazz;
+    emu_set_link_accessory(accessory);
+}
+
+JNIEXPORT jintArray JNICALL JNI_FN(nativeTakePrintout)(JNIEnv *env, jclass clazz)
+{
+    (void)clazz;
+    uint32_t *pixels;
+    unsigned rows = emu_take_printout(&pixels);
+    if (rows == 0) return NULL;
+    jsize count = (jsize)(rows * EMU_PRINTOUT_WIDTH);
+    jintArray result = (*env)->NewIntArray(env, count);
+    if (result) (*env)->SetIntArrayRegion(env, result, 0, count, (const jint *)pixels);
+    free(pixels);
+    return result;
+}
+
 JNIEXPORT jboolean JNICALL JNI_FN(nativeHasCamera)(JNIEnv *env, jclass clazz)
 {
     (void)env; (void)clazz;

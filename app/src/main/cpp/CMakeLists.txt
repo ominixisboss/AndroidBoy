@@ -19,6 +19,7 @@ set(SAMEBOY_SOURCES
     ${SAMEBOY_DIR}/Core/random.c
     ${SAMEBOY_DIR}/Core/rewind.c
     ${SAMEBOY_DIR}/Core/cheats.c
+    ${SAMEBOY_DIR}/Core/printer.c
     ${SAMEBOY_DIR}/Core/rumble.c
     ${SAMEBOY_DIR}/Core/save_state.c
     ${SAMEBOY_DIR}/Core/sgb.c

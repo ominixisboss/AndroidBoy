@@ -23,11 +23,14 @@ final class EmulatorThread extends Thread {
         void onIdle();
         /** Rewinding stopped: the game is somewhere earlier than it was. */
         void onRewindFinished();
+        /** The Game Boy Printer finished a printout: 160-pixel rows of 0xAABBGGRR pixels. */
+        void onPrintout(int[] pixels);
     }
 
     private static final String TAG = "AndroidBoy";
     private static final double FRAME_RATE = 4194304.0 / 70224.0; // ~59.73 Hz
     private static final int BATTERY_CHECK_FRAMES = 180;
+    private static final int PRINTOUT_CHECK_FRAMES = 30;
 
     static int outputSampleRate() {
         int rate = AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC);
@@ -198,6 +201,10 @@ final class EmulatorThread extends Thread {
                 if (++framesSinceBatteryCheck >= BATTERY_CHECK_FRAMES) {
                     framesSinceBatteryCheck = 0;
                     if (Emulator.nativeTakeBatteryDirty()) host.onBatteryDirty();
+                }
+                if (framesSinceBatteryCheck % PRINTOUT_CHECK_FRAMES == 0) {
+                    int[] printout = Emulator.nativeTakePrintout();
+                    if (printout != null) host.onPrintout(printout);
                 }
 
                 if (fastForward) {

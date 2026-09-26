@@ -78,6 +78,9 @@ public final class EmulatorActivity extends Activity
     private int hardwareTurboKeys;
     /** Carries on between visits to the cheat search screen while this game is open. */
     private final CheatSearch cheatSearch = new CheatSearch();
+    private GameStore gameStore;
+    /** Printouts waiting for the storage permission (Android 9 and older). */
+    private final List<int[]> pendingPrintouts = new ArrayList<>();
     private ControllerMapping controllerMapping;
     private android.util.SparseArray<ControllerMapping.Action> keyTable;
     /** The phone's camera, while a Game Boy Camera cartridge is running. */
@@ -104,7 +107,8 @@ public final class EmulatorActivity extends Activity
             return;
         }
         setTitle(RomLibrary.baseName(rom));
-        new GameStore(this).markPlayed(rom, System.currentTimeMillis());
+        gameStore = new GameStore(this);
+        gameStore.markPlayed(rom, System.currentTimeMillis());
 
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -218,6 +222,7 @@ public final class EmulatorActivity extends Activity
         loadedSampleRate = sampleRate;
         achievements.loadGame(data);
         applyCheats();
+        Emulator.nativeSetLinkAccessory(gameStore.linkAccessory(rom));
 
         File battery = library.batteryFile(rom);
         if (battery.isFile()) {
@@ -520,6 +525,7 @@ public final class EmulatorActivity extends Activity
             updateSpeed();
         });
         addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
+        addMenuItem(labels, actions, "Link port…", this::showLinkPort);
         if (cameraFeed != null) {
             boolean front = cameraFeed.isFront();
             addMenuItem(labels, actions, front ? "Camera: use the back camera" : "Camera: use the front camera",
@@ -582,6 +588,64 @@ public final class EmulatorActivity extends Activity
         });
     }
 
+    // ---- Link port: Game Boy Printer ----
+
+    private void showLinkPort() {
+        String[] choices = {"Nothing", "Game Boy Printer"};
+        int[] values = {Emulator.LINK_NOTHING, Emulator.LINK_PRINTER};
+        int current = gameStore.linkAccessory(rom) == Emulator.LINK_PRINTER ? 1 : 0;
+        showDialog(new AlertDialog.Builder(this)
+                .setTitle("Link port")
+                .setSingleChoiceItems(choices, current, (d, which) -> {
+                    int accessory = values[which];
+                    gameStore.setLinkAccessory(rom, accessory);
+                    onEmulationThread(() -> Emulator.nativeSetLinkAccessory(accessory));
+                    if (accessory == Emulator.LINK_PRINTER) {
+                        Toast.makeText(this, "Printouts are saved to Pictures/" + Gallery.FOLDER, Toast.LENGTH_LONG).show();
+                    }
+                    d.dismiss();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create());
+    }
+
+    @Override
+    public void onPrintout(int[] pixels) {
+        mainHandler.post(() -> {
+            if (Gallery.needsPermission(this)) {
+                pendingPrintouts.add(pixels);
+                requestPermissions(new String[] {android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE);
+                return;
+            }
+            savePrintout(pixels);
+        });
+    }
+
+    private void savePrintout(int[] pixels) {
+        String name = Gallery.fileName(RomLibrary.baseName(rom) + " printout", System.currentTimeMillis());
+        new Thread(() -> {
+            try {
+                Gallery.savePng(this, Gallery.scaleUp(printoutBitmap(pixels), SCREENSHOT_SCALE), name);
+                toastFromAnyThread("Printed! Saved to Pictures/" + Gallery.FOLDER);
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "Could not save printout", e);
+                toastFromAnyThread("Could not save the printout");
+            }
+        }, "Printout").start();
+    }
+
+    /** A printout's pixels (0xAABBGGRR, 160 wide) as a bitmap. */
+    static android.graphics.Bitmap printoutBitmap(int[] pixels) {
+        int width = 160;
+        int height = Math.max(1, pixels.length / width);
+        int[] colors = new int[width * height];
+        for (int i = 0; i < colors.length && i < pixels.length; i++) {
+            int p = pixels[i];
+            colors[i] = 0xFF000000 | ((p & 0xFF) << 16) | (p & 0xFF00) | ((p >> 16) & 0xFF);
+        }
+        return android.graphics.Bitmap.createBitmap(colors, width, height, android.graphics.Bitmap.Config.ARGB_8888);
+    }
+
     // ---- Game Boy Camera ----
 
     /** For a Game Boy Camera cartridge, shows it what the phone's camera sees (asking permission once). */
@@ -616,7 +680,16 @@ public final class EmulatorActivity extends Activity
             return;
         }
         if (requestCode != REQUEST_STORAGE) return;
-        if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+        if (!pendingPrintouts.isEmpty()) {
+            if (granted) {
+                for (int[] printout : pendingPrintouts) savePrintout(printout);
+            } else {
+                Toast.makeText(this, "Saving printouts needs access to storage", Toast.LENGTH_LONG).show();
+            }
+            pendingPrintouts.clear();
+            return;
+        }
+        if (granted) {
             takeScreenshot();
         } else {
             Toast.makeText(this, "Saving pictures needs access to storage", Toast.LENGTH_LONG).show();

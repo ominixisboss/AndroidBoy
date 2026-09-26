@@ -73,6 +73,13 @@ final class Emulator {
     static native void nativeSetBorderMode(int mode);
     static native void nativeSetHighpass(int mode);
     static native void nativeSetRumbleMode(int mode);
+    static final int LINK_NOTHING = 0;
+    static final int LINK_PRINTER = 1;
+
+    /** Plugs something into the link port (LINK_*). */
+    static native void nativeSetLinkAccessory(int accessory);
+    /** A finished Game Boy Printer printout, 160 pixels wide (0xAABBGGRR), or null. */
+    static native int[] nativeTakePrintout();
     /** Whether the loaded cartridge is a Game Boy Camera. */
     static native boolean nativeHasCamera();
     /** What the Game Boy Camera sees: 128×112 brightness bytes, or null for static. */
