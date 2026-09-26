@@ -93,6 +93,7 @@ public final class EmulatorActivity extends Activity
             return;
         }
         setTitle(RomLibrary.baseName(rom));
+        new GameStore(this).markPlayed(rom, System.currentTimeMillis());
 
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);

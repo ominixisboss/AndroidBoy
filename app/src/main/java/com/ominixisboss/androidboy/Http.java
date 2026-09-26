@@ -1,6 +1,7 @@
 package com.ominixisboss.androidboy;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
@@ -10,7 +11,10 @@ import java.net.URL;
 final class Http {
     private Http() {}
 
-    /** Fetches {@code url}, failing if the body is over {@code limit} bytes. Call off the main thread. */
+    /**
+     * Fetches {@code url}, failing if the body is over {@code limit} bytes; a missing page is a
+     * {@link FileNotFoundException}. Call off the main thread.
+     */
     static byte[] get(String url, int limit, String service) throws IOException {
         HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
         try {
@@ -18,6 +22,7 @@ final class Http {
             connection.setReadTimeout(30_000);
             connection.setRequestProperty("User-Agent", "AndroidBoy");
             int status = connection.getResponseCode();
+            if (status == HttpURLConnection.HTTP_NOT_FOUND) throw new FileNotFoundException(service + " has no " + url);
             if (status != HttpURLConnection.HTTP_OK) throw new IOException(service + " answered " + status);
             try (InputStream in = connection.getInputStream()) {
                 ByteArrayOutputStream out = new ByteArrayOutputStream();

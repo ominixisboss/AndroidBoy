@@ -127,6 +127,11 @@ final class Settings {
             new int[] {0, 10, 30, 60, 120, 300},
             2);
 
+    static final Choice BOX_ART = new Choice("box_art", "Box art",
+            new String[] {"Download automatically", "Off"},
+            new int[] {1, 0},
+            0);
+
     static final Choice AUTO_SAVE = new Choice("auto_save", "Resume where you left off",
             new String[] {"On", "Off"},
             new int[] {1, 0},
@@ -154,6 +159,8 @@ final class Settings {
                     CONTROLS, TURBO_SPEED, ANIMATIONS, HAPTICS, RUMBLE),
             new Category("Sound", "Sound on or off, audio filter",
                     SOUND, HIGHPASS),
+            new Category("Game list", "Box art",
+                    BOX_ART),
     };
 
     private static int[] indices(int count) {
