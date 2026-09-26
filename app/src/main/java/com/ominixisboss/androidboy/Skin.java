@@ -105,6 +105,11 @@ abstract class Skin {
 
     abstract String id();
 
+    /** Whether the skin has its own menu button; without one, the game screen shows toolbars. */
+    boolean hasMenuButton() {
+        return true;
+    }
+
     /** Whether the player can move and resize the controls (not when they're part of a picture). */
     boolean movableControls() {
         return true;

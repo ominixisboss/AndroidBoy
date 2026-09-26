@@ -36,6 +36,15 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   while held; on a controller, Y is turbo A and X is turbo B. The speed is a setting.
 - **Slow motion** at 75%, 50% or 25% speed, from the in-game menu.
 - **Screenshots** (in-game menu) are saved to Pictures/AndroidBoy at 4× with sharp pixels.
+- **Soft skins** (Slate, Lilac, Sage, Blush, Sand, Ocean, Charcoal and Midnight): a plain, lightly
+  textured background with big pastel controls outlined in dark ink, the game screen edge to edge,
+  and **toolbars** instead of buttons on the skin. The top bar has back, the menu, achievements,
+  the link cable, a screenshot button and a rotation lock, with the game's name under it; the
+  bottom bar has the speed (slow motion, normal, fast-forward), pause, rewind (hold), sound and
+  full screen (a small button in the corner brings the bars back). Settings → Controls → Toolbars
+  shows them with every skin, or never.
+- **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
+  Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
   buttons, a moulded d-pad and slanted rubber Start/Select: Classic grey, Pocket silver, black, red
   and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
@@ -44,8 +53,8 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   Vaporwave, Pastel, Frosted and Smoke glass, and a minimal translucent overlay. Eleven image skins
   come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
   and Marble), and you can import your own as a `.zip` of images plus a layout file;
-  see [docs/skins.md](docs/skins.md). The skin picker groups them into Game Boy classics, Colours,
-  Modern & minimal, Artwork (the image skins) and Imported.
+  see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Game Boy classics,
+  Colours, Modern & minimal, Artwork (the image skins) and Imported.
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
   CRT, flat CRT, bilinear, Scale2x/4x, HQ2x, OmniScale and more. There's also SameBoy's frame
   blending, which some games rely on for flicker transparency.
@@ -223,6 +232,9 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
   CanvasScreenView        Fallback renderer for devices without OpenGL ES 3
   Skin, ThemeSkin         Skin layout and drawing; the built-in themes
+  SoftSkin                The Soft skins
+  GameToolbars,           The game screen's toolbars and full-screen menu; their icons
+    GameMenuView, Icons
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
   SkinView                Draws the active skin and handles touch
   Achievements            RetroAchievements login, web requests and events; the banner and screens

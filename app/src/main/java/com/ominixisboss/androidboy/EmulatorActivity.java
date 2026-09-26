@@ -23,6 +23,7 @@ import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import java.io.File;
@@ -52,7 +53,17 @@ public final class EmulatorActivity extends Activity
     private File rom;
 
     private SkinLibrary skins;
+    /** The game area: the screen, the skin and overlays. */
     private FrameLayout root;
+    /** Everything: toolbars around the game area, and the full-screen menu on top when open. */
+    private FrameLayout frame;
+    private GameToolbars toolbars;
+    private GameMenuView menuView;
+    /** Hidden with the full-screen button; a small button in the corner brings them back. */
+    private boolean toolbarsHidden;
+    private View showToolbarsButton;
+    private boolean pausedByPlayer;
+    private boolean rotationLocked;
     private GameScreen screen;
     private SkinView skinView;
     private Achievements achievements;
@@ -143,8 +154,17 @@ public final class EmulatorActivity extends Activity
         root.addView(achievementPopup, achievementPopup.layoutParams());
         trackerOverlay = new TrackerOverlay(this);
         root.addView(trackerOverlay, trackerOverlay.layoutParams());
-        root.setOnApplyWindowInsetsListener(this::applyInsets);
-        setContentView(root);
+        toolbars = new GameToolbars(this, toolbarActions());
+        toolbars.setTitle(RomLibrary.baseName(rom));
+        LinearLayout column = new LinearLayout(this);
+        column.setOrientation(LinearLayout.VERTICAL);
+        column.addView(toolbars.top);
+        column.addView(root, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1));
+        column.addView(toolbars.bottom);
+        frame = new FrameLayout(this);
+        frame.addView(column);
+        frame.setOnApplyWindowInsetsListener(this::applyInsets);
+        setContentView(frame);
 
         vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
         applyUiSettings();
@@ -166,7 +186,7 @@ public final class EmulatorActivity extends Activity
         thread.setLink(link);
         updateSpeed();
         thread.setMuted(!settings.isOn(Settings.SOUND));
-        thread.setPaused(openDialogs > 0);
+        thread.setPaused(openDialogs > 0 || pausedByPlayer);
         updateFastForward();
         updateRewind();
         pushKeys();
@@ -519,74 +539,241 @@ public final class EmulatorActivity extends Activity
             stopEditingControls();
             return;
         }
+        if (menuView != null) {
+            closeMenu();
+            return;
+        }
         showMenu();
     }
 
+    /** The full-screen game menu. */
     private void showMenu() {
-        if (openDialogs > 0 || isFinishing()) return;
-        boolean fastForward = fastForwardToggled;
-        List<String> labels = new ArrayList<>();
-        List<Runnable> actions = new ArrayList<>();
-        addMenuItem(labels, actions, "Resume", () -> { });
+        if (openDialogs > 0 || isFinishing() || menuView != null) return;
+        dialogOpened();
+        menuView = new GameMenuView(this, "Game Menu", menuSections(), new GameMenuView.Listener() {
+            @Override
+            public void onItemChosen(GameMenuView.Item item) {
+                // Runs first, so a dialog it opens keeps the game paused as the menu closes.
+                item.action.run();
+                closeMenu();
+            }
+
+            @Override
+            public void onClose() {
+                closeMenu();
+            }
+        });
+        frame.addView(menuView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT));
+        menuView.animateIn();
+    }
+
+    private void closeMenu() {
+        if (menuView == null) return;
+        frame.removeView(menuView);
+        menuView = null;
+        dialogClosed();
+    }
+
+    private List<GameMenuView.Section> menuSections() {
         LinkSession session = link;
+        boolean linked = session != null;
+        List<GameMenuView.Section> sections = new ArrayList<>();
+
+        GameMenuView.Section quick = new GameMenuView.Section("Quick access");
         if (session instanceof LinkSession.Local) {
             LinkSession.Local local = (LinkSession.Local) session;
             boolean other = local.showingPartner();
-            addMenuItem(labels, actions, "Play " + (other ? RomLibrary.baseName(rom) : local.partnerName), () -> {
+            String next = other ? RomLibrary.baseName(rom) : local.partnerName;
+            quick.add(Icons.SWAP, "Play " + next, "Switch to the other linked game", () -> {
                 local.setControlPartner(!other);
                 skinView.releaseAll();
             });
         }
-        if (session != null) {
-            addMenuItem(labels, actions, "Unplug the link cable", () -> unplugLink(null));
-        } else {
-            // States would unlink the two Game Boys in time, so they're only for a game on its own.
-            addMenuItem(labels, actions, "Save state…", () -> showStateSlots(true));
-            addMenuItem(labels, actions, "Load state…", () -> showStateSlots(false));
-            addMenuItem(labels, actions, "Link cable…", this::showLinkCable);
+        if (!linked) {
+            // States would unlink two Game Boys in time, so they're only for a game on its own.
+            quick.add(Icons.SAVE, "Save state", "Save this moment to one of 9 slots", () -> showStateSlots(true));
+            quick.add(Icons.LOAD, "Load state", "Go back to a saved moment", () -> showStateSlots(false));
         }
-        addMenuItem(labels, actions, fastForward ? "Stop fast-forward" : "Fast-forward", () -> {
-            fastForwardToggled = !fastForward;
-            updateFastForward();
-        });
-        boolean slow = slowMotion;
-        addMenuItem(labels, actions, slow ? "Normal speed" : "Slow motion", () -> {
-            slowMotion = !slow;
-            updateSpeed();
-        });
-        addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
-        if (session == null) addMenuItem(labels, actions, "Link port…", this::showLinkPort);
-        if (cameraFeed != null) {
-            boolean front = cameraFeed.isFront();
-            addMenuItem(labels, actions, front ? "Camera: use the back camera" : "Camera: use the front camera",
-                    () -> cameraFeed.setFront(!front));
+        quick.add(Icons.CHEAT, "Cheats", "Add, turn on or find cheat codes", this::showCheats);
+        if (!linked) {
+            quick.add(Icons.SEARCH, "Cheat search", "Find where the game keeps lives, money or health",
+                    this::showCheatSearch);
         }
-        addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
-        if (session == null) addMenuItem(labels, actions, "Reset", this::confirmReset);
-        addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
-        addMenuItem(labels, actions, "Move on-screen buttons", this::startEditingControls);
-        addMenuItem(labels, actions, "Controller buttons…", () -> {
+        quick.add(Icons.CAMERA, "Screenshot", "Save the screen to your gallery", this::takeScreenshot);
+        sections.add(quick);
+
+        GameMenuView.Section input = new GameMenuView.Section("Input");
+        input.add(Icons.GAMEPAD, "Controller buttons", "Choose what each button does", () -> {
             dialogOpened();
             ControllerDialog.show(this, controllerMapping, () -> keyTable = controllerMapping.table(),
                     this::dialogClosed);
         });
-        addMenuItem(labels, actions, "Settings", () -> {
+        input.add(Icons.TOUCH, "Touch controls", "Move and resize the on-screen buttons", this::startEditingControls);
+        input.add(Icons.TURBO, "Turbo", "Make A or B fire again and again while held", this::showTurboChoice);
+        sections.add(input);
+
+        GameMenuView.Section display = new GameMenuView.Section("Display");
+        display.add(Icons.SKIN, "Skin", "Change how the game screen looks", this::showSkinPicker);
+        display.add(Icons.SETTINGS, "Settings", "Screen filter, colours, sound, emulation", () -> {
             dialogOpened();
             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
         });
-        addMenuItem(labels, actions, "Achievements…", this::showAchievements);
-        addMenuItem(labels, actions, "Cheats…", this::showCheats);
-        if (session == null) addMenuItem(labels, actions, "Cheat search…", this::showCheatSearch);
-        addMenuItem(labels, actions, "Quit to game list", this::finish);
-        showDialog(new AlertDialog.Builder(this)
-                .setTitle(RomLibrary.baseName(rom))
-                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
-                .create());
+        display.add(Icons.FULLSCREEN, toolbarsHidden ? "Show toolbars" : "Hide toolbars",
+                "The bars above and below the game", () -> setToolbarsHidden(!toolbarsHidden));
+        sections.add(display);
+
+        GameMenuView.Section speed = new GameMenuView.Section("Speed");
+        boolean fastForward = fastForwardToggled;
+        speed.add(Icons.FAST, fastForward ? "Stop fast-forward" : "Fast-forward",
+                "Play at " + speedLabel(settings.get(Settings.FAST_FORWARD)), () -> {
+                    fastForwardToggled = !fastForward;
+                    updateFastForward();
+                });
+        boolean slow = slowMotion;
+        speed.add(Icons.SLOW, slow ? "Normal speed" : "Slow motion",
+                "Play at " + settings.get(Settings.SLOW_MOTION) + "% speed", () -> {
+                    slowMotion = !slow;
+                    updateSpeed();
+                });
+        sections.add(speed);
+
+        GameMenuView.Section system = new GameMenuView.Section("System");
+        if (!linked) system.add(Icons.RESET, "Reset", "Start the game again from its last save", this::confirmReset);
+        if (!linked) system.add(Icons.PRINTER, "Link port", "Plug in a Game Boy Printer", this::showLinkPort);
+        if (cameraFeed != null) {
+            boolean front = cameraFeed.isFront();
+            system.add(Icons.CAMERA, front ? "Use the back camera" : "Use the front camera",
+                    "What the Game Boy Camera sees", () -> cameraFeed.setFront(!front));
+        }
+        sections.add(system);
+
+        GameMenuView.Section more = new GameMenuView.Section("More");
+        more.add(Icons.TROPHY, "Achievements", "RetroAchievements for this game", this::showAchievements);
+        if (linked) {
+            more.add(Icons.UNPLUG, "Unplug the link cable", "Carry on playing alone", () -> unplugLink(null));
+        } else {
+            more.add(Icons.LINK, "Link cable", "Connect two games, or two phones", this::showLinkCable);
+        }
+        more.add(Icons.EXIT, "Quit to game list", "Your game is saved as you leave", this::finish);
+        sections.add(more);
+        return sections;
     }
 
-    private static void addMenuItem(List<String> labels, List<Runnable> actions, String label, Runnable action) {
-        labels.add(label);
-        actions.add(action);
+    private static String speedLabel(int speed) {
+        return speed == 0 ? "full speed, as fast as it goes" : speed + "× speed";
+    }
+
+    // ---- Toolbars ----
+
+    private GameToolbars.Actions toolbarActions() {
+        return new GameToolbars.Actions() {
+            @Override public void onBack() {
+                finish();
+            }
+
+            @Override public void onMenu() {
+                showMenu();
+            }
+
+            @Override public void onAchievements() {
+                if (openDialogs == 0) showAchievements();
+            }
+
+            @Override public void onLinkCable() {
+                if (openDialogs > 0) return;
+                if (link != null) {
+                    showMenu();
+                } else {
+                    showLinkCable();
+                }
+            }
+
+            @Override public void onScreenshot() {
+                takeScreenshot();
+            }
+
+            @Override public void onRotationLock() {
+                setRotationLocked(!rotationLocked);
+            }
+
+            @Override public void onSpeed(int speed) {
+                slowMotion = speed == GameToolbars.SPEED_SLOW;
+                fastForwardToggled = speed == GameToolbars.SPEED_FAST;
+                updateSpeed();
+                updateFastForward();
+            }
+
+            @Override public void onPause() {
+                pausedByPlayer = !pausedByPlayer;
+                if (thread != null) thread.setPaused(openDialogs > 0 || pausedByPlayer);
+                toolbars.setPaused(pausedByPlayer);
+            }
+
+            @Override public void onRewind(boolean held) {
+                onRewindTouched(held);
+            }
+
+            @Override public void onMute() {
+                boolean soundOn = !settings.isOn(Settings.SOUND);
+                settings.set(Settings.SOUND, soundOn ? 0 : 1); // "On" is the first choice.
+                onSettingChanged(Settings.SOUND);
+            }
+
+            @Override public void onFullScreen() {
+                setToolbarsHidden(true);
+            }
+        };
+    }
+
+    /** Shows the toolbars if they're wanted: always, never, or for skins without their own menu button. */
+    private void updateToolbars() {
+        int mode = settings.get(Settings.TOOLBARS);
+        boolean wanted = mode == 1 || (mode == 0 && !skinView.getSkin().hasMenuButton());
+        boolean visible = wanted && !toolbarsHidden;
+        toolbars.setVisible(visible);
+        toolbars.setMuted(!settings.isOn(Settings.SOUND));
+        toolbars.setPaused(pausedByPlayer);
+        toolbars.setRotationLocked(rotationLocked);
+        showSpeed();
+        // Around the notch and system bars: the toolbars' colour, or the skin's.
+        frame.setBackgroundColor(visible ? GameToolbars.BAR : skinView.getSkin().backgroundColor());
+        // Hidden with the full-screen button: a small way back in the corner.
+        boolean showButton = wanted && toolbarsHidden;
+        if (showButton && showToolbarsButton == null) {
+            android.widget.ImageView button = new android.widget.ImageView(this);
+            button.setImageDrawable(Icons.drawable(Icons.FULLSCREEN, GameToolbars.ICON));
+            button.setContentDescription("Show toolbars");
+            int pad = Math.round(10 * getResources().getDisplayMetrics().density);
+            button.setPadding(pad, pad, pad, pad);
+            android.graphics.drawable.GradientDrawable background = new android.graphics.drawable.GradientDrawable();
+            background.setColor(0x99000000);
+            background.setCornerRadius(pad * 1.2f);
+            button.setBackground(background);
+            button.setOnClickListener(v -> setToolbarsHidden(false));
+            int size = Math.round(44 * getResources().getDisplayMetrics().density);
+            FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size, android.view.Gravity.TOP | android.view.Gravity.END);
+            params.setMargins(pad, pad, pad, pad);
+            root.addView(button, params);
+            showToolbarsButton = button;
+        } else if (!showButton && showToolbarsButton != null) {
+            root.removeView(showToolbarsButton);
+            showToolbarsButton = null;
+        }
+    }
+
+    private void setToolbarsHidden(boolean hidden) {
+        toolbarsHidden = hidden;
+        updateToolbars();
+    }
+
+    /** Keeps the screen the way it's turned now, or lets it follow the phone again. */
+    private void setRotationLocked(boolean locked) {
+        rotationLocked = locked;
+        setRequestedOrientation(locked ? android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
+                : android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER);
+        toolbars.setRotationLocked(locked);
+        Toast.makeText(this, locked ? "Rotation locked" : "Rotation unlocked", Toast.LENGTH_SHORT).show();
     }
 
     // ---- Screenshots ----
@@ -957,6 +1144,7 @@ public final class EmulatorActivity extends Activity
         Skin skin = skins.loadActive();
         root.setBackgroundColor(skin.backgroundColor());
         skinView.setSkin(skin);
+        updateToolbars();
     }
 
     @Override
@@ -1027,7 +1215,7 @@ public final class EmulatorActivity extends Activity
     private void dialogClosed() {
         openDialogs = Math.max(0, openDialogs - 1);
         if (openDialogs == 0) {
-            if (thread != null) thread.setPaused(false);
+            if (thread != null) thread.setPaused(pausedByPlayer);
             hideSystemBars();
         }
     }
@@ -1043,6 +1231,9 @@ public final class EmulatorActivity extends Activity
             onEmulationThread(settings::applyToCore);
         } else if (choice == Settings.SOUND) {
             if (thread != null) thread.setMuted(!settings.isOn(Settings.SOUND));
+            updateToolbars();
+        } else if (choice == Settings.TOOLBARS) {
+            updateToolbars();
         } else if (choice == Settings.FAST_FORWARD) {
             if (thread != null) thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
         } else if (choice == Settings.TURBO_SPEED) {
@@ -1062,6 +1253,7 @@ public final class EmulatorActivity extends Activity
         skinView.setAnimations(settings.isOn(Settings.ANIMATIONS));
         applyScreenSettings();
         updateControlsVisibility();
+        updateToolbars();
     }
 
     private void applyScreenSettings() {
@@ -1119,6 +1311,14 @@ public final class EmulatorActivity extends Activity
 
     private void updateSpeed() {
         if (thread != null) thread.setSpeedPercent(slowMotion ? settings.get(Settings.SLOW_MOTION) : 100);
+        showSpeed();
+    }
+
+    /** The toolbar's speed buttons follow slow motion and fast-forward, however they were chosen. */
+    private void showSpeed() {
+        if (toolbars == null) return;
+        toolbars.setSpeed(fastForwardToggled ? GameToolbars.SPEED_FAST
+                : slowMotion ? GameToolbars.SPEED_SLOW : GameToolbars.SPEED_NORMAL);
     }
 
     /** Which on-screen buttons fire repeatedly while held. Controllers have turbo on Y (A) and X (B). */
@@ -1200,6 +1400,7 @@ public final class EmulatorActivity extends Activity
 
     private void updateFastForward() {
         if (thread != null) thread.setFastForward(fastForwardToggled || fastForwardHeld || fastForwardTouched);
+        showSpeed();
     }
 
     @Override
