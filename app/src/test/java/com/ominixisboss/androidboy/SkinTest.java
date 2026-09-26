@@ -65,6 +65,7 @@ public class SkinTest {
     private static List<Skin> allSkins() throws IOException {
         List<Skin> skins = new ArrayList<>();
         for (ThemeSkin theme : ThemeSkin.ALL) skins.add(theme);
+        for (SoftSkin soft : SoftSkin.ALL) skins.add(soft);
         skins.add(ImageSkin.load(exampleSkinDir()));
         skins.addAll(bundledSkins());
         return skins;
@@ -118,7 +119,7 @@ public class SkinTest {
                     hasMenu |= control.keys == Skin.KEY_MENU;
                     hasDpad |= control.shape == Skin.Control.DPAD;
                 }
-                assertTrue(what + ": has a menu control", hasMenu);
+                assertEquals(what + ": has a menu control unless the toolbars provide one", skin.hasMenuButton(), hasMenu);
                 if (skin instanceof ThemeSkin) {
                     boolean hasRewind = false;
                     boolean hasFastForward = false;
@@ -130,7 +131,7 @@ public class SkinTest {
                 }
                 assertTrue(what + ": has a d-pad", hasDpad);
 
-                if (skin instanceof ThemeSkin) {
+                if (skin instanceof ThemeSkin || skin instanceof SoftSkin) {
                     List<Skin.Control> visible = new ArrayList<>();
                     for (Skin.Control c : layout.controls) if (c.visible) visible.add(c);
                     for (int i = 0; i < visible.size(); i++) {
@@ -302,7 +303,7 @@ public class SkinTest {
         for (String name : bundled) {
             assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
         }
-        assertEquals("every theme is listed", ThemeSkin.ALL.length + bundled.length, ids.size());
+        assertEquals("every theme is listed", ThemeSkin.ALL.length + SoftSkin.ALL.length + bundled.length, ids.size());
     }
 
     @Test

@@ -92,6 +92,12 @@ final class Settings {
             new int[] {0, 1, 2},
             0);
 
+    // The bars above and below the game: shown for skins that have no menu button of their own.
+    static final Choice TOOLBARS = new Choice("toolbars", "Toolbars",
+            new String[] {"With skins that need them", "Always", "Never"},
+            new int[] {0, 1, 2},
+            0);
+
     static final Choice SCALING = new Choice("scaling", "Screen scaling",
             new String[] {"Fit to screen", "Integer multiples only"},
             new int[] {0, 1},
@@ -155,8 +161,8 @@ final class Settings {
                     FILTER, FRAME_BLENDING, COLOR_CORRECTION, DMG_PALETTE, SCALING, BORDER),
             new Category("Emulation", "Game Boy models, rewind, fast-forward, resuming",
                     DMG_MODEL, CGB_MODEL, REWIND, FAST_FORWARD, SLOW_MOTION, AUTO_SAVE),
-            new Category("Controls", "On-screen controls, turbo, animations, vibration, rumble",
-                    CONTROLS, TURBO_SPEED, ANIMATIONS, HAPTICS, RUMBLE),
+            new Category("Controls", "On-screen controls, toolbars, turbo, animations, vibration, rumble",
+                    CONTROLS, TOOLBARS, TURBO_SPEED, ANIMATIONS, HAPTICS, RUMBLE),
             new Category("Sound", "Sound on or off, audio filter",
                     SOUND, HIGHPASS),
             new Category("Game list", "Box art",

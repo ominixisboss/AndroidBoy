@@ -42,7 +42,7 @@ final class SkinLibrary {
     static final String ARTWORK = "Artwork";
     static final String IMPORTED = "Imported";
     /** Skin picker groups, in the order they're shown. */
-    static final String[] CATEGORIES = {ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
+    static final String[] CATEGORIES = {SoftSkin.CATEGORY, ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
 
     /** Image skins that ship with the app, in assets/skins/<name>/. */
     static final String BUNDLED_ASSETS = "skins";
@@ -138,6 +138,9 @@ final class SkinLibrary {
 
     List<Entry> list() {
         List<Entry> entries = new ArrayList<>();
+        for (SoftSkin soft : SoftSkin.ALL) {
+            entries.add(new Entry(soft.id(), soft.name(), null, SoftSkin.CATEGORY));
+        }
         for (ThemeSkin theme : ThemeSkin.ALL) {
             entries.add(new Entry(theme.id(), theme.name(), null, theme.category()));
         }
@@ -193,6 +196,10 @@ final class SkinLibrary {
         if (id.startsWith("theme:")) {
             ThemeSkin theme = ThemeSkin.find(id.substring("theme:".length()));
             return theme != null ? theme : ThemeSkin.fallback();
+        }
+        if (id.startsWith("soft:")) {
+            SoftSkin soft = SoftSkin.find(id.substring("soft:".length()));
+            if (soft != null) return soft;
         }
         if (id.startsWith("bundled:")) {
             String name = id.substring("bundled:".length());
