@@ -46,7 +46,13 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   and your progress. **Hardcore mode** counts unlocks as hardcore; loading save states (including
   the automatic resume) and rewinding are off while it's on. Achievement progress is saved with
   each save state. Only a login token is kept on the device, never your password, and it's left
-  out of backups.
+  out of backups. The **RetroAchievements** page in the main menu shows your points and every
+  Game Boy and Game Boy Color game you've unlocked achievements in, with your progress; tap a game
+  to open it on the website.
+- **Free homebrew games.** Main menu → **Free homebrew games** browses and searches
+  [Homebrew Hub](https://hh.gbdev.io), the gbdev community's archive of freely distributed
+  homebrew games, demos and music for Game Boy and Game Boy Color. Pick one to read about it, then
+  download it straight into your library. ROM hacks of commercial games aren't listed.
 - **Settings** are grouped into Display, Emulation, Controls and Sound.
 - **Rumble** for rumble cartridges, optionally for all games.
 
@@ -148,7 +154,8 @@ It runs a small test cartridge (`tests/testrom.asm`) on every supported model. I
 loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
 the frame parity used for frame blending. It also runs rcheevos against the emulator with a
 stand-in server (`tests/achievements_test.c`): logging in, identifying the cartridge by its MD5,
-and unlocking achievements from what the game writes to memory. You only need a C compiler.
+unlocking achievements from what the game writes to memory, and fetching your progress for the
+achievements page. You only need a C compiler.
 
 ## Project layout
 
@@ -170,10 +177,13 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
   SkinView                Draws the active skin and handles touch
   Achievements            RetroAchievements login, web requests and events; the banner and screens
+  AchievementsActivity    Your RetroAchievements points and progress in each game
+  Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
 app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
 app/src/main/assets/skins/      Image skins bundled with the app
-app/src/test/             Robolectric tests for skins (layout, touch, import); write previews
+app/src/test/             Robolectric tests for skins (layout, touch, import), achievements and
+                          Homebrew Hub parsing; skin tests write previews
                           to app/build/skin-previews
 docs/skins.md             The skin file format; docs/skins/example is a complete example
 tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)

@@ -47,6 +47,46 @@ public class AchievementsTest {
     }
 
     @Test
+    public void combinesProgressFromBothConsoles() {
+        // id, total, unlocked, unlocked hardcore
+        List<int[]> progress = new ArrayList<>();
+        progress.add(new int[] {10, 20, 5, 0, 11, 30, 0, 0, 12, 8, 8, 8});
+        progress.add(new int[] {13, 10, 5, 5, 10, 20, 2, 0});
+        assertArrayEquals(new int[] {10, 12, 13}, Achievements.playedGames(progress));
+
+        List<Achievements.GameProgress> games = Achievements.combineProgress(progress,
+                new int[] {10, 12, 13}, new String[] {"Zeta", "Mastered", "Alpha"}, new String[] {"b10", "b12", ""});
+        // Never-played game 11 is left out; 10 is listed once, with its best numbers.
+        assertEquals(3, games.size());
+        assertEquals("Mastered", games.get(0).title);
+        assertTrue(games.get(0).mastered());
+        assertEquals("Alpha", games.get(1).title); // 50%, same as Zeta: sorted by title.
+        assertEquals("Zeta", games.get(2).title);
+        assertEquals(5, games.get(2).unlocked);
+        assertEquals("b10", games.get(2).badgeUrl);
+        assertFalse(games.get(2).mastered());
+        assertEquals("https://retroachievements.org/game/10", games.get(2).pageUrl());
+
+        // A title the server didn't send.
+        assertEquals("Game 13", Achievements.combineProgress(progress, new int[0], new String[0], new String[0])
+                .get(1).title);
+    }
+
+    @Test
+    public void progressPageText() {
+        Achievements.GameProgress partial = new Achievements.GameProgress(1, 20, 12, 8, "A", "");
+        Achievements.GameProgress softcore = new Achievements.GameProgress(2, 20, 1, 0, "B", "");
+        Achievements.GameProgress mastered = new Achievements.GameProgress(3, 4, 4, 4, "C", "");
+        assertEquals("12 of 20 unlocked · 8 hardcore", AchievementsActivity.progressText(partial));
+        assertEquals("1 of 20 unlocked", AchievementsActivity.progressText(softcore));
+        assertEquals("Mastered · 4 of 4", AchievementsActivity.progressText(mastered));
+        assertEquals("3 games · 17 achievements (12 hardcore) · 1 mastered",
+                AchievementsActivity.summary(java.util.Arrays.asList(partial, softcore, mastered)));
+        assertEquals("1 game · 1 achievement", AchievementsActivity.summary(java.util.Arrays.asList(softcore)));
+        assertTrue(AchievementsActivity.summary(new ArrayList<>()).startsWith("No Game Boy achievements"));
+    }
+
+    @Test
     public void bannerText() {
         assertArrayEquals(new String[] {"ACHIEVEMENT UNLOCKED · 5 POINTS", "Marker", "Write the marker"},
                 AchievementPopup.describe(event(Achievements.EVENT_ACHIEVEMENT, "Marker", "Write the marker", 5)));

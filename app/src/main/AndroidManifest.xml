@@ -42,6 +42,14 @@
         </activity>
 
         <activity
+            android:name=".HomebrewActivity"
+            android:exported="false"
+            android:label="Homebrew Hub" />
+        <activity
+            android:name=".AchievementsActivity"
+            android:exported="false"
+            android:label="@string/retroachievements" />
+        <activity
             android:name=".EmulatorActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density"
             android:exported="false"

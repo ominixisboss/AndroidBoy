@@ -24,6 +24,8 @@ static jmethodID server_call_method;
 static jmethodID on_login_method;
 static jmethodID on_game_loaded_method;
 static jmethodID on_event_method;
+static jmethodID on_progress_method;
+static jmethodID on_titles_method;
 static rc_client_t *client;
 /* Set while a game is loaded, so frames don't take rc_client's lock when there's nothing to do. */
 static volatile int game_active;
@@ -133,6 +135,9 @@ JNIEXPORT void JNICALL JNI_FN(nativeInit)(JNIEnv *env, jclass clazz)
     on_game_loaded_method = (*env)->GetStaticMethodID(env, clazz, "onGameLoaded", "(ILjava/lang/String;)V");
     on_event_method = (*env)->GetStaticMethodID(env, clazz, "onEvent",
             "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;I)V");
+    on_progress_method = (*env)->GetStaticMethodID(env, clazz, "onProgress", "(IILjava/lang/String;[I)V");
+    on_titles_method = (*env)->GetStaticMethodID(env, clazz, "onTitles",
+            "(ILjava/lang/String;[I[Ljava/lang/String;[Ljava/lang/String;)V");
 
     client = rc_client_create(read_memory, server_call);
     rc_client_enable_logging(client, RC_CLIENT_LOG_LEVEL_WARN, log_message);
@@ -207,13 +212,14 @@ JNIEXPORT void JNICALL JNI_FN(nativeLogout)(JNIEnv *env, jclass clazz)
     rc_client_logout(client);
 }
 
-/* Fields separated by \x1f: display name, hardcore points, softcore points. Null when logged out. */
+/* Fields separated by \x1f: display name, hardcore points, softcore points, avatar URL. Null when logged out. */
 JNIEXPORT jstring JNICALL JNI_FN(nativeUserInfo)(JNIEnv *env, jclass clazz)
 {
     const rc_client_user_t *user = rc_client_get_user_info(client);
     if (!user) return NULL;
     char buffer[256];
-    snprintf(buffer, sizeof(buffer), "%s\x1f%u\x1f%u", user->display_name, user->score, user->score_softcore);
+    snprintf(buffer, sizeof(buffer), "%s\x1f%u\x1f%u\x1f%s", user->display_name, user->score, user->score_softcore,
+             user->avatar_url ? user->avatar_url : "");
     return (*env)->NewStringUTF(env, buffer);
 }
 
@@ -353,4 +359,77 @@ JNIEXPORT void JNICALL JNI_FN(nativeLoadProgress)(JNIEnv *env, jclass clazz, jby
     jbyte *bytes = (*env)->GetByteArrayElements(env, data, NULL);
     rc_client_deserialize_progress_sized(client, (const uint8_t *)bytes, (size_t)size);
     (*env)->ReleaseByteArrayElements(env, data, bytes, JNI_ABORT);
+}
+
+/* ---- The player's progress across games, for the achievements page ---- */
+
+static void RC_CCONV progress_fetched(int result, const char *error, rc_client_all_user_progress_t *list,
+                                      rc_client_t *c, void *userdata)
+{
+    (void)c;
+    JNIEnv *env = get_env();
+    jint console = (jint)(intptr_t)userdata;
+    /* Four ints per game: id, achievements, unlocked (softcore or hardcore), unlocked in hardcore. */
+    jsize count = list ? (jsize)list->num_entries : 0;
+    jintArray values = (*env)->NewIntArray(env, count * 4);
+    for (jsize i = 0; i < count; i++) {
+        const rc_client_all_user_progress_entry_t *entry = &list->entries[i];
+        jint row[4] = {(jint)entry->game_id, (jint)entry->num_achievements,
+                       (jint)entry->num_unlocked_achievements, (jint)entry->num_unlocked_achievements_hardcore};
+        (*env)->SetIntArrayRegion(env, values, i * 4, 4, row);
+    }
+    jstring jerror = new_string(env, error);
+    (*env)->CallStaticVoidMethod(env, achievements_class, on_progress_method, console, result, jerror, values);
+    if (jerror) (*env)->DeleteLocalRef(env, jerror);
+    (*env)->DeleteLocalRef(env, values);
+    if (list) rc_client_destroy_all_user_progress(list);
+}
+
+/* Asks for the logged-in player's progress in every game for a console; answered through onProgress. */
+JNIEXPORT void JNICALL JNI_FN(nativeFetchProgress)(JNIEnv *env, jclass clazz, jint console)
+{
+    rc_client_begin_fetch_all_user_progress(client, (uint32_t)console, progress_fetched, (void *)(intptr_t)console);
+}
+
+static void RC_CCONV titles_fetched(int result, const char *error, rc_client_game_title_list_t *list,
+                                    rc_client_t *c, void *userdata)
+{
+    (void)c;
+    (void)userdata;
+    JNIEnv *env = get_env();
+    jclass string_class = (*env)->FindClass(env, "java/lang/String");
+    jsize count = list ? (jsize)list->num_entries : 0;
+    jintArray ids = (*env)->NewIntArray(env, count);
+    jobjectArray titles = (*env)->NewObjectArray(env, count, string_class, NULL);
+    jobjectArray badges = (*env)->NewObjectArray(env, count, string_class, NULL);
+    for (jsize i = 0; i < count; i++) {
+        const rc_client_game_title_entry_t *entry = &list->entries[i];
+        jint id = (jint)entry->game_id;
+        (*env)->SetIntArrayRegion(env, ids, i, 1, &id);
+        jstring title = new_string(env, entry->title ? entry->title : "");
+        jstring badge = new_string(env, entry->badge_url ? entry->badge_url : "");
+        (*env)->SetObjectArrayElement(env, titles, i, title);
+        (*env)->SetObjectArrayElement(env, badges, i, badge);
+        (*env)->DeleteLocalRef(env, title);
+        (*env)->DeleteLocalRef(env, badge);
+    }
+    jstring jerror = new_string(env, error);
+    (*env)->CallStaticVoidMethod(env, achievements_class, on_titles_method, result, jerror, ids, titles, badges);
+    if (jerror) (*env)->DeleteLocalRef(env, jerror);
+    if (list) rc_client_destroy_game_title_list(list);
+}
+
+/* Asks for games' titles and badge images; answered through onTitles. */
+JNIEXPORT void JNICALL JNI_FN(nativeFetchTitles)(JNIEnv *env, jclass clazz, jintArray game_ids)
+{
+    jsize count = (*env)->GetArrayLength(env, game_ids);
+    if (count == 0) {
+        titles_fetched(RC_OK, NULL, NULL, client, NULL);
+        return;
+    }
+    uint32_t *ids = malloc(sizeof(uint32_t) * (size_t)count);
+    if (!ids) return;
+    (*env)->GetIntArrayRegion(env, game_ids, 0, count, (jint *)ids);
+    rc_client_begin_fetch_game_titles(client, ids, (uint32_t)count, titles_fetched, NULL);
+    free(ids);
 }

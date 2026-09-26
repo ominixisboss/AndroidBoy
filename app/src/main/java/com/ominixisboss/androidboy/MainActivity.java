@@ -95,6 +95,7 @@ public final class MainActivity extends Activity {
         menu.add(0, 1, 0, R.string.add_game).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
+        menu.add(0, 6, 1, R.string.homebrew_hub);
         menu.add(0, 5, 3, R.string.retroachievements);
         menu.add(0, 3, 4, R.string.about);
         return true;
@@ -113,7 +114,10 @@ public final class MainActivity extends Activity {
                 showAbout();
                 return true;
             case 5:
-                AchievementDialogs.showAccount(this, false, null, () -> {});
+                startActivity(new Intent(this, AchievementsActivity.class));
+                return true;
+            case 6:
+                startActivity(new Intent(this, HomebrewActivity.class));
                 return true;
             case 4:
                 SkinPicker.show(this, new SkinLibrary(this), REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {

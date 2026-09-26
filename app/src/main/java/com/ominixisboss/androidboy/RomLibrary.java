@@ -94,7 +94,15 @@ final class RomLibrary {
             if (in == null) throw new IOException("Could not open the file");
             data = readFully(in, MAX_ROM_SIZE * 4);
         }
+        return addRom(name, data);
+    }
 
+    /**
+     * Adds a ROM (or the first ROM inside a .zip) to the library, named after {@code name}.
+     * Returns the new file. Call off the main thread.
+     */
+    File addRom(String name, byte[] data) throws IOException {
+        if (data.length > MAX_ROM_SIZE * 4) throw new IOException("This file is too large to be a Game Boy ROM");
         if (isZip(data)) {
             try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(data))) {
                 data = null;

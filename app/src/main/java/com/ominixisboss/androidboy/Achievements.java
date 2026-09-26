@@ -99,6 +99,87 @@ final class Achievements {
         }
     }
 
+    // rc_consoles.h
+    static final int CONSOLE_GAMEBOY = 4;
+    static final int CONSOLE_GAMEBOY_COLOR = 6;
+    static final String SITE = "https://retroachievements.org";
+
+    /** The player's progress in one game, for the achievements page. */
+    static final class GameProgress {
+        final int gameId;
+        final int total;
+        final int unlocked;
+        final int unlockedHardcore;
+        final String title;
+        final String badgeUrl;
+
+        GameProgress(int gameId, int total, int unlocked, int unlockedHardcore, String title, String badgeUrl) {
+            this.gameId = gameId;
+            this.total = total;
+            this.unlocked = unlocked;
+            this.unlockedHardcore = unlockedHardcore;
+            this.title = title;
+            this.badgeUrl = badgeUrl;
+        }
+
+        boolean mastered() {
+            return total > 0 && unlockedHardcore >= total;
+        }
+
+        String pageUrl() {
+            return SITE + "/game/" + gameId;
+        }
+    }
+
+    interface ProgressCallback {
+        /** Main thread. {@code games} is null if something failed, with {@code error} saying what. */
+        void onProgress(List<GameProgress> games, String error);
+    }
+
+    /**
+     * Puts together the games the player has unlocked something in, from nativeFetchProgress
+     * results (four ints per game: id, total, unlocked, unlocked in hardcore) and their titles.
+     * Most-completed first, then by title.
+     */
+    static List<GameProgress> combineProgress(List<int[]> progress, int[] ids, String[] titles, String[] badges) {
+        java.util.Map<Integer, String[]> names = new java.util.HashMap<>();
+        for (int i = 0; i < ids.length; i++) names.put(ids[i], new String[] {titles[i], badges[i]});
+        java.util.Map<Integer, GameProgress> games = new java.util.LinkedHashMap<>();
+        for (int[] values : progress) {
+            for (int i = 0; i + 3 < values.length; i += 4) {
+                int id = values[i];
+                if (values[i + 2] == 0 && values[i + 3] == 0) continue; // Never played.
+                String[] name = names.get(id);
+                GameProgress game = new GameProgress(id, values[i + 1], values[i + 2], values[i + 3],
+                        name != null && !name[0].isEmpty() ? name[0] : "Game " + id, name != null ? name[1] : "");
+                GameProgress existing = games.get(id);
+                if (existing == null || game.unlocked > existing.unlocked) games.put(id, game);
+            }
+        }
+        List<GameProgress> list = new ArrayList<>(games.values());
+        list.sort((a, b) -> {
+            double pa = a.total == 0 ? 0 : (double) a.unlocked / a.total;
+            double pb = b.total == 0 ? 0 : (double) b.unlocked / b.total;
+            if (pa != pb) return Double.compare(pb, pa);
+            return a.title.compareToIgnoreCase(b.title);
+        });
+        return list;
+    }
+
+    /** Game ids with any unlocks, from nativeFetchProgress results. */
+    static int[] playedGames(List<int[]> progress) {
+        java.util.Set<Integer> ids = new java.util.LinkedHashSet<>();
+        for (int[] values : progress) {
+            for (int i = 0; i + 3 < values.length; i += 4) {
+                if (values[i + 2] > 0 || values[i + 3] > 0) ids.add(values[i]);
+            }
+        }
+        int[] result = new int[ids.size()];
+        int i = 0;
+        for (int id : ids) result[i++] = id;
+        return result;
+    }
+
     interface Listener {
         /** Main thread. */
         void onAchievementEvent(Event event);
@@ -121,7 +202,10 @@ final class Achievements {
     private final String userAgent;
     private Listener listener;
     private LoginCallback pendingLogin;
+    private ProgressCallback pendingProgress;
+    private final List<int[]> progressResults = new ArrayList<>();
     private volatile boolean loggedIn;
+    private volatile boolean loggingIn;
     private volatile boolean gameLoaded;
 
     static synchronized boolean isCreated() {
@@ -156,7 +240,10 @@ final class Achievements {
                 + nativeUserAgentClause();
         String user = prefs.getString(PREF_USER, null);
         String token = prefs.getString(PREF_TOKEN, null);
-        if (user != null && token != null) nativeLoginWithToken(user, token);
+        if (user != null && token != null) {
+            loggingIn = true;
+            nativeLoginWithToken(user, token);
+        }
     }
 
     void setListener(Listener listener) {
@@ -177,14 +264,46 @@ final class Achievements {
         return prefs.getString(PREF_USER, null);
     }
 
-    /** Display name and points, or null if the login hasn't completed. */
+    /**
+     * Fetches the player's Game Boy and Game Boy Color progress: the games they've unlocked
+     * something in, with titles and badges. Main thread; a new request replaces one in flight.
+     */
+    void fetchProgress(ProgressCallback callback) {
+        boolean running = pendingProgress != null;
+        pendingProgress = callback;
+        if (running) return; // The request in flight answers the new callback.
+        progressResults.clear();
+        nativeFetchProgress(CONSOLE_GAMEBOY);
+    }
+
+    /** Display name, points, softcore points and avatar URL; or null if the login hasn't completed. */
     String[] userInfo() {
         String info = nativeUserInfo();
         return info == null ? null : info.split(SEPARATOR, -1);
     }
 
+    /** Whether the saved login is still being checked with the server. */
+    boolean isLoggingIn() {
+        return loggingIn;
+    }
+
+    /** Tries the saved login again, e.g. after the network was down at startup. Main thread. */
+    void reconnect(LoginCallback callback) {
+        String user = prefs.getString(PREF_USER, null);
+        String token = prefs.getString(PREF_TOKEN, null);
+        if (loggedIn || user == null || token == null) {
+            callback.onLoginResult(loggedIn ? null : "Not logged in");
+            return;
+        }
+        pendingLogin = callback;
+        if (loggingIn) return; // The attempt in flight answers the callback.
+        loggingIn = true;
+        nativeLoginWithToken(user, token);
+    }
+
     void login(String username, String password, LoginCallback callback) {
         pendingLogin = callback;
+        loggingIn = true;
         nativeLoginWithPassword(username, password);
     }
 
@@ -298,6 +417,7 @@ final class Achievements {
     @SuppressWarnings("unused")
     private static void onLogin(int result, String error, String username, String token) {
         Achievements self = instance;
+        self.loggingIn = false;
         if (result == RC_OK) {
             self.loggedIn = true;
             self.prefs.edit().putString(PREF_USER, username).putString(PREF_TOKEN, token).apply();
@@ -328,6 +448,45 @@ final class Achievements {
             event = new Event(EVENT_SERVER_ERROR, "RetroAchievements", error != null ? error : "Could not load achievements", null, 0);
         }
         if (event != null) self.dispatch(event);
+    }
+
+    @SuppressWarnings("unused")
+    private static void onProgress(int console, int result, String error, int[] values) {
+        Achievements self = instance;
+        self.main.post(() -> {
+            if (self.pendingProgress == null) return;
+            if (result != RC_OK) {
+                failProgress(self, error != null ? error : "Could not load your progress (" + result + ")");
+                return;
+            }
+            self.progressResults.add(values);
+            if (console == CONSOLE_GAMEBOY) {
+                nativeFetchProgress(CONSOLE_GAMEBOY_COLOR);
+            } else {
+                nativeFetchTitles(playedGames(self.progressResults));
+            }
+        });
+    }
+
+    @SuppressWarnings("unused")
+    private static void onTitles(int result, String error, int[] ids, String[] titles, String[] badges) {
+        Achievements self = instance;
+        self.main.post(() -> {
+            if (self.pendingProgress == null) return;
+            if (result != RC_OK) {
+                failProgress(self, error != null ? error : "Could not load game titles (" + result + ")");
+                return;
+            }
+            ProgressCallback callback = self.pendingProgress;
+            self.pendingProgress = null;
+            callback.onProgress(combineProgress(self.progressResults, ids, titles, badges), null);
+        });
+    }
+
+    private static void failProgress(Achievements self, String error) {
+        ProgressCallback callback = self.pendingProgress;
+        self.pendingProgress = null;
+        callback.onProgress(null, error);
     }
 
     @SuppressWarnings("unused")
@@ -368,4 +527,6 @@ final class Achievements {
     private static native void nativeIdle();
     private static native byte[] nativeSaveProgress();
     private static native void nativeLoadProgress(byte[] progress);
+    private static native void nativeFetchProgress(int console);
+    private static native void nativeFetchTitles(int[] gameIds);
 }

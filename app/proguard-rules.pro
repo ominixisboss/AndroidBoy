@@ -10,3 +10,7 @@
     static void onGameLoaded(int, java.lang.String);
     static void onEvent(int, java.lang.String, java.lang.String, java.lang.String, int);
 }
+-keep class com.ominixisboss.androidboy.Achievements {
+    static void onProgress(int, int, java.lang.String, int[]);
+    static void onTitles(int, java.lang.String, int[], java.lang.String[], java.lang.String[]);
+}
