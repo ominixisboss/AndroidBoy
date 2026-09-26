@@ -2,16 +2,25 @@ package com.ominixisboss.androidboy;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.app.Dialog;
 import android.content.ActivityNotFoundException;
 import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.ColorStateList;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.text.InputType;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.ArrayAdapter;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -152,9 +161,32 @@ final class AchievementDialogs {
         }
         boolean hardcore = achievements.isHardcoreEnabled();
         List<Object> items = group(list);
+        List<Achievements.Leaderboard> leaderboards = achievements.leaderboards();
+        Dialog dialog = new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(GameMenuView.BACKGROUND);
+        page.setFitsSystemWindows(true);
+        page.addView(topBar(activity, "Achievements", dialog::dismiss));
+        page.addView(divider(activity));
+
         ListView view = new ListView(activity);
         view.setDivider(null);
-        view.addHeaderView(summaryHeader(activity, summary, hardcore, richPresence), null, false);
+        view.setSelector(new ColorDrawable(0x22FFFFFF));
+        view.setClipToPadding(false);
+        int pad = dp(activity, 20);
+        view.setPadding(pad, 0, pad, dp(activity, 24));
+        view.addHeaderView(summaryHeader(activity, summary, hardcore, richPresence,
+                () -> {
+                    dialog.dismiss();
+                    onProfile.run();
+                },
+                leaderboards.isEmpty() ? null : () -> showLeaderboards(activity, leaderboards),
+                () -> {
+                    dialog.dismiss();
+                    onAccount.run();
+                }), null, false);
         view.setAdapter(new ArrayAdapter<Object>(activity, 0, items) {
             @Override
             public int getViewTypeCount() {
@@ -175,7 +207,7 @@ final class AchievementDialogs {
             public View getView(int position, View convertView, ViewGroup parent) {
                 Object item = getItem(position);
                 if (item instanceof String) {
-                    TextView heading = convertView instanceof TextView ? (TextView) convertView : heading(activity, "");
+                    TextView heading = convertView instanceof TextView ? (TextView) convertView : sectionLabel(activity);
                     heading.setText((String) item);
                     return heading;
                 }
@@ -190,24 +222,100 @@ final class AchievementDialogs {
                 showDetails(activity, (Achievements.Achievement) item, hardcore);
             }
         });
-        List<Achievements.Leaderboard> leaderboards = achievements.leaderboards();
-        int pad = dp(activity, 20);
-        view.setPadding(pad, 0, pad, 0);
-        AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setView(view)
-                .setPositiveButton("Done", null)
-                .setNeutralButton("Profile", null)
-                .setNegativeButton(leaderboards.isEmpty() ? null : "Leaderboards", null)
-                .create();
+        page.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+
+        dialog.setContentView(page);
         dialog.setOnDismissListener(d -> onDismiss.run());
+        dialog.setOnShowListener(d -> hideSystemBars(dialog.getWindow()));
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
+            window.setBackgroundDrawable(new ColorDrawable(GameMenuView.BACKGROUND));
+            window.setWindowAnimations(android.R.style.Animation_InputMethod); // Slides up from below.
+        }
         dialog.show();
-        dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> {
-            dialog.dismiss();
-            onProfile.run();
-        });
-        if (!leaderboards.isEmpty()) {
-            // Opens over the list rather than closing it.
-            dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(v -> showLeaderboards(activity, leaderboards));
+    }
+
+    /** The page's top bar: a back arrow and its title, like the Game Menu's. */
+    private static View topBar(Activity activity, String heading, Runnable onBack) {
+        LinearLayout bar = new LinearLayout(activity);
+        bar.setOrientation(LinearLayout.HORIZONTAL);
+        bar.setGravity(Gravity.CENTER_VERTICAL);
+        bar.setPadding(dp(activity, 6), dp(activity, 8), dp(activity, 20), dp(activity, 8));
+        ImageView back = new ImageView(activity);
+        back.setImageDrawable(Icons.drawable(Icons.BACK, GameMenuView.TITLE));
+        back.setContentDescription("Back to the game");
+        int pad = dp(activity, 12);
+        back.setPadding(pad, pad, pad, pad);
+        back.setBackground(ripple());
+        back.setOnClickListener(v -> onBack.run());
+        bar.addView(back, new LinearLayout.LayoutParams(dp(activity, 48), dp(activity, 48)));
+        TextView title = new TextView(activity);
+        title.setText(heading);
+        title.setTextColor(GameMenuView.TITLE);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 22);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setPadding(dp(activity, 8), 0, 0, 0);
+        bar.addView(title, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        return bar;
+    }
+
+    private static View divider(Activity activity) {
+        View line = new View(activity);
+        line.setBackgroundColor(GameToolbars.DIVIDER);
+        line.setLayoutParams(new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                Math.max(1, dp(activity, 1))));
+        return line;
+    }
+
+    /** A group heading in the list: small capitals, like the Game Menu's sections. */
+    private static TextView sectionLabel(Activity activity) {
+        TextView label = new TextView(activity);
+        label.setAllCaps(true);
+        label.setLetterSpacing(0.08f);
+        label.setTextColor(GameMenuView.SECTION);
+        label.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        label.setTypeface(Typeface.DEFAULT_BOLD);
+        label.setPadding(0, dp(activity, 18), 0, dp(activity, 6));
+        return label;
+    }
+
+    /** A rounded, outlined text button for the summary's actions. */
+    private static TextView chip(Activity activity, String label, Runnable action) {
+        TextView chip = new TextView(activity);
+        chip.setText(label);
+        chip.setTextColor(GameMenuView.TITLE);
+        chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 14);
+        chip.setTypeface(Typeface.DEFAULT_BOLD);
+        chip.setGravity(Gravity.CENTER);
+        int h = dp(activity, 16);
+        chip.setPadding(h, dp(activity, 8), h, dp(activity, 8));
+        GradientDrawable shape = new GradientDrawable();
+        shape.setCornerRadius(dp(activity, 18));
+        shape.setStroke(Math.max(1, dp(activity, 1)), GameToolbars.DIVIDER);
+        shape.setColor(0x14FFFFFF);
+        chip.setBackground(new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), shape, null));
+        chip.setOnClickListener(v -> action.run());
+        return chip;
+    }
+
+    private static RippleDrawable ripple() {
+        return new RippleDrawable(ColorStateList.valueOf(0x33FFFFFF), null, new ColorDrawable(0xFFFFFFFF));
+    }
+
+    private static void hideSystemBars(Window window) {
+        if (window == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            WindowInsetsController controller = window.getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.systemBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        } else {
+            window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                    | View.SYSTEM_UI_FLAG_FULLSCREEN
+                    | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         }
     }
 
@@ -236,7 +344,8 @@ final class AchievementDialogs {
     }
 
     /** The game's badge and name, how much is unlocked, and what the player is doing. */
-    private static View summaryHeader(Activity activity, String[] summary, boolean hardcore, String richPresence) {
+    private static View summaryHeader(Activity activity, String[] summary, boolean hardcore, String richPresence,
+                                      Runnable onProfile, Runnable onLeaderboards, Runnable onAccount) {
         LinearLayout header = new LinearLayout(activity);
         header.setOrientation(LinearLayout.VERTICAL);
         header.setPadding(0, dp(activity, 20), 0, dp(activity, 4));
@@ -255,9 +364,12 @@ final class AchievementDialogs {
         names.setOrientation(LinearLayout.VERTICAL);
         TextView title = text(activity, summary[0], 20);
         title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(GameMenuView.TITLE);
         names.addView(title);
-        names.addView(text(activity, summary[1] + " of " + summary[2] + " unlocked  ·  "
-                + summary[3] + " of " + summary[4] + " points" + (hardcore ? "  ·  hardcore" : ""), 13));
+        TextView totals = text(activity, summary[1] + " of " + summary[2] + " unlocked  ·  "
+                + summary[3] + " of " + summary[4] + " points" + (hardcore ? "  ·  hardcore" : ""), 14);
+        totals.setTextColor(GameMenuView.SUBTITLE);
+        names.addView(totals);
         top.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
         header.addView(top);
 
@@ -269,9 +381,28 @@ final class AchievementDialogs {
         barParams.topMargin = dp(activity, 8);
         header.addView(bar, barParams);
         if (richPresence != null && !richPresence.isEmpty()) {
-            header.addView(text(activity, "Now: " + richPresence, 13));
+            TextView now = text(activity, "Now: " + richPresence, 14);
+            now.setTextColor(GameMenuView.SUBTITLE);
+            header.addView(now);
         }
+        LinearLayout actions = new LinearLayout(activity);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setPadding(0, dp(activity, 10), 0, dp(activity, 2));
+        addChip(actions, chip(activity, "My profile", onProfile));
+        if (onLeaderboards != null) addChip(actions, chip(activity, "Leaderboards", onLeaderboards));
+        addChip(actions, chip(activity, "Account", onAccount));
+        android.widget.HorizontalScrollView scroller = new android.widget.HorizontalScrollView(activity);
+        scroller.setHorizontalScrollBarEnabled(false);
+        scroller.addView(actions);
+        header.addView(scroller);
         return header;
+    }
+
+    private static void addChip(LinearLayout row, View chip) {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        params.setMarginEnd(dp(row.getContext(), 8));
+        row.addView(chip, params);
     }
 
     private static int parse(String number) {
@@ -486,18 +617,26 @@ final class AchievementDialogs {
             setGravity(Gravity.CENTER_VERTICAL);
             int pad = dp(activity, 8);
             setPadding(0, pad, 0, pad);
+            setMinimumHeight(dp(activity, 64));
             badge = new ImageView(activity);
-            LayoutParams badgeParams = new LayoutParams(dp(activity, 44), dp(activity, 44));
+            LayoutParams badgeParams = new LayoutParams(dp(activity, 48), dp(activity, 48));
             badgeParams.setMarginEnd(dp(activity, 12));
             addView(badge, badgeParams);
             LinearLayout text = new LinearLayout(activity);
             text.setOrientation(VERTICAL);
-            title = text(activity, "", 15);
+            title = text(activity, "", 16);
             title.setTypeface(Typeface.DEFAULT_BOLD);
-            detail = text(activity, "", 13);
+            title.setTextColor(GameMenuView.TITLE);
+            detail = text(activity, "", 14);
+            detail.setTextColor(GameMenuView.SUBTITLE);
             text.addView(title);
             text.addView(detail);
             addView(text, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
+            ImageView chevron = new ImageView(activity);
+            chevron.setImageDrawable(Icons.drawable(Icons.CHEVRON, GameMenuView.SUBTITLE));
+            LayoutParams chevronParams = new LayoutParams(dp(activity, 18), dp(activity, 18));
+            chevronParams.setMarginStart(dp(activity, 8));
+            addView(chevron, chevronParams);
         }
 
         void bind(Achievements.Achievement achievement) {
@@ -534,7 +673,7 @@ final class AchievementDialogs {
         return view;
     }
 
-    private static int dp(Activity activity, int value) {
-        return Math.round(value * activity.getResources().getDisplayMetrics().density);
+    private static int dp(android.content.Context context, int value) {
+        return Math.round(value * context.getResources().getDisplayMetrics().density);
     }
 }
