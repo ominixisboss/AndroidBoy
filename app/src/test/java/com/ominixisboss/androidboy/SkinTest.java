@@ -297,7 +297,8 @@ public class SkinTest {
     public void bundledSkinsAreListed() {
         List<String> ids = new ArrayList<>();
         for (SkinLibrary.Entry entry : new SkinLibrary(RuntimeEnvironment.getApplication()).list()) ids.add(entry.id);
-        String[] bundled = {"midnight", "arcade", "woodgrain", "space", "camo", "candy", "carbon"};
+        String[] bundled = {"midnight", "arcade", "woodgrain", "space", "camo", "candy", "carbon",
+                "ocean", "lava", "pixel", "marble"};
         for (String name : bundled) {
             assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
         }

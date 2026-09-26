@@ -24,10 +24,11 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
   buttons, a moulded d-pad and slanted rubber Start/Select: Classic grey, Pocket silver, black, red
   and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
-  Ice blue, Coral, Mint, Sunset, Atomic purple and Advance indigo. Modern ones too: OLED black and
-  Terminal green (outlines), Neon, Synthwave, Pastel, Frosted and Smoke glass, and a minimal
-  translucent overlay. Seven image skins come with the app (Midnight, Arcade, Woodgrain, Space,
-  Camo, Candy and Carbon), and you can import your own as a `.zip` of images plus a layout file;
+  Ice blue, Coral, Mint, Lime, Sakura, Navy & gold, Sunset, Atomic purple and Advance indigo.
+  Modern ones too: OLED black, Terminal green and Amber terminal (outlines), Neon, Synthwave,
+  Vaporwave, Pastel, Frosted and Smoke glass, and a minimal translucent overlay. Eleven image skins
+  come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
+  and Marble), and you can import your own as a `.zip` of images plus a layout file;
   see [docs/skins.md](docs/skins.md).
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
   CRT, flat CRT, bilinear, Scale2x/4x, HQ2x, OmniScale and more. There's also SameBoy's frame

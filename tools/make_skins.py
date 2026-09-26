@@ -465,11 +465,244 @@ class Carbon:
             pill(draw, [x, y, x + w, y + h], (90, 20, 26) if pressed else (38, 40, 44), text, (235, 235, 240), False)
 
 
+class Ocean:
+    """Under the sea: light rays, bubbles and sand, with coral and seafoam buttons."""
+    name = "Ocean"
+    background = "#06324A"
+    TOP = (20, 130, 170)
+    BOTTOM = (4, 40, 70)
+    SAND = (226, 200, 150)
+    CORAL = (255, 112, 90)
+    FOAM = (120, 230, 210)
+    DEEP = (8, 56, 86)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = vertical_gradient(size, self.TOP, self.BOTTOM)
+        draw = ImageDraw.Draw(image)
+        # Sun rays fanning down from above the top edge.
+        for i in range(7):
+            x = width * (0.05 + i * 0.16)
+            draw.polygon([(x, 0), (x + width * 0.05, 0), (x + width * 0.2, height), (x + width * 0.12, height)],
+                         fill=lerp(self.TOP, (140, 220, 235), 0.12 if i % 2 else 0.06))
+        # Sand dunes along the bottom.
+        points = [(0, height)]
+        for x in range(0, width + int(40 * s), int(40 * s)):
+            points.append((x, height * 0.955 + math.sin(x / (230 * s)) * 18 * s))
+        points.append((width, height))
+        draw.polygon(points, fill=self.SAND)
+        rng = random.Random(11)
+        for _ in range(60):
+            x, y = rng.uniform(0, width), rng.uniform(0, height * 0.94)
+            r = rng.uniform(4, 16) * s
+            draw.ellipse([x - r, y - r, x + r, y + r], outline=(190, 240, 250), width=max(1, int(2 * s)))
+            draw.ellipse([x - r * 0.45, y - r * 0.55, x - r * 0.15, y - r * 0.25], fill=(220, 250, 255))
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad,
+                               fill=self.DEEP, outline=self.FOAM, width=int(3 * s))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "ANDROIDBOY  REEF", pad * 0.8, self.FOAM)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = lighten(self.DEEP, 0.3) if pressed else self.DEEP
+        edge = max(2, int(w * 0.012))
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.3, fill=color, outline=self.FOAM, width=edge)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.3, fill=color, outline=self.FOAM, width=edge)
+        draw.rectangle([x + arm + edge, y + arm + edge, x + 2 * arm - edge, y + 2 * arm - edge], fill=color)
+        for name, color in (("a", self.CORAL), ("b", self.FOAM)):
+            x, y, w, h = controls[name]
+            draw.ellipse([x - w * 0.06, y - h * 0.06, x + w * 1.06, y + h * 1.06], fill=self.DEEP)
+            ball(draw, [x, y, x + w, y + h], lighten(color, 0.3) if pressed else color, light=0.5, shade=0.3)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, (255, 255, 255))
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            pill(draw, [x, y, x + w, y + h], lighten(self.DEEP, 0.3) if pressed else self.DEEP, text, self.FOAM, False)
+
+
+class Lava:
+    """Black volcanic rock split by glowing lava, with molten orange buttons."""
+    name = "Lava"
+    background = "#140806"
+    ROCK = (34, 26, 24)
+    ROCK_LIGHT = (58, 46, 42)
+    LAVA = (255, 110, 20)
+    GLOW = (255, 200, 60)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = Image.new("RGB", size, self.ROCK)
+        draw = ImageDraw.Draw(image)
+        rng = random.Random(5)
+        # Rough rock: scattered lighter stones.
+        for _ in range(int(width * height / (9000 * s * s))):
+            x, y = rng.uniform(0, width), rng.uniform(0, height)
+            r = rng.uniform(6, 22) * s
+            draw.ellipse([x - r, y - r * 0.7, x + r, y + r * 0.7], fill=lerp(self.ROCK, self.ROCK_LIGHT, rng.random()))
+        # Cracks of lava: random walks, drawn wide and dim, then narrow and bright.
+        for _ in range(9):
+            x, y = rng.uniform(0, width), rng.uniform(0, height)
+            points = [(x, y)]
+            angle = rng.uniform(0, math.tau)
+            for _ in range(30):
+                angle += rng.uniform(-0.6, 0.6)
+                x += math.cos(angle) * 40 * s
+                y += math.sin(angle) * 40 * s
+                points.append((x, y))
+            draw.line(points, fill=(120, 30, 10), width=int(14 * s), joint="curve")
+            draw.line(points, fill=self.LAVA, width=int(6 * s), joint="curve")
+            draw.line(points, fill=self.GLOW, width=int(2 * s), joint="curve")
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad * 0.6,
+                               fill=(14, 10, 9), outline=self.LAVA, width=int(3 * s))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "ANDROIDBOY  MAGMA", pad * 0.8, self.LAVA)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = (90, 40, 20) if pressed else (22, 18, 17)
+        edge = max(2, int(w * 0.012))
+        draw.ellipse([x - w * 0.05, y - h * 0.05, x + w * 1.05, y + h * 1.05], fill=(14, 10, 9))
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.2, fill=color, outline=self.LAVA, width=edge)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.2, fill=color, outline=self.LAVA, width=edge)
+        draw.rectangle([x + arm + edge, y + arm + edge, x + 2 * arm - edge, y + 2 * arm - edge], fill=color)
+        for name in ("a", "b"):
+            x, y, w, h = controls[name]
+            draw.ellipse([x - w * 0.08, y - h * 0.08, x + w * 1.08, y + h * 1.08], fill=(120, 30, 10) if not pressed else self.LAVA)
+            ball(draw, [x, y, x + w, y + h], self.GLOW if pressed else self.LAVA, light=0.5, shade=0.35)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, (40, 10, 0))
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            pill(draw, [x, y, x + w, y + h], (120, 40, 10) if pressed else (22, 18, 17), text, self.LAVA, False)
+
+
+class Pixel:
+    """8-bit pixel art: chunky blocks, a checkered body and square-cornered buttons."""
+    name = "Pixel"
+    background = "#2B2D5C"
+    BLUE = (43, 45, 92)
+    BLUE2 = (52, 55, 110)
+    YELLOW = (255, 214, 64)
+    RED = (232, 64, 72)
+    GREEN = (72, 200, 112)
+    INK = (16, 16, 32)
+
+    @staticmethod
+    def block_rect(draw, box, color, px, border=None, width=None):
+        """A rectangle with its corners stepped off, pixel-art style, optionally outlined."""
+        def stepped(b, fill, step):
+            x0, y0, x1, y1 = b
+            draw.rectangle([x0 + step, y0, x1 - step, y1], fill=fill)
+            draw.rectangle([x0, y0 + step, x1, y1 - step], fill=fill)
+        if border:
+            width = width or 4 * SUPERSAMPLE
+            stepped(box, border, px)
+            x0, y0, x1, y1 = box
+            box = [x0 + width, y0 + width, x1 - width, y1 - width]
+        stepped(box, color, px)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = Image.new("RGB", size, self.BLUE)
+        draw = ImageDraw.Draw(image)
+        cell = 40 * s
+        for row in range(int(height / cell) + 1):
+            for col in range(int(width / cell) + 1):
+                if (row + col) % 2:
+                    draw.rectangle([col * cell, row * cell, (col + 1) * cell, (row + 1) * cell], fill=self.BLUE2)
+        x, y, w, h = screen
+        pad = w * 0.05
+        px = 8 * s
+        self.block_rect(draw, [x - pad, y - pad, x + w + pad, y + h + pad * 1.6], self.INK, px, border=self.YELLOW)
+        label(draw, (x + w / 2, y + h + pad * 0.8), "PRESS START", pad * 0.85, self.YELLOW)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        px = 8 * SUPERSAMPLE
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = (110, 110, 150) if pressed else (70, 70, 100)
+        self.block_rect(draw, [x + arm, y, x + 2 * arm, y + h], color, px, border=self.INK)
+        self.block_rect(draw, [x, y + arm, x + w, y + 2 * arm], color, px, border=self.INK)
+        draw.rectangle([x + arm + px, y + arm + px, x + 2 * arm - px, y + 2 * arm - px], fill=color)
+        for name, color in (("a", self.RED), ("b", self.GREEN)):
+            x, y, w, h = controls[name]
+            color = lighten(color, 0.35) if pressed else color
+            self.block_rect(draw, [x, y, x + w, y + h], color, w * 0.13, border=self.INK)
+            # A square highlight in the top-left, like a sprite's shine.
+            draw.rectangle([x + w * 0.25, y + h * 0.2, x + w * 0.38, y + h * 0.33], fill=lighten(color, 0.6))
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.42, self.INK)
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            self.block_rect(draw, [x, y, x + w, y + h], lighten(self.YELLOW, 0.4) if pressed else self.YELLOW, px, border=self.INK)
+            label(draw, (x + w / 2, y + h / 2), text, h * 0.42, self.INK)
+
+
+class Marble:
+    """White marble veined with grey, with polished gold buttons."""
+    name = "Marble"
+    background = "#E9E6E1"
+    STONE = (236, 233, 228)
+    VEIN = (150, 150, 158)
+    GOLD = (212, 170, 70)
+    INK = (60, 56, 50)
+
+    def body(self, size, screen, s):
+        width, height = size
+        image = vertical_gradient(size, (244, 242, 238), (222, 218, 212))
+        draw = ImageDraw.Draw(image)
+        rng = random.Random(8)
+        for _ in range(14):
+            x, y = rng.uniform(-100, width), rng.uniform(-100, height)
+            angle = rng.uniform(0.3, 1.2)
+            points = [(x, y)]
+            for _ in range(40):
+                angle += rng.uniform(-0.35, 0.35)
+                x += math.cos(angle) * 30 * s
+                y += math.sin(angle) * 30 * s
+                points.append((x, y))
+            draw.line(points, fill=lerp(self.STONE, self.VEIN, rng.uniform(0.25, 0.6)), width=int(rng.uniform(1, 4) * s), joint="curve")
+        x, y, w, h = screen
+        pad = w * 0.05
+        draw.rounded_rectangle([x - pad * 1.25, y - pad * 1.25, x + w + pad * 1.25, y + h + pad * 1.85], radius=pad * 1.1,
+                               fill=self.GOLD)
+        draw.rounded_rectangle([x - pad, y - pad, x + w + pad, y + h + pad * 1.6], radius=pad, fill=(30, 28, 26))
+        label(draw, (x + w / 2, y + h + pad * 0.8), "ANDROIDBOY", pad * 0.85, self.GOLD)
+        return image
+
+    def controls(self, draw, controls, pressed):
+        x, y, w, h = controls["dpad"]
+        arm = w / 3
+        color = lighten(self.INK, 0.25) if pressed else self.INK
+        for box in ([x + arm, y, x + 2 * arm, y + h], [x, y + arm, x + w, y + 2 * arm]):
+            draw.rounded_rectangle([box[0] - 10, box[1] - 10, box[2] + 10, box[3] + 10], radius=arm * 0.25, fill=self.GOLD)
+        draw.rounded_rectangle([x + arm, y, x + 2 * arm, y + h], radius=arm * 0.2, fill=color)
+        draw.rounded_rectangle([x, y + arm, x + w, y + 2 * arm], radius=arm * 0.2, fill=color)
+        for name in ("a", "b"):
+            x, y, w, h = controls[name]
+            ball(draw, [x - w * 0.07, y - h * 0.07, x + w * 1.07, y + h * 1.07], darken(self.GOLD, 0.1), light=0.5, shade=0.35)
+            ball(draw, [x + w * 0.06, y + h * 0.06, x + w * 0.94, y + h * 0.94],
+                 lighten(self.INK, 0.3) if pressed else self.INK, light=0.4, shade=0.3)
+            label(draw, (x + w / 2, y + h / 2), name.upper(), h * 0.4, self.GOLD)
+        for name, text in (("select", "SELECT"), ("start", "START"), ("menu", "MENU"), ("fastForward", ">>"),
+                           ("rewind", "<<")):
+            x, y, w, h = controls[name]
+            draw.rounded_rectangle([x - 4, y - 4, x + w + 4, y + h + 4], radius=h / 2 + 4, fill=self.GOLD)
+            pill(draw, [x, y, x + w, y + h], lighten(self.INK, 0.25) if pressed else self.INK, text, self.GOLD, False)
+
+
 def scaled(rect, s):
     return [v * s for v in rect]
 
 
-def render(style, out, name, size, layout):
+def render(style, out, name, size, layout, quantize=False):
     s = SUPERSAMPLE
     big = (size[0] * s, size[1] * s)
     controls = {key: scaled(rect, s) for key, rect in layout["controls"].items()}
@@ -481,15 +714,19 @@ def render(style, out, name, size, layout):
     style.controls(draw, controls, False)
     style.controls(ImageDraw.Draw(pressed), controls, True)
     for picture, suffix in ((image, ""), (pressed, "_pressed")):
-        picture.resize(size, Image.LANCZOS).save(os.path.join(out, name + suffix + ".png"), optimize=True)
+        picture = picture.resize(size, Image.LANCZOS)
+        if quantize:
+            # 256 colours with dithering: indistinguishable on a phone, and less than half the size.
+            picture = picture.quantize(256, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.FLOYDSTEINBERG)
+        picture.save(os.path.join(out, name + suffix + ".png"), optimize=True)
 
 
-def write_skin(style, out, display_name):
+def write_skin(style, out, display_name, quantize=False):
     os.makedirs(out, exist_ok=True)
     portrait = dict(image="portrait.png", pressedImage="portrait_pressed.png", **PORTRAIT)
     landscape = dict(image="landscape.png", pressedImage="landscape_pressed.png", **LANDSCAPE)
-    render(style, out, "portrait", (1080, 1920), PORTRAIT)
-    render(style, out, "landscape", (1920, 1080), LANDSCAPE)
+    render(style, out, "portrait", (1080, 1920), PORTRAIT, quantize)
+    render(style, out, "landscape", (1920, 1080), LANDSCAPE, quantize)
     skin = {
         "name": display_name,
         "author": "AndroidBoy",
@@ -504,8 +741,9 @@ def write_skin(style, out, display_name):
 
 def main():
     write_skin(Midnight(), EXAMPLE, "Midnight (example)")
-    for style in (Midnight(), Arcade(), Woodgrain(), Space(), Camo(), Candy(), Carbon()):
-        write_skin(style, os.path.join(BUNDLED, style.name.lower()), style.name)
+    for style in (Midnight(), Arcade(), Woodgrain(), Space(), Camo(), Candy(), Carbon(),
+                  Ocean(), Lava(), Pixel(), Marble()):
+        write_skin(style, os.path.join(BUNDLED, style.name.lower()), style.name, quantize=True)
 
 
 if __name__ == "__main__":
