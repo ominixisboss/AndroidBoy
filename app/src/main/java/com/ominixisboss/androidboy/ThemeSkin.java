@@ -135,17 +135,6 @@ final class ThemeSkin extends Skin {
         return p;
     }
 
-    private static Palette glass() {
-        Palette p = palette(0xFF2A4A86, 0x40FFFFFF, 0x50FFFFFF, 0x50FFFFFF, 0x50FFFFFF, 0xFFFFFFFF);
-        p.bodyShade = 0xFF6C3D8F;
-        p.bezelStroke = 0x90FFFFFF;
-        p.rim = 0xA0FFFFFF;
-        p.style = TRANSLUCENT;
-        p.led = 0xFF7CF3FF;
-        p.speaker = false;
-        return p;
-    }
-
     private static Palette sunset() {
         Palette p = palette(0xFFFF9160, 0xFF2A1B3D, 0xFF2A1B3D, 0xFFFFC94D, 0xFF4A2F6B, 0xFFFFF1E0);
         p.bodyShade = 0xFF7A3E9D;
@@ -176,14 +165,6 @@ final class ThemeSkin extends Skin {
         p.style = OUTLINE;
         p.led = 0xFF39FF6A;
         p.speaker = false;
-        return p;
-    }
-
-    private static Palette smoke() {
-        Palette p = glass();
-        p.body = 0xFF4C515C;
-        p.bodyShade = 0xFF16181D;
-        p.led = 0xFFFF6B6B;
         return p;
     }
 
@@ -259,8 +240,6 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("oled", MODERN, "OLED black (outlines)", oled()),
             new ThemeSkin("neon", MODERN, "Neon", neon()),
             new ThemeSkin("pastel", MODERN, "Pastel", pastel()),
-            new ThemeSkin("glass", MODERN, "Frosted glass", glass()),
-            new ThemeSkin("smoke", MODERN, "Smoke glass", smoke()),
             new ThemeSkin("synthwave", MODERN, "Synthwave", synthwave()),
             new ThemeSkin("vaporwave", MODERN, "Vaporwave", vaporwave()),
             new ThemeSkin("terminal", MODERN, "Terminal green (outlines)", terminal()),

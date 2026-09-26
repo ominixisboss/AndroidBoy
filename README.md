@@ -45,6 +45,12 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   (not while paused); press Back or the small menu button in the top-left corner to bring them
   back, and Back again for the menu. Settings → Controls → Toolbars can keep them on screen, show
   them with every skin, or turn them off.
+- **Glass skins** (Frosted, Smoke, Aqua, Rose quartz, Emerald, Amber, Amethyst, Sapphire, Ruby, Sea
+  glass, Opal and Obsidian): glass controls over a colourful backdrop. Each is frosted glass, a
+  blurred copy of what's behind it, with a bright rim and a reflection; pressing a direction tilts
+  the d-pad, so the scene seen through it shifts, the glare slides across and the pressed arm
+  catches the light. They use the toolbars, like the Soft skins. (They replace the old Frosted
+  and Smoke glass themes; if you used one, you're switched to its Glass skin.)
 - **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
   Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
@@ -52,10 +58,10 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
   Ice blue, Coral, Mint, Lime, Sakura, Navy & gold, Sunset, Atomic purple and Advance indigo.
   Modern ones too: OLED black, Terminal green and Amber terminal (outlines), Neon, Synthwave,
-  Vaporwave, Pastel, Frosted and Smoke glass, and a minimal translucent overlay. Eleven image skins
+  Vaporwave, Pastel, and a minimal translucent overlay. Eleven image skins
   come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
   and Marble), and you can import your own as a `.zip` of images plus a layout file;
-  see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Game Boy classics,
+  see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Glass, Game Boy classics,
   Colours, Modern & minimal, Artwork (the image skins) and Imported, and shows each group as a
   grid of previews: every skin drawn as it looks in a game, with the one in use outlined.
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
@@ -235,7 +241,7 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
   CanvasScreenView        Fallback renderer for devices without OpenGL ES 3
   Skin, ThemeSkin         Skin layout and drawing; the built-in themes
-  SoftSkin                The Soft skins
+  SoftSkin, GlassSkin     The Soft and Glass skins
   GameToolbars,           The game screen's toolbars and full-screen menu; their icons
     GameMenuView, Icons
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import

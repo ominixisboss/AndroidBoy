@@ -161,7 +161,7 @@ final class SkinPicker {
     private static void loadPreview(SkinLibrary library, SkinLibrary.Entry entry, PreviewCard card,
                                     ExecutorService loader, Handler main) {
         card.pendingId = entry.id;
-        boolean builtIn = entry.id.startsWith("theme:") || entry.id.startsWith("soft:");
+        boolean builtIn = entry.id.startsWith("theme:") || entry.id.startsWith("soft:") || entry.id.startsWith("glass:");
         Runnable show = () -> {
             // The card may have been reused for another skin meanwhile.
             Bitmap preview = SkinPreviews.cached(entry.id);

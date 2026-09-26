@@ -113,6 +113,17 @@ public class SkinPickerTest {
     }
 
     @Test
+    public void frostedAndSmokeBecameGlassSkins() {
+        SkinLibrary library = new SkinLibrary(org.robolectric.RuntimeEnvironment.getApplication());
+        library.setActive("theme:glass");
+        assertEquals("glass:frosted", library.activeId());
+        assertTrue(library.loadActive() instanceof GlassSkin);
+        library.setActive("theme:smoke");
+        assertEquals("glass:smoke", library.loadActive().id());
+        assertTrue(library.list(GlassSkin.CATEGORY).size() >= 10);
+    }
+
+    @Test
     public void previewsLookLikeTheirSkins() {
         Bitmap soft = SkinPreviews.render(SoftSkin.find("blush"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);
         Bitmap theme = SkinPreviews.render(ThemeSkin.find("kiwi"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);
