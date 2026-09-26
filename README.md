@@ -20,8 +20,11 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 - **No BIOS files needed.** SameBoy's own open-source boot ROMs are built in, and mGBA uses its
   built-in replacement for the GBA BIOS, so no Nintendo code is included.
 - **Game library.** Add `.gb`/`.gbc`/`.gba` ROMs, or `.zip` files containing them, from any storage provider.
-  You can also use "Open with" from a file manager. Favourites and recently played games get their
-  own sections, and each game shows its box art and when you last played it. Long-press a game to
+  You can also use "Open with" from a file manager. The library is dark, like the in-game menu:
+  a big "Continue playing" card for your last game, strips of recently played games and favourites,
+  then a grid of box-art covers, each with its system (GB, GBC or GBA) and a star for favourites.
+  Chips filter by favourites or system and sort by recently played or name, and the search button
+  finds games by any words of their name. Games without box art get a cover in their system's colour. Long-press a game to
   favourite it or add it to your home screen; long-pressing the app icon offers the last few games.
 - **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
   (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
@@ -264,6 +267,8 @@ app/src/main/cpp/         Native code
   CMakeLists.txt
 app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   MainActivity            Game library, save import/export
+  LibraryScreen,          The game library's screen; what it shows (continue card, strips,
+    GameLibrary             filters, search and the grid of covers)
   EmulatorActivity        Game screen, input, menu, save states
   EmulatorThread          Emulation loop, audio output and pacing
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters

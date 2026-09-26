@@ -6,27 +6,16 @@ import android.content.Intent;
 import android.content.pm.ShortcutInfo;
 import android.content.pm.ShortcutManager;
 import android.graphics.Bitmap;
-import android.graphics.Typeface;
 import android.graphics.drawable.Icon;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.text.format.DateUtils;
 import android.util.Log;
 import android.util.LruCache;
-import android.util.TypedValue;
-import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.BaseAdapter;
-import android.widget.Button;
-import android.widget.ImageView;
-import android.widget.LinearLayout;
-import android.widget.ListView;
-import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
@@ -34,8 +23,10 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -60,46 +51,62 @@ public final class MainActivity extends Activity {
     private final ExecutorService artLoader = Executors.newSingleThreadExecutor();
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final List<File> roms = new ArrayList<>();
-    private final List<GameStore.Row> rows = new ArrayList<>();
+    /** Which system each game is for (GameLibrary.GB, GBC or GBA), by file name; read once from its header. */
+    private final Map<String, Integer> systems = new HashMap<>();
     /** Pictures by ROM file name; a missing key means "not loaded yet", null values aren't stored. */
     private final LruCache<String, Bitmap> art = new LruCache<>(80);
     private final Set<String> artRequested = new HashSet<>();
     private RomLibrary library;
     private GameStore store;
     private BoxArt boxArt;
-    private GameListAdapter adapter;
+    private LibraryScreen screen;
     /** The game whose save file is being imported or exported. */
     private String pendingRom;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
         library = new RomLibrary(this);
         store = new GameStore(this);
         boxArt = new BoxArt(this);
         if (savedInstanceState != null) {
             pendingRom = savedInstanceState.getString(STATE_PENDING_ROM);
         }
+        screen = new LibraryScreen(this, new LibraryScreen.Host() {
+            @Override public void play(File rom) {
+                launch(rom);
+            }
 
-        ListView list = findViewById(R.id.rom_list);
-        adapter = new GameListAdapter();
-        list.setAdapter(adapter);
-        list.setEmptyView(findViewById(R.id.empty));
-        list.setOnItemClickListener((parent, view, position, id) -> {
-            GameStore.Row row = rows.get(position);
-            if (!row.isHeading()) launch(row.rom);
+            @Override public void showOptions(File rom) {
+                showGameOptions(rom);
+            }
+
+            @Override public void addGames() {
+                pickRom();
+            }
+
+            @Override public void showMenu(View anchor) {
+                showMainMenu(anchor);
+            }
+
+            @Override public void openHomebrewHub() {
+                startActivity(new Intent(MainActivity.this, HomebrewActivity.class));
+            }
+
+            @Override public Bitmap art(File rom) {
+                return artFor(rom);
+            }
+
+            @Override public boolean isFavourite(File rom) {
+                return store.isFavourite(rom);
+            }
+
+            @Override public long lastPlayed(File rom) {
+                return store.lastPlayed(rom);
+            }
         });
-        list.setOnItemLongClickListener((parent, view, position, id) -> {
-            GameStore.Row row = rows.get(position);
-            if (row.isHeading()) return false;
-            showGameOptions(row.rom);
-            return true;
-        });
-        Button add = findViewById(R.id.add_rom);
-        add.setOnClickListener(v -> pickRom());
-        TextView version = findViewById(R.id.version);
-        version.setText(getString(R.string.powered_by, BuildConfig.SAMEBOY_VERSION));
+        screen.setFooter(getString(R.string.powered_by, BuildConfig.SAMEBOY_VERSION));
+        setContentView(screen);
 
         if (savedInstanceState == null) handleIntent(getIntent());
     }
@@ -143,9 +150,24 @@ public final class MainActivity extends Activity {
         artLoader.shutdownNow();
     }
 
+    /** The header's ⋮ menu. */
+    private void showMainMenu(View anchor) {
+        android.widget.PopupMenu popup = new android.widget.PopupMenu(this, anchor);
+        onCreateOptionsMenu(popup.getMenu());
+        popup.setOnMenuItemClickListener(this::onOptionsItemSelected);
+        popup.show();
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    public void onBackPressed() {
+        if (screen.closeSearch()) return;
+        super.onBackPressed();
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        menu.add(0, 1, 0, R.string.add_game).setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS);
+        menu.add(0, 1, 0, R.string.add_game);
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
         menu.add(0, 6, 1, R.string.homebrew_hub);
@@ -193,9 +215,10 @@ public final class MainActivity extends Activity {
     private void refresh() {
         roms.clear();
         roms.addAll(library.list());
-        rows.clear();
-        rows.addAll(store.arrange(roms));
-        adapter.notifyDataSetChanged();
+        for (File rom : roms) {
+            if (!systems.containsKey(rom.getName())) systems.put(rom.getName(), GameLibrary.systemOf(rom));
+        }
+        screen.setGames(roms, systems);
         updateRecentShortcuts();
         if (new Settings(this).isOn(Settings.BOX_ART)) fetchMissingArt();
     }
@@ -295,7 +318,7 @@ public final class MainActivity extends Activity {
 
     private void artChanged(File rom) {
         art.remove(rom.getName());
-        adapter.notifyDataSetChanged();
+        screen.artChanged();
         updateRecentShortcuts();
     }
 
@@ -435,112 +458,6 @@ public final class MainActivity extends Activity {
     }
 
     // ---- Game list ----
-
-    /** Section headings and games with their box art, how recently they were played, and a star for favourites. */
-    private final class GameListAdapter extends BaseAdapter {
-        @Override
-        public int getCount() {
-            return rows.size();
-        }
-
-        @Override
-        public GameStore.Row getItem(int position) {
-            return rows.get(position);
-        }
-
-        @Override
-        public long getItemId(int position) {
-            return position;
-        }
-
-        @Override
-        public int getViewTypeCount() {
-            return 2;
-        }
-
-        @Override
-        public int getItemViewType(int position) {
-            return rows.get(position).isHeading() ? 0 : 1;
-        }
-
-        @Override
-        public boolean isEnabled(int position) {
-            return !rows.get(position).isHeading();
-        }
-
-        @Override
-        public View getView(int position, View convertView, ViewGroup parent) {
-            GameStore.Row row = rows.get(position);
-            if (row.isHeading()) {
-                TextView heading = convertView instanceof TextView ? (TextView) convertView : headingView();
-                heading.setText(row.heading);
-                return heading;
-            }
-            GameRow view = convertView instanceof GameRow ? (GameRow) convertView : new GameRow();
-            view.bind(row.rom);
-            return view;
-        }
-
-        private TextView headingView() {
-            TextView view = new TextView(MainActivity.this);
-            view.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            view.setTypeface(Typeface.DEFAULT_BOLD);
-            view.setAllCaps(true);
-            view.setPadding(dp(16), dp(16), dp(16), dp(4));
-            return view;
-        }
-    }
-
-    private final class GameRow extends LinearLayout {
-        final ImageView picture;
-        final TextView title;
-        final TextView detail;
-
-        GameRow() {
-            super(MainActivity.this);
-            setOrientation(HORIZONTAL);
-            setGravity(Gravity.CENTER_VERTICAL);
-            setPadding(dp(16), dp(6), dp(16), dp(6));
-            setMinimumHeight(dp(64));
-            picture = new ImageView(getContext());
-            picture.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            LayoutParams pictureParams = new LayoutParams(dp(52), dp(52));
-            pictureParams.setMarginEnd(dp(14));
-            addView(picture, pictureParams);
-            LinearLayout text = new LinearLayout(getContext());
-            text.setOrientation(VERTICAL);
-            title = new TextView(getContext());
-            title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16);
-            title.setSingleLine(true);
-            title.setEllipsize(android.text.TextUtils.TruncateAt.END);
-            detail = new TextView(getContext());
-            detail.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-            detail.setSingleLine(true);
-            text.addView(title);
-            text.addView(detail);
-            addView(text, new LayoutParams(0, LayoutParams.WRAP_CONTENT, 1));
-        }
-
-        void bind(File rom) {
-            title.setText(RomLibrary.baseName(rom));
-            long played = store.lastPlayed(rom);
-            String when = played > 0
-                    ? "Played " + DateUtils.getRelativeTimeSpanString(played, System.currentTimeMillis(),
-                            DateUtils.MINUTE_IN_MILLIS)
-                    : "Not played yet";
-            detail.setText(store.isFavourite(rom) ? "★ " + when : when);
-            Bitmap bitmap = artFor(rom);
-            if (bitmap != null) {
-                picture.setImageBitmap(bitmap);
-            } else {
-                picture.setImageResource(R.mipmap.ic_launcher);
-            }
-        }
-    }
-
-    private int dp(int value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
 
     private void launch(File rom) {
         Intent intent = new Intent(this, EmulatorActivity.class);
