@@ -163,13 +163,7 @@ final class AchievementDialogs {
         List<Object> items = group(list);
         List<Achievements.Leaderboard> leaderboards = achievements.leaderboards();
         Dialog dialog = new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
-
-        LinearLayout page = new LinearLayout(activity);
-        page.setOrientation(LinearLayout.VERTICAL);
-        page.setBackgroundColor(GameMenuView.BACKGROUND);
-        page.setFitsSystemWindows(true);
-        page.addView(topBar(activity, "Achievements", dialog::dismiss));
-        page.addView(divider(activity));
+        LinearLayout page = page(activity, "Achievements", dialog);
 
         ListView view = new ListView(activity);
         view.setDivider(null);
@@ -223,9 +217,24 @@ final class AchievementDialogs {
             }
         });
         page.addView(view, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
-
-        dialog.setContentView(page);
         dialog.setOnDismissListener(d -> onDismiss.run());
+        showPage(dialog, page);
+    }
+
+    /** A full-screen page's frame: the top bar (its back arrow closes {@code dialog}) and a divider. */
+    private static LinearLayout page(Activity activity, String heading, Dialog dialog) {
+        LinearLayout page = new LinearLayout(activity);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setBackgroundColor(GameMenuView.BACKGROUND);
+        page.setFitsSystemWindows(true);
+        page.addView(topBar(activity, heading, dialog::dismiss));
+        page.addView(divider(activity));
+        return page;
+    }
+
+    /** Shows {@code page} full screen, sliding up, with the system bars kept hidden. */
+    private static void showPage(Dialog dialog, View page) {
+        dialog.setContentView(page);
         dialog.setOnShowListener(d -> hideSystemBars(dialog.getWindow()));
         Window window = dialog.getWindow();
         if (window != null) {
@@ -439,48 +448,76 @@ final class AchievementDialogs {
 
     /** One achievement in full: badge, description, whether and when it was unlocked, progress, rarity. */
     static void showDetails(Activity activity, Achievements.Achievement achievement, boolean hardcore) {
-        LinearLayout content = column(activity);
+        Dialog dialog = new Dialog(activity, android.R.style.Theme_DeviceDefault_NoActionBar_Fullscreen);
+        LinearLayout page = page(activity, "Achievement", dialog);
+
+        LinearLayout content = new LinearLayout(activity);
+        content.setOrientation(LinearLayout.VERTICAL);
         content.setGravity(Gravity.CENTER_HORIZONTAL);
-        content.setPadding(content.getPaddingLeft(), dp(activity, 24), content.getPaddingRight(), dp(activity, 8));
+        int side = dp(activity, 28);
+        content.setPadding(side, dp(activity, 32), side, dp(activity, 32));
         ImageView badge = new ImageView(activity);
-        content.addView(badge, new LinearLayout.LayoutParams(dp(activity, 96), dp(activity, 96)));
+        content.addView(badge, new LinearLayout.LayoutParams(dp(activity, 144), dp(activity, 144)));
         boolean earned = achievement.unlockedIn != 0;
         Badges.load(badge, earned ? achievement.unlockedBadgeUrl : achievement.badgeUrl);
         if (!earned) badge.setAlpha(0.8f);
 
-        TextView title = text(activity, achievement.title, 20);
+        TextView title = text(activity, achievement.title, 26);
         title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setTextColor(GameMenuView.TITLE);
         title.setGravity(Gravity.CENTER);
-        title.setPadding(0, dp(activity, 12), 0, 0);
+        title.setPadding(0, dp(activity, 20), 0, dp(activity, 8));
         content.addView(title, matchWidth());
-        TextView points = text(activity, achievement.points + (achievement.points == 1 ? " point" : " points"), 14);
-        points.setGravity(Gravity.CENTER);
-        content.addView(points, matchWidth());
-        TextView description = text(activity, achievement.description, 16);
+
+        // The points, in a pill.
+        TextView points = text(activity, achievement.points + (achievement.points == 1 ? " point" : " points"), 15);
+        points.setTypeface(Typeface.DEFAULT_BOLD);
+        points.setTextColor(GameMenuView.TITLE);
+        int h = dp(activity, 14);
+        points.setPadding(h, dp(activity, 5), h, dp(activity, 5));
+        GradientDrawable pill = new GradientDrawable();
+        pill.setCornerRadius(dp(activity, 16));
+        pill.setColor(0x1FFFFFFF);
+        points.setBackground(pill);
+        content.addView(points);
+
+        TextView description = text(activity, achievement.description, 18);
+        description.setTextColor(GameMenuView.TITLE);
         description.setGravity(Gravity.CENTER);
-        description.setPadding(0, dp(activity, 10), 0, dp(activity, 6));
+        description.setLineSpacing(0, 1.15f);
+        description.setPadding(0, dp(activity, 20), 0, dp(activity, 12));
         content.addView(description, matchWidth());
 
         if (!achievement.unlocked && achievement.percent > 0) {
             ProgressBar bar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
             bar.setMax(1000);
             bar.setProgress(Math.round(achievement.percent * 10));
-            content.addView(bar, matchWidth());
+            LinearLayout.LayoutParams barParams = matchWidth();
+            barParams.bottomMargin = dp(activity, 4);
+            content.addView(bar, barParams);
         }
-        for (String line : detailLines(achievement, hardcore, DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT))) {
-            TextView detail = text(activity, line, 14);
+        List<String> lines = detailLines(achievement, hardcore,
+                DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT));
+        for (int i = 0; i < lines.size(); i++) {
+            TextView detail = text(activity, lines.get(i), 15);
+            // The first line says whether it's unlocked: stands out from the rest.
+            detail.setTextColor(i == 0 ? GameMenuView.TITLE : GameMenuView.SUBTITLE);
+            if (i == 0) detail.setTypeface(Typeface.DEFAULT_BOLD);
             detail.setGravity(Gravity.CENTER);
+            detail.setPadding(0, dp(activity, 6), 0, dp(activity, 6));
             content.addView(detail, matchWidth());
+        }
+        if (achievement.id > 0) {
+            TextView website = chip(activity, "View on RetroAchievements", () -> openSite(activity, achievement.pageUrl()));
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT);
+            params.topMargin = dp(activity, 24);
+            content.addView(website, params);
         }
         android.widget.ScrollView scroll = new android.widget.ScrollView(activity);
         scroll.addView(content);
-        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
-                .setView(scroll)
-                .setPositiveButton("Close", null);
-        if (achievement.id > 0) {
-            builder.setNeutralButton("Website", (d, which) -> openSite(activity, achievement.pageUrl()));
-        }
-        builder.show();
+        page.addView(scroll, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
+        showPage(dialog, page);
     }
 
     /** The details under an achievement's description: status, progress, kind and rarity. */
