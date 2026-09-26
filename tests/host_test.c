@@ -260,6 +260,27 @@ int main(int argc, char **argv)
         CHECK(byte == 0x42, "cheats: loading a ROM clears them (0x%02X)", byte);
     }
 
+    /* Game Boy Camera: recognised by its cartridge type, and fed pictures without trouble. */
+    CHECK(!emu_has_camera(), "camera: an ordinary cartridge has none");
+    {
+        uint8_t *camera_rom = malloc(rom_size);
+        memcpy(camera_rom, rom, rom_size);
+        camera_rom[0x147] = 0xFC;
+        uint8_t picture[EMU_CAMERA_WIDTH * EMU_CAMERA_HEIGHT];
+        for (size_t i = 0; i < sizeof(picture); i++) picture[i] = (uint8_t)i;
+        emu_set_camera_image(picture);
+        CHECK(emu_load_rom(camera_rom, rom_size, GB_MODEL_DMG_B, 48000) && emu_has_camera(),
+              "camera: a Pocket Camera cartridge (type $FC) has one");
+        run_frames(30);
+        emu_set_camera_image(NULL);
+        run_frames(30);
+        emu_set_camera_image(picture);
+        run_frames(30);
+        CHECK(emu_is_loaded(), "camera: pictures can be set and cleared while running");
+        emu_set_camera_image(NULL);
+        free(camera_rom);
+    }
+
     emu_unload();
     CHECK(emu_set_cheats("019900A0") == 0, "cheats: nothing to cheat with no game");
     uint8_t unused;

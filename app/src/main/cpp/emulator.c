@@ -155,6 +155,17 @@ GB_model_t emu_pick_model(const uint8_t *rom, size_t size, GB_model_t dmg_model,
     return dmg_model;
 }
 
+static uint8_t camera_image[EMU_CAMERA_WIDTH * EMU_CAMERA_HEIGHT];
+static bool camera_has_image;
+static bool cartridge_has_camera;
+
+static uint8_t camera_get_pixel(GB_gameboy_t *g, uint8_t x, uint8_t y)
+{
+    (void)g;
+    if (x >= EMU_CAMERA_WIDTH || y >= EMU_CAMERA_HEIGHT) return 0;
+    return camera_image[y * EMU_CAMERA_WIDTH + x];
+}
+
 bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned rate)
 {
     if (size < 0x150) {
@@ -178,6 +189,8 @@ bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned ra
     GB_set_vblank_callback(gb, vblank_callback);
     GB_apu_set_sample_callback(gb, sample_callback);
     GB_set_rumble_callback(gb, rumble_callback);
+    if (camera_has_image) GB_set_camera_get_pixel_callback(gb, camera_get_pixel);
+    cartridge_has_camera = size > 0x147 && rom[0x147] == 0xFC; /* Pocket Camera */
 
     sample_rate = rate ? rate : 48000;
     GB_set_sample_rate(gb, sample_rate);
@@ -412,6 +425,22 @@ static bool is_short_game_genie(const char *code)
         if (*code != '-') digits++;
     }
     return digits == 6;
+}
+
+bool emu_has_camera(void)
+{
+    return loaded && cartridge_has_camera;
+}
+
+void emu_set_camera_image(const uint8_t *pixels)
+{
+    if (pixels) {
+        memcpy(camera_image, pixels, sizeof(camera_image));
+        camera_has_image = true;
+    } else {
+        camera_has_image = false;
+    }
+    if (gb && GB_is_inited(gb)) GB_set_camera_get_pixel_callback(gb, camera_has_image ? camera_get_pixel : NULL);
 }
 
 unsigned emu_set_cheats(const char *codes)

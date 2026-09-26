@@ -102,6 +102,19 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
  */
 unsigned emu_set_cheats(const char *codes);
 
+/* The Game Boy Camera's sensor size. */
+#define EMU_CAMERA_WIDTH 128
+#define EMU_CAMERA_HEIGHT 112
+
+/* Whether the loaded cartridge is a Game Boy Camera. */
+bool emu_has_camera(void);
+
+/*
+ * What the Game Boy Camera sees: EMU_CAMERA_WIDTH x EMU_CAMERA_HEIGHT brightness values (0 dark,
+ * 255 bright), copied. NULL goes back to SameBoy's static noise, as with no camera.
+ */
+void emu_set_camera_image(const uint8_t *pixels);
+
 double emu_get_rumble(void);
 void emu_get_title(char title[17]);
 

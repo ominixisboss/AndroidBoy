@@ -263,6 +263,25 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetRumbleMode)(JNIEnv *env, jclass clazz, ji
     emu_set_rumble_mode((GB_rumble_mode_t)mode);
 }
 
+JNIEXPORT jboolean JNICALL JNI_FN(nativeHasCamera)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return emu_has_camera() ? JNI_TRUE : JNI_FALSE;
+}
+
+JNIEXPORT void JNICALL JNI_FN(nativeSetCameraImage)(JNIEnv *env, jclass clazz, jbyteArray pixels)
+{
+    (void)clazz;
+    if (!pixels || (*env)->GetArrayLength(env, pixels) < EMU_CAMERA_WIDTH * EMU_CAMERA_HEIGHT) {
+        emu_set_camera_image(NULL);
+        return;
+    }
+    jbyte *bytes = (*env)->GetByteArrayElements(env, pixels, NULL);
+    if (!bytes) return;
+    emu_set_camera_image((const uint8_t *)bytes);
+    (*env)->ReleaseByteArrayElements(env, pixels, bytes, JNI_ABORT);
+}
+
 JNIEXPORT jint JNICALL JNI_FN(nativeReadMemory)(JNIEnv *env, jclass clazz, jint address, jbyteArray buffer)
 {
     (void)clazz;

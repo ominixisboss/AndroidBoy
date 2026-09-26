@@ -73,6 +73,10 @@ final class Emulator {
     static native void nativeSetBorderMode(int mode);
     static native void nativeSetHighpass(int mode);
     static native void nativeSetRumbleMode(int mode);
+    /** Whether the loaded cartridge is a Game Boy Camera. */
+    static native boolean nativeHasCamera();
+    /** What the Game Boy Camera sees: 128×112 brightness bytes, or null for static. */
+    static native void nativeSetCameraImage(byte[] pixels);
     /**
      * Reads memory without side effects, in RetroAchievements' address map ($0000-$FFFF is what the
      * CPU sees). Returns how many bytes were read.

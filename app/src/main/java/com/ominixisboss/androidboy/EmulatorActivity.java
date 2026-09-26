@@ -37,6 +37,7 @@ public final class EmulatorActivity extends Activity
     private static final String TAG = "AndroidBoy";
     private static final int REQUEST_IMPORT_SKIN = 1;
     private static final int REQUEST_STORAGE = 2;
+    private static final int REQUEST_CAMERA = 3;
     /** Screenshots are saved at 4× the Game Boy's resolution, with sharp pixels. */
     private static final int SCREENSHOT_SCALE = 4;
 
@@ -79,6 +80,9 @@ public final class EmulatorActivity extends Activity
     private final CheatSearch cheatSearch = new CheatSearch();
     private ControllerMapping controllerMapping;
     private android.util.SparseArray<ControllerMapping.Action> keyTable;
+    /** The phone's camera, while a Game Boy Camera cartridge is running. */
+    private CameraFeed cameraFeed;
+    private boolean cameraPermissionAsked;
     /** Shown while the on-screen buttons are being moved. */
     private View editBar;
     private boolean controlsHiddenByGamepad;
@@ -158,6 +162,7 @@ public final class EmulatorActivity extends Activity
         updateRewind();
         pushKeys();
         thread.start();
+        startCameraIfNeeded();
     }
 
     @Override
@@ -165,6 +170,7 @@ public final class EmulatorActivity extends Activity
         super.onPause();
         if (thread == null) return;
         screen.onPause();
+        if (cameraFeed != null) cameraFeed.stop();
         thread.shutdown();
         thread = null;
         if (settings.isOn(Settings.AUTO_SAVE)) {
@@ -514,6 +520,11 @@ public final class EmulatorActivity extends Activity
             updateSpeed();
         });
         addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
+        if (cameraFeed != null) {
+            boolean front = cameraFeed.isFront();
+            addMenuItem(labels, actions, front ? "Camera: use the back camera" : "Camera: use the front camera",
+                    () -> cameraFeed.setFront(!front));
+        }
         addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
         addMenuItem(labels, actions, "Reset", this::confirmReset);
         addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
@@ -571,9 +582,39 @@ public final class EmulatorActivity extends Activity
         });
     }
 
+    // ---- Game Boy Camera ----
+
+    /** For a Game Boy Camera cartridge, shows it what the phone's camera sees (asking permission once). */
+    private void startCameraIfNeeded() {
+        if (!Emulator.nativeHasCamera()) return;
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (!cameraPermissionAsked) {
+                cameraPermissionAsked = true;
+                requestPermissions(new String[] {android.Manifest.permission.CAMERA}, REQUEST_CAMERA);
+            }
+            return;
+        }
+        if (cameraFeed == null) {
+            cameraFeed = new CameraFeed(this, pixels -> {
+                EmulatorThread running = thread;
+                if (running != null) running.post(() -> Emulator.nativeSetCameraImage(pixels));
+            });
+        }
+        cameraFeed.start();
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (requestCode == REQUEST_CAMERA) {
+            if (granted) {
+                startCameraIfNeeded();
+            } else {
+                Toast.makeText(this, "Without the camera, the Game Boy Camera only sees static", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         if (requestCode != REQUEST_STORAGE) return;
         if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
             takeScreenshot();
