@@ -24,8 +24,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The player's RetroAchievements: points, and every Game Boy and Game Boy Color game they've
- * unlocked achievements in, with their progress. Also where to log in or out.
+ * The player's RetroAchievements: points, and every Game Boy, Game Boy Color and Game Boy Advance
+ * game they've unlocked achievements in, with their progress. Also where to log in or out.
  */
 public final class AchievementsActivity extends Activity {
     private final List<Achievements.GameProgress> games = new ArrayList<>();

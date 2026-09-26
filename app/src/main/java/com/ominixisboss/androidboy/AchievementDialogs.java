@@ -18,10 +18,15 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.DateFormat;
+import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 /** RetroAchievements screens: the account (log in or out, hardcore mode) and a game's achievements. */
 final class AchievementDialogs {
@@ -131,47 +136,269 @@ final class AchievementDialogs {
         dialog.show();
     }
 
-    /** The loaded game's achievements, unlocked ones first. */
     /**
-     * The game's achievements. {@code richPresence} (what the game says the player is doing) is
-     * shown at the top if the game has it.
+     * The loaded game's achievements, locked and unlocked, grouped the way RetroAchievements groups
+     * them; tap one for its details. {@code richPresence} (what the game says the player is doing)
+     * is shown at the top if the game has it. {@code onProfile} opens the player's profile.
      */
-    static void showList(Activity activity, String richPresence, Runnable onAccount, Runnable onDismiss) {
+    static void showList(Activity activity, String richPresence, Runnable onAccount, Runnable onProfile,
+                         Runnable onDismiss) {
         Achievements achievements = Achievements.get(activity);
         String[] summary = achievements.gameSummary();
         List<Achievements.Achievement> list = achievements.achievementList();
+        if (summary == null || list.isEmpty()) {
+            showNone(activity, summary != null ? summary[0] : null, onAccount, onProfile, onDismiss);
+            return;
+        }
+        boolean hardcore = achievements.isHardcoreEnabled();
+        List<Object> items = group(list);
         ListView view = new ListView(activity);
-        view.setAdapter(new ArrayAdapter<Achievements.Achievement>(activity, 0, list) {
+        view.setDivider(null);
+        view.addHeaderView(summaryHeader(activity, summary, hardcore, richPresence), null, false);
+        view.setAdapter(new ArrayAdapter<Object>(activity, 0, items) {
+            @Override
+            public int getViewTypeCount() {
+                return 2;
+            }
+
+            @Override
+            public int getItemViewType(int position) {
+                return getItem(position) instanceof String ? 0 : 1;
+            }
+
+            @Override
+            public boolean isEnabled(int position) {
+                return getItem(position) instanceof Achievements.Achievement;
+            }
+
             @Override
             public View getView(int position, View convertView, ViewGroup parent) {
+                Object item = getItem(position);
+                if (item instanceof String) {
+                    TextView heading = convertView instanceof TextView ? (TextView) convertView : heading(activity, "");
+                    heading.setText((String) item);
+                    return heading;
+                }
                 Row row = convertView instanceof Row ? (Row) convertView : new Row(activity);
-                row.bind(getItem(position));
+                row.bind((Achievements.Achievement) item);
                 return row;
             }
         });
-        String title = summary != null ? summary[0] : "Achievements";
-        String subtitle = summary != null
-                ? summary[1] + " of " + summary[2] + " unlocked · " + summary[3] + " of " + summary[4] + " points"
-                    + (achievements.isHardcoreEnabled() ? " · hardcore" : "")
-                    + (richPresence != null && !richPresence.isEmpty() ? "\nNow: " + richPresence : "")
-                : "";
+        view.setOnItemClickListener((parent, row, position, id) -> {
+            Object item = parent.getItemAtPosition(position);
+            if (item instanceof Achievements.Achievement) {
+                showDetails(activity, (Achievements.Achievement) item, hardcore);
+            }
+        });
         List<Achievements.Leaderboard> leaderboards = achievements.leaderboards();
         int pad = dp(activity, 20);
         view.setPadding(pad, 0, pad, 0);
         AlertDialog dialog = new AlertDialog.Builder(activity)
-                .setTitle(title)
-                .setMessage(subtitle)
                 .setView(view)
                 .setPositiveButton("Done", null)
-                .setNeutralButton("Account", (d, which) -> onAccount.run())
+                .setNeutralButton("Profile", null)
                 .setNegativeButton(leaderboards.isEmpty() ? null : "Leaderboards", null)
                 .create();
         dialog.setOnDismissListener(d -> onDismiss.run());
         dialog.show();
+        dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener(v -> {
+            dialog.dismiss();
+            onProfile.run();
+        });
         if (!leaderboards.isEmpty()) {
             // Opens over the list rather than closing it.
             dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(v -> showLeaderboards(activity, leaderboards));
         }
+    }
+
+    /**
+     * The list's rows: a heading (a String, "Locked · 12") before each group, then its achievements.
+     * Groups come from rcheevos ("Recently Unlocked", "Almost There", "Locked", "Unlocked"…), or,
+     * without them, locked and unlocked.
+     */
+    static List<Object> group(List<Achievements.Achievement> list) {
+        List<Object> items = new ArrayList<>();
+        int i = 0;
+        while (i < list.size()) {
+            String name = groupName(list.get(i));
+            int end = i;
+            while (end < list.size() && groupName(list.get(end)).equals(name)) end++;
+            items.add(name + "  ·  " + (end - i));
+            items.addAll(list.subList(i, end));
+            i = end;
+        }
+        return items;
+    }
+
+    private static String groupName(Achievements.Achievement achievement) {
+        if (!achievement.group.isEmpty()) return achievement.group;
+        return achievement.unlocked ? "Unlocked" : "Locked";
+    }
+
+    /** The game's badge and name, how much is unlocked, and what the player is doing. */
+    private static View summaryHeader(Activity activity, String[] summary, boolean hardcore, String richPresence) {
+        LinearLayout header = new LinearLayout(activity);
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(0, dp(activity, 20), 0, dp(activity, 4));
+        LinearLayout top = new LinearLayout(activity);
+        top.setOrientation(LinearLayout.HORIZONTAL);
+        top.setGravity(Gravity.CENTER_VERTICAL);
+        String badgeUrl = summary.length > 6 ? summary[6] : "";
+        if (!badgeUrl.isEmpty()) {
+            ImageView badge = new ImageView(activity);
+            LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(activity, 56), dp(activity, 56));
+            params.setMarginEnd(dp(activity, 14));
+            top.addView(badge, params);
+            Badges.load(badge, badgeUrl);
+        }
+        LinearLayout names = new LinearLayout(activity);
+        names.setOrientation(LinearLayout.VERTICAL);
+        TextView title = text(activity, summary[0], 20);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        names.addView(title);
+        names.addView(text(activity, summary[1] + " of " + summary[2] + " unlocked  ·  "
+                + summary[3] + " of " + summary[4] + " points" + (hardcore ? "  ·  hardcore" : ""), 13));
+        top.addView(names, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        header.addView(top);
+
+        ProgressBar bar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+        bar.setMax(Math.max(1, parse(summary[2])));
+        bar.setProgress(parse(summary[1]));
+        LinearLayout.LayoutParams barParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        barParams.topMargin = dp(activity, 8);
+        header.addView(bar, barParams);
+        if (richPresence != null && !richPresence.isEmpty()) {
+            header.addView(text(activity, "Now: " + richPresence, 13));
+        }
+        return header;
+    }
+
+    private static int parse(String number) {
+        try {
+            return Integer.parseInt(number);
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    /**
+     * When the game has no achievements (or RetroAchievements doesn't know it): says so, and offers
+     * the player's profile instead. {@code gameTitle} is null for a game it doesn't know.
+     */
+    private static void showNone(Activity activity, String gameTitle, Runnable onAccount, Runnable onProfile,
+                                 Runnable onDismiss) {
+        Achievements achievements = Achievements.get(activity);
+        String message = achievements.isLoggingIn()
+                ? "Still connecting to RetroAchievements. Try again in a moment."
+                : gameTitle != null
+                ? "RetroAchievements doesn't have any achievements for " + gameTitle + " yet."
+                : "RetroAchievements doesn't have any achievements for this game.";
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle("No achievements")
+                .setMessage(message + "\n\nYou can still see your profile: your points and every game you've "
+                        + "earned achievements in.")
+                .setPositiveButton("View my profile", (d, which) -> onProfile.run())
+                .setNeutralButton("Account", (d, which) -> onAccount.run())
+                .setNegativeButton("Close", null)
+                .create();
+        dialog.setOnDismissListener(d -> onDismiss.run());
+        dialog.show();
+    }
+
+    /** One achievement in full: badge, description, whether and when it was unlocked, progress, rarity. */
+    static void showDetails(Activity activity, Achievements.Achievement achievement, boolean hardcore) {
+        LinearLayout content = column(activity);
+        content.setGravity(Gravity.CENTER_HORIZONTAL);
+        content.setPadding(content.getPaddingLeft(), dp(activity, 24), content.getPaddingRight(), dp(activity, 8));
+        ImageView badge = new ImageView(activity);
+        content.addView(badge, new LinearLayout.LayoutParams(dp(activity, 96), dp(activity, 96)));
+        boolean earned = achievement.unlockedIn != 0;
+        Badges.load(badge, earned ? achievement.unlockedBadgeUrl : achievement.badgeUrl);
+        if (!earned) badge.setAlpha(0.8f);
+
+        TextView title = text(activity, achievement.title, 20);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, dp(activity, 12), 0, 0);
+        content.addView(title, matchWidth());
+        TextView points = text(activity, achievement.points + (achievement.points == 1 ? " point" : " points"), 14);
+        points.setGravity(Gravity.CENTER);
+        content.addView(points, matchWidth());
+        TextView description = text(activity, achievement.description, 16);
+        description.setGravity(Gravity.CENTER);
+        description.setPadding(0, dp(activity, 10), 0, dp(activity, 6));
+        content.addView(description, matchWidth());
+
+        if (!achievement.unlocked && achievement.percent > 0) {
+            ProgressBar bar = new ProgressBar(activity, null, android.R.attr.progressBarStyleHorizontal);
+            bar.setMax(1000);
+            bar.setProgress(Math.round(achievement.percent * 10));
+            content.addView(bar, matchWidth());
+        }
+        for (String line : detailLines(achievement, hardcore, DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT))) {
+            TextView detail = text(activity, line, 14);
+            detail.setGravity(Gravity.CENTER);
+            content.addView(detail, matchWidth());
+        }
+        android.widget.ScrollView scroll = new android.widget.ScrollView(activity);
+        scroll.addView(content);
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
+                .setView(scroll)
+                .setPositiveButton("Close", null);
+        if (achievement.id > 0) {
+            builder.setNeutralButton("Website", (d, which) -> openSite(activity, achievement.pageUrl()));
+        }
+        builder.show();
+    }
+
+    /** The details under an achievement's description: status, progress, kind and rarity. */
+    static List<String> detailLines(Achievements.Achievement achievement, boolean hardcore, DateFormat dates) {
+        List<String> lines = new ArrayList<>();
+        boolean inHardcore = (achievement.unlockedIn & Achievements.Achievement.UNLOCKED_HARDCORE) != 0;
+        String when = achievement.unlockTime > 0 ? " on " + dates.format(new Date(achievement.unlockTime * 1000)) : "";
+        if (achievement.unlocked) {
+            lines.add((inHardcore ? "✓ Unlocked in hardcore" : "✓ Unlocked") + when);
+        } else if (achievement.unlockedIn != 0) {
+            // Hardcore is on, and this was only earned without it.
+            lines.add("Unlocked in softcore" + when + ". Earn it again with hardcore on to count it in hardcore.");
+        } else {
+            lines.add("Locked");
+        }
+        if (!achievement.unlocked && !achievement.progress.isEmpty()) {
+            lines.add("Progress: " + achievement.progress
+                    + (achievement.percent > 0 ? String.format(Locale.ROOT, " (%d%%)", (int) achievement.percent) : ""));
+        }
+        switch (achievement.type) {
+            case Achievements.Achievement.TYPE_MISSABLE:
+                lines.add("Missable: it can be missed for good if you don't earn it at the right point.");
+                break;
+            case Achievements.Achievement.TYPE_PROGRESSION:
+                lines.add("Progression: earned by playing through the game.");
+                break;
+            case Achievements.Achievement.TYPE_WIN:
+                lines.add("Win condition: earned by beating the game.");
+                break;
+            default:
+                break;
+        }
+        if (achievement.rarity > 0) {
+            lines.add(String.format(Locale.ROOT, "Unlocked by %s of players (%s in hardcore)",
+                    percent(achievement.rarity), percent(achievement.rarityHardcore)));
+        }
+        return lines;
+    }
+
+    /** "12.5%", "3%", "<0.1%". */
+    static String percent(float value) {
+        if (value > 0 && value < 0.1f) return "<0.1%";
+        String text = String.format(Locale.ROOT, "%.1f", value);
+        if (text.endsWith(".0")) text = text.substring(0, text.length() - 2);
+        return text + "%";
+    }
+
+    private static LinearLayout.LayoutParams matchWidth() {
+        return new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
     }
 
     private static void showLeaderboards(Activity activity, List<Achievements.Leaderboard> leaderboards) {
