@@ -58,7 +58,10 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   clear editions of the colour Game Boy. The circuit board, chips, screws, rubber membranes and
   speaker show through tinted plastic, and the screen sits in a glossy black lens. The d-pad is
   a glossy cross sunk in a rimmed well, with outlined arrows and a dimple in the middle, and it
-  rocks in 3D towards the direction you press. They use the toolbars too.
+  tilts slightly towards the direction you press, staying inside its well. They use the toolbars
+  too. **Backdrop…** in the Clear category puts your own GIF or picture behind the plastic in
+  place of the circuit board (GIFs animate on Android 9 and later); you can still show the board
+  over it, and turn the plastic's tint down to light or none.
 - **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
   Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
@@ -249,8 +252,8 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
   CanvasScreenView        Fallback renderer for devices without OpenGL ES 3
   Skin, ThemeSkin         Skin layout and drawing; the built-in themes
-  SoftSkin, GlassSkin,    The Soft, Glass and Clear skins
-    ClearSkin
+  SoftSkin, GlassSkin,    The Soft, Glass and Clear skins; the Clear skins' backdrop
+    ClearSkin, ClearBackdrop
   GameToolbars,           The game screen's toolbars and full-screen menu; their icons
     GameMenuView, Icons
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import

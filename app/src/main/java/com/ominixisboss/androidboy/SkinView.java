@@ -207,6 +207,8 @@ final class SkinView extends View {
         canvas.clipOutRect(layout.screen);
         skin.drawBackground(canvas, layout);
         canvas.restore();
+        // An animated backdrop: about 30 frames a second is plenty for a GIF.
+        if (skin.animated()) postInvalidateDelayed(33);
         if (!controlsVisible) return;
         if (animating) {
             long now = SystemClock.uptimeMillis();

@@ -215,6 +215,7 @@ final class SkinLibrary {
             return GlassSkin.find(id.substring("glass:".length()));
         }
         if (id.startsWith("clear:")) {
+            ClearBackdrop.apply(context);
             return ClearSkin.find(id.substring("clear:".length()));
         }
         if (id.startsWith("theme:")) {

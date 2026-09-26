@@ -1249,6 +1249,9 @@ public final class EmulatorActivity extends Activity
         if (requestCode == REQUEST_IMPORT_SKIN && resultCode == RESULT_OK && data != null && data.getData() != null) {
             SkinPicker.importSkin(this, skins, data.getData(), this::applySkin);
         }
+        if (requestCode == SkinPicker.REQUEST_CLEAR_BACKDROP && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            SkinPicker.importClearBackdrop(this, skins, data.getData(), this::applySkin);
+        }
     }
 
     private void showStateSlots(boolean save) {

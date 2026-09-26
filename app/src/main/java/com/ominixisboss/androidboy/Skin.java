@@ -113,6 +113,11 @@ abstract class Skin {
         return false;
     }
 
+    /** Whether the background moves (an animated backdrop), so the view keeps redrawing. */
+    boolean animated() {
+        return false;
+    }
+
     /** Whether the player can move and resize the controls (not when they're part of a picture). */
     boolean movableControls() {
         return true;

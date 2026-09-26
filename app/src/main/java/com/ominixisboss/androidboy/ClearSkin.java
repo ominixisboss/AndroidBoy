@@ -12,6 +12,8 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.drawable.Animatable;
+import android.graphics.drawable.Drawable;
 
 import java.util.Random;
 
@@ -78,13 +80,33 @@ final class ClearSkin extends Skin {
         return null;
     }
 
+    // The player's backdrop, shared by every Clear skin (see ClearBackdrop): a picture or GIF seen
+    // through the plastic in place of the circuit board.
+    private static Drawable backdrop;
+    /** Whether the circuit board still shows, over the backdrop. */
+    private static boolean boardOverBackdrop;
+    /** How strongly the plastic is tinted: 1 as designed, less for a clearer view of the backdrop. */
+    private static float tintScale = 1f;
+    /** Changes whenever the settings above do, so the cached body is redrawn. */
+    private static int customization;
+
+    /** Sets what every Clear skin shows through its plastic; a null backdrop shows the circuit board. */
+    static void customize(Drawable picture, boolean showBoard, float tint) {
+        if (backdrop instanceof Animatable) ((Animatable) backdrop).stop();
+        backdrop = picture;
+        boardOverBackdrop = showBoard;
+        tintScale = tint;
+        customization++;
+        if (picture instanceof Animatable) ((Animatable) picture).start();
+    }
+
     /** The d-pad rocks up to this far towards the held direction. */
-    static final float TILT_DEGREES = 14f;
+    static final float TILT_DEGREES = 5f;
     /** How thick the d-pad is, in d-pad radii: its side walls show as it rocks. */
     private static final float THICKNESS = 0.36f;
     private static final int WALL_LAYERS = 16;
     /** How far the pad sinks when a direction is held, in d-pad radii. */
-    private static final float SINK = 0.07f;
+    private static final float SINK = 0.035f;
     /** Half the width of a d-pad arm, in d-pad radii. */
     private static final float ARM = 0.37f;
     /** The pad's size within its control bounds, leaving room for the rim around the well. */
@@ -167,6 +189,11 @@ final class ClearSkin extends Skin {
     }
 
     @Override
+    boolean animated() {
+        return backdrop instanceof Animatable && ((Animatable) backdrop).isRunning();
+    }
+
+    @Override
     boolean usesToolbars() {
         return true;
     }
@@ -244,7 +271,25 @@ final class ClearSkin extends Skin {
             drawBody(new Canvas(body), layout, g);
             bodyKey = key;
         }
+        Drawable picture = backdrop;
+        if (picture != null) drawBackdrop(canvas, picture, layout.width, layout.height);
         canvas.drawBitmap(body, 0, 0, null);
+    }
+
+    /** The backdrop filling the view, cropped to fit, like a picture behind the plastic. */
+    private static void drawBackdrop(Canvas canvas, Drawable picture, int width, int height) {
+        int pictureWidth = Math.max(1, picture.getIntrinsicWidth());
+        int pictureHeight = Math.max(1, picture.getIntrinsicHeight());
+        float scale = Math.max((float) width / pictureWidth, (float) height / pictureHeight);
+        int drawnWidth = Math.round(pictureWidth * scale);
+        int drawnHeight = Math.round(pictureHeight * scale);
+        int left = (width - drawnWidth) / 2;
+        int top = (height - drawnHeight) / 2;
+        canvas.save();
+        canvas.clipRect(0, 0, width, height);
+        picture.setBounds(left, top, left + drawnWidth, top + drawnHeight);
+        picture.draw(canvas);
+        canvas.restore();
     }
 
     /** Identifies what the cached body was drawn for: the size, the screen and where the controls are. */
@@ -252,6 +297,7 @@ final class ClearSkin extends Skin {
         int key = 31 * layout.width + layout.height;
         key = 31 * key + layout.screen.hashCode();
         key = 31 * key + (layout.controlsVisible ? 1 : 0);
+        key = 31 * key + customization;
         for (Control control : layout.controls) key = 31 * key + control.bounds.hashCode();
         return key;
     }
@@ -259,19 +305,25 @@ final class ClearSkin extends Skin {
     private void drawBody(Canvas canvas, Layout layout, Geometry g) {
         int w = layout.width;
         int h = layout.height;
-        useShader(new LinearGradient(0, 0, 0, h, backingTop, backingBottom, Shader.TileMode.CLAMP));
-        canvas.drawRect(0, 0, w, h, fill);
-        fill.setShader(null);
-        drawInsides(canvas, layout, g);
+        // With a backdrop, the body is drawn over it with see-through gaps.
+        boolean custom = backdrop != null;
+        if (!custom) {
+            useShader(new LinearGradient(0, 0, 0, h, backingTop, backingBottom, Shader.TileMode.CLAMP));
+            canvas.drawRect(0, 0, w, h, fill);
+            fill.setShader(null);
+        }
+        if (!custom || boardOverBackdrop) drawBoard(canvas, layout, g);
+        drawParts(canvas, layout, g);
         // The plastic over it all.
-        fill.setColor(variant.shell);
+        fill.setColor(withAlpha(variant.shell, Math.round(Color.alpha(variant.shell) * tintScale)));
         canvas.drawRect(0, 0, w, h, fill);
         drawShellDetails(canvas, layout, g);
         if (g.hasLens) drawLens(canvas, layout, g);
         drawPrinting(canvas, layout);
     }
 
-    private void drawInsides(Canvas canvas, Layout layout, Geometry g) {
+    /** The circuit board: traces, small parts and chips. */
+    private void drawBoard(Canvas canvas, Layout layout, Geometry g) {
         int w = layout.width;
         int h = layout.height;
         float u = Math.min(w, h);
@@ -335,6 +387,13 @@ final class ClearSkin extends Skin {
                 drawLeggedChip(canvas, w - side / 2, h * 0.17f, Math.min(side * 0.4f, u * 0.14f), Math.min(side * 0.25f, u * 0.09f));
             }
         }
+    }
+
+    /** The parts in front of the board: membranes, screw posts and the speaker. */
+    private void drawParts(Canvas canvas, Layout layout, Geometry g) {
+        int w = layout.width;
+        int h = layout.height;
+        float u = Math.min(w, h);
         // Rubber membranes under the keys, their mint green showing through.
         for (Control control : layout.controls) {
             if (!control.visible) continue;
@@ -633,6 +692,9 @@ final class ClearSkin extends Skin {
         useShader(new LinearGradient(0, -1.13f, 0, 1.13f, 0xFF050506, 0xFF1A1A1E, Shader.TileMode.CLAMP));
         canvas.drawPath(wellPath, fill);
         fill.setShader(null);
+        // The pad never leaves its well, however it rocks.
+        canvas.save();
+        canvas.clipPath(wellPath);
 
         // The pad's shadow on the well floor, moving with the tilt.
         canvas.save();
@@ -742,6 +804,7 @@ final class ClearSkin extends Skin {
         stroke.setColor(dark ? 0xFF000000 : shade(keys, 0.55f));
         canvas.drawPath(padPath, stroke);
         canvas.restore();
+        canvas.restore(); // The well's clip.
 
         canvas.restore();
     }
