@@ -13,6 +13,15 @@ final class StateThumbnails {
 
     /** The frame at its native resolution (160×144, or 256×224 with a Super Game Boy border) as PNG. */
     static byte[] encode(Frame frame) {
+        Bitmap bitmap = toBitmap(frame);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
+        bitmap.recycle();
+        return out.toByteArray();
+    }
+
+    /** The frame as a bitmap at its native resolution. */
+    static Bitmap toBitmap(Frame frame) {
         // Frame pixels are RGBA bytes. Convert to ARGB colour ints rather than copying raw memory,
         // whose byte order depends on the platform's graphics library.
         int count = frame.width * frame.height;
@@ -25,10 +34,7 @@ final class StateThumbnails {
         }
         Bitmap bitmap = Bitmap.createBitmap(frame.width, frame.height, Bitmap.Config.ARGB_8888);
         bitmap.setPixels(colors, 0, frame.width, 0, 0, frame.width, frame.height);
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, out);
-        bitmap.recycle();
-        return out.toByteArray();
+        return bitmap;
     }
 
     static void write(File file, Frame frame) throws IOException {

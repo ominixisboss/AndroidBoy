@@ -4,6 +4,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- RetroAchievements: logging in, loading a game's achievements and sending unlocks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Saving screenshots and printouts to Pictures; Android 10 and later need no permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />

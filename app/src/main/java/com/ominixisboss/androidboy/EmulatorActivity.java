@@ -27,6 +27,8 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Runs a game: screen, on-screen controls, hardware input, save states and the in-game menu. */
 public final class EmulatorActivity extends Activity
@@ -34,6 +36,9 @@ public final class EmulatorActivity extends Activity
     static final String EXTRA_ROM = "rom";
     private static final String TAG = "AndroidBoy";
     private static final int REQUEST_IMPORT_SKIN = 1;
+    private static final int REQUEST_STORAGE = 2;
+    /** Screenshots are saved at 4× the Game Boy's resolution, with sharp pixels. */
+    private static final int SCREENSHOT_SCALE = 4;
 
     // The core is a process-wide singleton; remember which ROM it holds.
     private static String loadedRomPath;
@@ -64,6 +69,11 @@ public final class EmulatorActivity extends Activity
     private boolean rewindHeld;
     private boolean rewindTouched;
     private boolean fastForwardToggled;
+    private boolean slowMotion;
+    /** On-screen buttons that act as turbo buttons (Emulator.KEY_A/KEY_B), chosen from the menu. */
+    private int touchTurboKeys;
+    /** Keys held on a controller's turbo buttons (Y for A, X for B). */
+    private int hardwareTurboKeys;
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
 
@@ -127,6 +137,8 @@ public final class EmulatorActivity extends Activity
         screen.onResume();
         thread = new EmulatorThread(this, loadedSampleRate);
         thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
+        thread.setTurboPeriod(settings.get(Settings.TURBO_SPEED));
+        updateSpeed();
         thread.setMuted(!settings.isOn(Settings.SOUND));
         thread.setPaused(openDialogs > 0);
         updateFastForward();
@@ -427,41 +439,80 @@ public final class EmulatorActivity extends Activity
     private void showMenu() {
         if (openDialogs > 0 || isFinishing()) return;
         boolean fastForward = fastForwardToggled;
-        String[] items = {
-                "Resume",
-                "Save state…",
-                "Load state…",
-                fastForward ? "Stop fast-forward" : "Fast-forward",
-                "Reset",
-                "Skin…",
-                "Settings",
-                "Achievements…",
-                "Cheats…",
-                "Quit to game list",
-        };
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        addMenuItem(labels, actions, "Resume", () -> { });
+        addMenuItem(labels, actions, "Save state…", () -> showStateSlots(true));
+        addMenuItem(labels, actions, "Load state…", () -> showStateSlots(false));
+        addMenuItem(labels, actions, fastForward ? "Stop fast-forward" : "Fast-forward", () -> {
+            fastForwardToggled = !fastForward;
+            updateFastForward();
+        });
+        boolean slow = slowMotion;
+        addMenuItem(labels, actions, slow ? "Normal speed" : "Slow motion", () -> {
+            slowMotion = !slow;
+            updateSpeed();
+        });
+        addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
+        addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
+        addMenuItem(labels, actions, "Reset", this::confirmReset);
+        addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
+        addMenuItem(labels, actions, "Settings", () -> {
+            dialogOpened();
+            settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
+        });
+        addMenuItem(labels, actions, "Achievements…", this::showAchievements);
+        addMenuItem(labels, actions, "Cheats…", this::showCheats);
+        addMenuItem(labels, actions, "Quit to game list", this::finish);
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(RomLibrary.baseName(rom))
-                .setItems(items, (d, which) -> {
-                    switch (which) {
-                        case 1: showStateSlots(true); break;
-                        case 2: showStateSlots(false); break;
-                        case 3:
-                            fastForwardToggled = !fastForward;
-                            updateFastForward();
-                            break;
-                        case 4: confirmReset(); break;
-                        case 5: showSkinPicker(); break;
-                        case 6:
-                            dialogOpened();
-                            settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
-                            break;
-                        case 7: showAchievements(); break;
-                        case 8: showCheats(); break;
-                        case 9: finish(); break;
-                        default: break;
-                    }
-                })
+                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
                 .create());
+    }
+
+    private static void addMenuItem(List<String> labels, List<Runnable> actions, String label, Runnable action) {
+        labels.add(label);
+        actions.add(action);
+    }
+
+    // ---- Screenshots ----
+
+    private void takeScreenshot() {
+        if (Gallery.needsPermission(this)) {
+            requestPermissions(new String[] {android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE);
+            return;
+        }
+        String name = Gallery.fileName(RomLibrary.baseName(rom), System.currentTimeMillis());
+        onEmulationThread(() -> {
+            Frame frame = new Frame();
+            frame.width = Emulator.nativeGetFrameWidth();
+            frame.height = Emulator.nativeGetFrameHeight();
+            if (!Emulator.nativeCopyFrame(frame.pixels)) {
+                toastFromAnyThread("Could not take a screenshot");
+                return;
+            }
+            // Encoding and saving can take a moment; don't hold up the game.
+            new Thread(() -> {
+                try {
+                    Gallery.savePng(this, Gallery.scaleUp(StateThumbnails.toBitmap(frame), SCREENSHOT_SCALE), name);
+                    toastFromAnyThread("Screenshot saved to Pictures/" + Gallery.FOLDER);
+                } catch (IOException | RuntimeException e) {
+                    Log.e(TAG, "Could not save screenshot", e);
+                    toastFromAnyThread("Could not save the screenshot");
+                }
+            }, "Screenshot").start();
+        });
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_STORAGE) return;
+        if (grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            takeScreenshot();
+        } else {
+            Toast.makeText(this, "Saving pictures needs access to storage", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showSkinPicker() {
@@ -571,6 +622,10 @@ public final class EmulatorActivity extends Activity
             if (thread != null) thread.setMuted(!settings.isOn(Settings.SOUND));
         } else if (choice == Settings.FAST_FORWARD) {
             if (thread != null) thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
+        } else if (choice == Settings.TURBO_SPEED) {
+            if (thread != null) thread.setTurboPeriod(settings.get(Settings.TURBO_SPEED));
+        } else if (choice == Settings.SLOW_MOTION) {
+            updateSpeed();
         } else if (choice == Settings.FILTER || choice == Settings.FRAME_BLENDING) {
             applyScreenSettings();
         } else {
@@ -634,7 +689,35 @@ public final class EmulatorActivity extends Activity
     }
 
     private void pushKeys() {
-        if (thread != null) thread.setKeys(touchKeys | hardwareKeys | axisKeys);
+        if (thread == null) return;
+        thread.setKeys(touchKeys | hardwareKeys | axisKeys | hardwareTurboKeys);
+        thread.setTurboKeys(hardwareTurboKeys | (touchKeys & touchTurboKeys));
+    }
+
+    private void updateSpeed() {
+        if (thread != null) thread.setSpeedPercent(slowMotion ? settings.get(Settings.SLOW_MOTION) : 100);
+    }
+
+    /** Which on-screen buttons fire repeatedly while held. Controllers have turbo on Y (A) and X (B). */
+    private void showTurboChoice() {
+        boolean[] checked = {(touchTurboKeys & Emulator.KEY_A) != 0, (touchTurboKeys & Emulator.KEY_B) != 0};
+        showDialog(new AlertDialog.Builder(this)
+                .setTitle("Turbo on-screen buttons")
+                .setMultiChoiceItems(new String[] {"A", "B"}, checked, (d, which, isChecked) -> {
+                    int key = which == 0 ? Emulator.KEY_A : Emulator.KEY_B;
+                    touchTurboKeys = isChecked ? touchTurboKeys | key : touchTurboKeys & ~key;
+                    pushKeys();
+                })
+                .setPositiveButton("Done", null)
+                .create());
+    }
+
+    private static int mapTurboKey(int keyCode) {
+        switch (keyCode) {
+            case KeyEvent.KEYCODE_BUTTON_Y: return Emulator.KEY_A;
+            case KeyEvent.KEYCODE_BUTTON_X: return Emulator.KEY_B;
+            default: return 0;
+        }
     }
 
     private void updateRewind() {
@@ -694,6 +777,14 @@ public final class EmulatorActivity extends Activity
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean up = event.getAction() == KeyEvent.ACTION_UP;
 
+        int turbo = mapTurboKey(code);
+        if (turbo != 0) {
+            if (down) hardwareTurboKeys |= turbo;
+            else if (up) hardwareTurboKeys &= ~turbo;
+            pushKeys();
+            onHardwareInput();
+            return true;
+        }
         int key = mapKey(code);
         if (key != 0) {
             if (down) hardwareKeys |= key;

@@ -45,6 +45,11 @@ final class EmulatorThread extends Thread {
     private volatile boolean running = true;
     private volatile boolean paused;
     private volatile int keys;
+    /** Held keys that press and release by themselves (turbo). */
+    private volatile int turboKeys;
+    private volatile int turboPeriod = 4;
+    private volatile int speedPercent = 100;
+    private int turboFrame;
     private volatile boolean fastForward;
     private volatile boolean rewinding;
     private volatile int fastForwardSpeed = 4;
@@ -59,6 +64,27 @@ final class EmulatorThread extends Thread {
 
     void setKeys(int mask) {
         keys = mask;
+    }
+
+    /** Keys held in turbo mode: pressed for half of every {@link #setTurboPeriod period}, released for the rest. */
+    void setTurboKeys(int mask) {
+        turboKeys = mask;
+    }
+
+    /** Frames per turbo press-and-release; at least 2. */
+    void setTurboPeriod(int frames) {
+        turboPeriod = Math.max(2, frames);
+    }
+
+    /** Game speed in percent, for slow motion; audio plays slower and lower to match. */
+    void setSpeedPercent(int percent) {
+        speedPercent = Math.max(10, Math.min(100, percent));
+    }
+
+    /** The keys the game sees this frame: turbo keys are only down for the first half of each period. */
+    static int effectiveKeys(int keys, int turbo, int frame, int period) {
+        boolean turboDown = frame % period < period / 2;
+        return (keys & ~turbo) | (turboDown ? turbo : 0);
     }
 
     void setFastForward(boolean enabled) {
@@ -124,6 +150,7 @@ final class EmulatorThread extends Thread {
         long nextFrameTime = System.nanoTime();
         int framesSinceBatteryCheck = 0;
         boolean wasMuted = !muted;
+        int playbackSpeed = 100;
         boolean wasRewinding = false;
 
         try {
@@ -143,7 +170,14 @@ final class EmulatorThread extends Thread {
                     track.setVolume(muted ? 0f : 1f);
                 }
 
-                Emulator.nativeSetKeys(keys);
+                if (playbackSpeed != speedPercent) {
+                    // Writes block for longer at a lower rate, which slows the game down with it.
+                    playbackSpeed = speedPercent;
+                    track.setPlaybackRate(sampleRate * playbackSpeed / 100);
+                }
+                int turbo = turboKeys;
+                if (turbo == 0) turboFrame = 0;
+                Emulator.nativeSetKeys(effectiveKeys(keys, turbo, turboFrame++, turboPeriod));
                 if (wasRewinding != rewinding) {
                     wasRewinding = rewinding;
                     if (!wasRewinding) host.onRewindFinished();
