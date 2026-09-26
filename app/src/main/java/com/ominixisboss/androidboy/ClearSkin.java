@@ -81,14 +81,14 @@ final class ClearSkin extends Skin {
     /** The d-pad rocks up to this far towards the held direction. */
     static final float TILT_DEGREES = 14f;
     /** How thick the d-pad is, in d-pad radii: its side walls show as it rocks. */
-    private static final float THICKNESS = 0.2f;
-    private static final int WALL_LAYERS = 8;
+    private static final float THICKNESS = 0.36f;
+    private static final int WALL_LAYERS = 16;
     /** How far the pad sinks when a direction is held, in d-pad radii. */
     private static final float SINK = 0.07f;
     /** Half the width of a d-pad arm, in d-pad radii. */
-    private static final float ARM = 0.34f;
+    private static final float ARM = 0.37f;
     /** The pad's size within its control bounds, leaving room for the rim around the well. */
-    private static final float PAD_SCALE = 0.86f;
+    private static final float PAD_SCALE = 0.8f;
 
     /** Colours of "COLOR" in the wordmark. */
     private static final int[] WORDMARK = {0xFFE8354A, 0xFF8E5BD8, 0xFF3DBE5A, 0xFFF5C518, 0xFF2F8FE8};
@@ -126,9 +126,9 @@ final class ClearSkin extends Skin {
     private final Path path = new Path();
     private final Matrix tiltMatrix = new Matrix();
     private final float[] tilted = new float[8];
-    private final Path rimPath = cross(1.14f, ARM + 0.14f, 0.2f);
-    private final Path wellPath = cross(1.06f, ARM + 0.06f, 0.14f);
-    private final Path padPath = cross(1f, ARM, 0.1f);
+    private final Path rimPath = cross(1.22f, ARM + 0.17f, 0.24f);
+    private final Path wellPath = cross(1.13f, ARM + 0.09f, 0.16f);
+    private final Path padPath = cross(1f, ARM, 0.13f);
     private final Path arrowPath = arrow();
     private Bitmap body;
     private int bodyKey;
@@ -630,14 +630,14 @@ final class ClearSkin extends Skin {
         canvas.drawPath(rimPath, fill);
         fill.setShader(null);
         // The well: dark, deepest at the top where the rim shades it.
-        useShader(new LinearGradient(0, -1.06f, 0, 1.06f, 0xFF050506, 0xFF1A1A1E, Shader.TileMode.CLAMP));
+        useShader(new LinearGradient(0, -1.13f, 0, 1.13f, 0xFF050506, 0xFF1A1A1E, Shader.TileMode.CLAMP));
         canvas.drawPath(wellPath, fill);
         fill.setShader(null);
 
         // The pad's shadow on the well floor, moving with the tilt.
         canvas.save();
         canvas.translate(0.03f, 0.06f);
-        ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, sink + THICKNESS + 0.05f);
+        rock(canvas, tiltX, tiltY, sink + THICKNESS + 0.05f);
         fill.setColor(0x90000000);
         canvas.drawPath(padPath, fill);
         canvas.restore();
@@ -646,15 +646,21 @@ final class ClearSkin extends Skin {
         for (int i = 0; i < WALL_LAYERS; i++) {
             float t = (float) i / WALL_LAYERS;
             canvas.save();
-            ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, sink + THICKNESS * (1 - t));
-            fill.setColor(dark ? lighten(keys, 0.05f + 0.12f * t) : shade(keys, 0.45f + 0.3f * t));
+            rock(canvas, tiltX, tiltY, sink + THICKNESS * (1 - t));
+            fill.setColor(dark ? lighten(keys, 0.12f + 0.26f * t) : shade(keys, 0.4f + 0.35f * t));
             canvas.drawPath(padPath, fill);
+            if (i == WALL_LAYERS - 1) {
+                // The wall's top edge, where it meets the face, catches a little light.
+                stroke.setStrokeWidth(0.02f);
+                stroke.setColor(dark ? 0x30FFFFFF : 0x40FFFFFF);
+                canvas.drawPath(padPath, stroke);
+            }
             canvas.restore();
         }
 
         // The face.
         canvas.save();
-        ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, sink);
+        rock(canvas, tiltX, tiltY, sink);
         useShader(new LinearGradient(-1, -1, 1, 1, lighten(keys, dark ? 0.16f : 0.25f), shade(keys, 0.78f),
                 Shader.TileMode.CLAMP));
         canvas.drawPath(padPath, fill);
@@ -678,6 +684,21 @@ final class ClearSkin extends Skin {
                     null, Shader.TileMode.CLAMP));
             canvas.drawPath(padPath, fill);
         }
+        // Each arm is rounded across its width: lighter along its middle, darker towards its sides.
+        int[] roundness = {0x2A000000, 0x14FFFFFF, 0x00FFFFFF, 0x2A000000};
+        float[] stops = {0f, 0.35f, 0.6f, 1f};
+        fill.setShader(new LinearGradient(0, -ARM, 0, ARM, roundness, stops, Shader.TileMode.CLAMP));
+        canvas.drawRect(-1, -ARM, 1, ARM, fill);
+        fill.setShader(new LinearGradient(-ARM, 0, ARM, 0, roundness, stops, Shader.TileMode.CLAMP));
+        canvas.drawRect(-ARM, -1, ARM, -ARM, fill);
+        canvas.drawRect(-ARM, ARM, ARM, 1, fill);
+        // A rounded bevel all round the face: lit along the top and left, shaded along the bottom and right.
+        stroke.setStrokeWidth(0.16f);
+        stroke.setShader(new LinearGradient(-1, -1, 1, 1,
+                new int[] {dark ? 0x60FFFFFF : 0x80FFFFFF, 0x00FFFFFF, 0x00000000, dark ? 0x90000000 : 0x60000000},
+                new float[] {0f, 0.42f, 0.58f, 1f}, Shader.TileMode.CLAMP));
+        canvas.drawPath(padPath, stroke);
+        stroke.setShader(null);
         fill.setShader(null);
         canvas.restore();
 
@@ -800,6 +821,14 @@ final class ClearSkin extends Skin {
     }
 
     // ---- Helpers ----
+
+    /**
+     * Rocks the canvas like {@link ThemeSkin#rock}, but seen from further away and a little lower,
+     * so the pad's thick sides show under its face even at rest.
+     */
+    private void rock(Canvas canvas, float tiltX, float tiltY, float depth) {
+        ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, depth, 9f, 0.5f);
+    }
 
     /** Fills with a gradient; the paint's own alpha would otherwise still apply to it. */
     private void useShader(Shader shader) {

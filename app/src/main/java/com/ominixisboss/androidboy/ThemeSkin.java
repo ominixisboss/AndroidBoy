@@ -744,6 +744,12 @@ final class ThemeSkin extends Skin {
 
     /** {@link #applyTilt} for any skin drawing in unit coordinates; {@code matrix} and {@code scratch} (8 floats) are reused. */
     static void rock(Canvas canvas, Matrix matrix, float[] scratch, float tiltX, float tiltY, float maxDegrees, float depth) {
+        rock(canvas, matrix, scratch, tiltX, tiltY, maxDegrees, depth, VIEW_DISTANCE, VIEW_SLANT);
+    }
+
+    /** {@link #rock} seen from {@code viewDistance} radii away, deeper parts showing {@code viewSlant} lower down. */
+    static void rock(Canvas canvas, Matrix matrix, float[] scratch, float tiltX, float tiltY, float maxDegrees, float depth,
+                     float viewDistance, float viewSlant) {
         if (tiltX == 0 && tiltY == 0 && depth == 0) return;
         // Rock about one axis in the pad's plane, at right angles to the held direction, like the
         // real pad pivoting on its centre; turning about x then y would also twist it on a diagonal.
@@ -762,9 +768,9 @@ final class ThemeSkin extends Skin {
             float px = x + nx * shift;
             float py = y + ny * shift;
             float pz = depth * cos + along * sin;
-            float scale = VIEW_DISTANCE / (VIEW_DISTANCE + pz);
+            float scale = viewDistance / (viewDistance + pz);
             scratch[i] = px * scale;
-            scratch[i + 1] = (py + pz * VIEW_SLANT) * scale;
+            scratch[i + 1] = (py + pz * viewSlant) * scale;
         }
         matrix.setPolyToPoly(SQUARE, 0, scratch, 0, 4);
         canvas.concat(matrix);
