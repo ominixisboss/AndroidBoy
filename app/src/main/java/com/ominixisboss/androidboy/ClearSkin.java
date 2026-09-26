@@ -100,8 +100,8 @@ final class ClearSkin extends Skin {
         if (picture instanceof Animatable) ((Animatable) picture).start();
     }
 
-    /** The d-pad rocks up to this far towards the held direction. */
-    static final float TILT_DEGREES = 5f;
+    /** The d-pad rocks up to this far towards the held direction (as on every skin). */
+    static final float TILT_DEGREES = DPAD_TILT_DEGREES;
     /** How thick the d-pad is, in d-pad radii: its side walls show as it rocks. */
     private static final float THICKNESS = 0.36f;
     private static final int WALL_LAYERS = 16;
@@ -895,7 +895,7 @@ final class ClearSkin extends Skin {
      * so the pad's thick sides show under its face even at rest.
      */
     private void rock(Canvas canvas, float tiltX, float tiltY, float depth) {
-        ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, depth, 9f, 0.5f);
+        ThemeSkin.rock(canvas, tiltMatrix, tilted, tiltX, tiltY, TILT_DEGREES, depth, DPAD_VIEW_DISTANCE, DPAD_VIEW_SLANT);
     }
 
     /** Fills with a gradient; the paint's own alpha would otherwise still apply to it. */

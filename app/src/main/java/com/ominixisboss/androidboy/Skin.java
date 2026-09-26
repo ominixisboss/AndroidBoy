@@ -148,6 +148,31 @@ abstract class Skin {
      */
     abstract void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion);
 
+    // Every skin's d-pad rocks the same way when a direction is held: tipped slightly towards it,
+    // in perspective, as seen from a little in front (what the Clear skins introduced).
+    /** How far the d-pad tips towards the held direction. */
+    static final float DPAD_TILT_DEGREES = 5f;
+    /** The viewer's distance, in d-pad radii: further is flatter. */
+    static final float DPAD_VIEW_DISTANCE = 9f;
+    /** Deeper parts show this much lower down (how thick sides show under the face). */
+    static final float DPAD_VIEW_SLANT = 0.5f;
+
+    /**
+     * Rocks the canvas like the d-pad in {@code bounds}, for drawing it (or parts of it) tilted by
+     * (tiltX, tiltY), each -1 to 1. Does nothing at rest. {@code matrix} and {@code scratch}
+     * (8 floats) are the caller's, reused between frames.
+     */
+    static void tiltDpad(Canvas canvas, RectF bounds, float tiltX, float tiltY, android.graphics.Matrix matrix,
+                         float[] scratch) {
+        if (tiltX == 0 && tiltY == 0) return;
+        float radius = Math.max(1, bounds.width() / 2);
+        canvas.translate(bounds.centerX(), bounds.centerY());
+        canvas.scale(radius, radius);
+        ThemeSkin.rock(canvas, matrix, scratch, tiltX, tiltY, DPAD_TILT_DEGREES, 0, DPAD_VIEW_DISTANCE, DPAD_VIEW_SLANT);
+        canvas.scale(1 / radius, 1 / radius);
+        canvas.translate(-bounds.centerX(), -bounds.centerY());
+    }
+
     /** A menu glyph: three short lines, centred on (cx, cy) and {@code size} wide. */
     static void drawMenuGlyph(Canvas canvas, android.graphics.Paint stroke, float cx, float cy, float size, int color) {
         stroke.setShader(null);

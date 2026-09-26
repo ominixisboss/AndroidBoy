@@ -100,6 +100,8 @@ final class GlassSkin extends Skin {
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix matrix = new Matrix();
+    private final Matrix tiltMatrix = new Matrix();
+    private final float[] tilted = new float[8];
     private final RectF rect = new RectF();
     // The backdrop, sharp and blurred, for the current view size.
     private Bitmap backdrop;
@@ -209,6 +211,14 @@ final class GlassSkin extends Skin {
     }
 
     private void drawDpad(Canvas canvas, RectF b, int held, float tiltX, float tiltY, float density) {
+        // Tipped towards the held direction like every skin's d-pad.
+        canvas.save();
+        tiltDpad(canvas, b, tiltX, tiltY, tiltMatrix, tilted);
+        drawTiltedDpad(canvas, b, held, tiltX, tiltY, density);
+        canvas.restore();
+    }
+
+    private void drawTiltedDpad(Canvas canvas, RectF b, int held, float tiltX, float tiltY, float density) {
         float size = b.width();
         float arm = size * 0.34f;
         Path shape = roundedPlus(b, arm, arm * 0.26f);

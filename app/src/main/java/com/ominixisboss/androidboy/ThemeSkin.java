@@ -536,8 +536,8 @@ final class ThemeSkin extends Skin {
     private static final float PILL_ANGLE = -25f;
     private static final float PILL_LENGTH = 0.86f;
     /** The d-pad rocks up to this far towards the held direction. */
-    private static final float SOLID_TILT_DEGREES = 13f;
-    private static final float FLAT_TILT_DEGREES = 8f;
+    private static final float SOLID_TILT_DEGREES = DPAD_TILT_DEGREES;
+    private static final float FLAT_TILT_DEGREES = DPAD_TILT_DEGREES;
     private static final float[] SQUARE = {-1, -1, 1, -1, 1, 1, -1, 1};
     private static final float ARM = 1f / 3;
 
@@ -728,14 +728,6 @@ final class ThemeSkin extends Skin {
         canvas.restore();
     }
 
-    /** The viewer's distance from the d-pad, in d-pad radii: nearer exaggerates the perspective. */
-    private static final float VIEW_DISTANCE = 4f;
-    /**
-     * The pad is seen from slightly in front, so anything deeper shows a little lower down; that's
-     * what makes its bottom edge, and a raised side's wall, visible.
-     */
-    private static final float VIEW_SLANT = 0.4f;
-
     /**
      * Maps the canvas onto the d-pad's plane at {@code depth} below its resting face, rocked
      * about its centre: the held side goes down and away, the opposite side comes up. Tilts are
@@ -745,9 +737,12 @@ final class ThemeSkin extends Skin {
         rock(canvas, tiltMatrix, tilted, tiltX, tiltY, maxDegrees, depth);
     }
 
-    /** {@link #applyTilt} for any skin drawing in unit coordinates; {@code matrix} and {@code scratch} (8 floats) are reused. */
+    /**
+     * {@link #applyTilt} for any skin drawing in unit coordinates, seen the way every skin's d-pad
+     * is (see {@link Skin#DPAD_VIEW_DISTANCE}); {@code matrix} and {@code scratch} (8 floats) are reused.
+     */
     static void rock(Canvas canvas, Matrix matrix, float[] scratch, float tiltX, float tiltY, float maxDegrees, float depth) {
-        rock(canvas, matrix, scratch, tiltX, tiltY, maxDegrees, depth, VIEW_DISTANCE, VIEW_SLANT);
+        rock(canvas, matrix, scratch, tiltX, tiltY, maxDegrees, depth, DPAD_VIEW_DISTANCE, DPAD_VIEW_SLANT);
     }
 
     /** {@link #rock} seen from {@code viewDistance} radii away, deeper parts showing {@code viewSlant} lower down. */

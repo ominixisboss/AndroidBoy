@@ -86,6 +86,8 @@ final class SoftSkin extends Skin {
     }
 
     private final Variant variant;
+    private final android.graphics.Matrix tiltMatrix = new android.graphics.Matrix();
+    private final float[] tilted = new float[8];
     private final Paint fill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -287,9 +289,9 @@ final class SoftSkin extends Skin {
         float cx = bounds.centerX();
         float cy = bounds.centerY();
         float corner = arm * 0.22f;
-        // A plus of two rounded bars; the pressed arm sinks a little along with the tilt.
+        // A plus of two rounded bars, tipped towards the held direction like every skin's d-pad.
         canvas.save();
-        canvas.translate(motion.tiltX * size * 0.012f, motion.tiltY * size * 0.012f);
+        tiltDpad(canvas, bounds, motion.tiltX, motion.tiltY, tiltMatrix, tilted);
         Path plus = plusPath(bounds, arm);
         fill.setPathEffect(new CornerPathEffect(corner));
         stroke.setPathEffect(fill.getPathEffect());
