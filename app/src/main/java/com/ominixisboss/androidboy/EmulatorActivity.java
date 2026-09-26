@@ -74,6 +74,8 @@ public final class EmulatorActivity extends Activity
     private int touchTurboKeys;
     /** Keys held on a controller's turbo buttons (Y for A, X for B). */
     private int hardwareTurboKeys;
+    /** Carries on between visits to the cheat search screen while this game is open. */
+    private final CheatSearch cheatSearch = new CheatSearch();
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
 
@@ -342,6 +344,37 @@ public final class EmulatorActivity extends Activity
                 achievements.hasAccount() && achievements.isHardcoreEnabled(), this::applyCheats, this::dialogClosed);
     }
 
+    private void showCheatSearch() {
+        if (achievements.hasAccount() && achievements.isHardcoreEnabled()) {
+            Toast.makeText(this, "Cheats are off in hardcore mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        dialogOpened();
+        CheatSearchDialog.show(this, cheatSearch, new CheatSearchDialog.Host() {
+            @Override
+            public void runWithMemory(Runnable task, Runnable done) {
+                onEmulationThread(() -> {
+                    task.run();
+                    mainHandler.post(done);
+                });
+            }
+
+            @Override
+            public void onCheatMade(Cheat cheat) {
+                File file = library.cheatFile(rom);
+                List<Cheat> cheats = Cheat.load(file);
+                cheats.add(cheat);
+                try {
+                    Cheat.save(file, cheats);
+                } catch (IOException e) {
+                    Log.e(TAG, "Could not save cheats", e);
+                    Toast.makeText(EmulatorActivity.this, "Could not save the cheat", Toast.LENGTH_LONG).show();
+                }
+                applyCheats();
+            }
+        }, this::dialogClosed);
+    }
+
     /** Sends the game's enabled cheats to the core; none in hardcore mode. */
     private void applyCheats() {
         boolean hardcore = achievements.hasAccount() && achievements.isHardcoreEnabled();
@@ -464,6 +497,7 @@ public final class EmulatorActivity extends Activity
         });
         addMenuItem(labels, actions, "Achievements…", this::showAchievements);
         addMenuItem(labels, actions, "Cheats…", this::showCheats);
+        addMenuItem(labels, actions, "Cheat search…", this::showCheatSearch);
         addMenuItem(labels, actions, "Quit to game list", this::finish);
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(RomLibrary.baseName(rom))

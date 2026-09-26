@@ -263,6 +263,17 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetRumbleMode)(JNIEnv *env, jclass clazz, ji
     emu_set_rumble_mode((GB_rumble_mode_t)mode);
 }
 
+JNIEXPORT jint JNICALL JNI_FN(nativeReadMemory)(JNIEnv *env, jclass clazz, jint address, jbyteArray buffer)
+{
+    (void)clazz;
+    jsize length = (*env)->GetArrayLength(env, buffer);
+    jbyte *bytes = (*env)->GetByteArrayElements(env, buffer, NULL);
+    if (!bytes) return 0;
+    uint32_t read = emu_read_achievement_memory((uint32_t)address, (uint8_t *)bytes, (uint32_t)length);
+    (*env)->ReleaseByteArrayElements(env, buffer, bytes, 0);
+    return (jint)read;
+}
+
 JNIEXPORT jint JNICALL JNI_FN(nativeSetCheats)(JNIEnv *env, jclass clazz, jstring codes)
 {
     (void)clazz;

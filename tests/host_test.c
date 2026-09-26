@@ -227,6 +227,10 @@ int main(int argc, char **argv)
         CHECK(emu_read_achievement_memory(0x16000, bytes, 1) == 0,
               "%s: no cartridge RAM bank 1 on an 8 KB cartridge", name);
         CHECK(emu_read_achievement_memory(0x40000, bytes, 1) == 0, "%s: nothing past the map", name);
+        /* Cheat search reads the work RAM bank register. The test cartridge is a Game Boy game, so on a
+         * Color it runs in compatibility mode, where the register reads $FF as on a Game Boy (bank 1). */
+        CHECK(emu_read_achievement_memory(0xFF70, bytes, 1) == 1 && bytes[0] == 0xFF,
+              "%s: $FF70 reads the work RAM bank (0x%02X)", name, bytes[0]);
     }
 
     /* Cheats: they change what reads see, for the game and anyone else reading memory. */
