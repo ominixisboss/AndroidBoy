@@ -17,6 +17,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   fast-forward, screenshots, GameShark, Action Replay and CodeBreaker cheats (including the online
   cheat database's GBA files), box art and RetroAchievements all work as for Game Boy games. The
   Game Boy extras don't apply: the link cable, Game Boy Printer and Camera, models and palettes.
+- **Start-up animation.** Game Boy Color games start with SameBoy's boot animation, showing
+  "ANDROIDBOY" instead of "SAMEBOY" (original Game Boy models scroll down the logo from the cartridge,
+  as the real ones do).
 - **No BIOS files needed.** SameBoy's own open-source boot ROMs are built in, and mGBA uses its
   built-in replacement for the GBA BIOS, so no Nintendo code is included.
 - **Game library.** Add `.gb`/`.gbc`/`.gba` ROMs, or `.zip` files containing them, from any storage provider.
@@ -60,8 +63,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   top-left corner brings them back.) Settings → Controls → Toolbars can keep them on screen, show
   them with every skin, or turn them off.
 - **Glass skins** (Frosted, Smoke, Aqua, Rose quartz, Emerald, Amber, Amethyst, Sapphire, Ruby, Sea
-  glass, Opal and Obsidian): glass controls over a colourful backdrop. Each is frosted glass, a
-  blurred copy of what's behind it, with a bright rim and a reflection; pressing a direction tilts
+  glass, Opal and Obsidian): glass controls over a colourful backdrop whose glowing orbs drift
+  slowly about (still when Android's animations are off). Each control is frosted glass, a softened
+  copy of what's behind it (orbs included), with a bright rim and a reflection; pressing a direction tilts
   the d-pad, so the scene seen through it shifts, the glare slides across and the pressed arm
   catches the light. They use the toolbars, like the Soft skins. (They replace the old Frosted
   and Smoke glass themes; if you used one, you're switched to its Glass skin.)
@@ -295,14 +299,15 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
     LinkDialogs
   Cheat, CheatDatabase,   Cheat codes and .cht files; the libretro cheat database;
     CheatDialogs          the in-game cheat screens
-app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
+app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs, with the AndroidBoy logo
 app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
 app/src/main/assets/skins/      Image skins bundled with the app
 app/src/test/             Robolectric tests for skins (layout, touch, import), achievements and
                           Homebrew Hub parsing, and cheats; skin tests write previews
                           to app/build/skin-previews
 docs/skins.md             The skin file format; docs/skins/example is a complete example
-tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)
+tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+), with the
+                          AndroidBoy logo (tools/AndroidBoyLogo.png, via tools/bootrom-logo.patch)
 tools/make_skins.py       Draws the example skin and the bundled image skins (needs Pillow)
 tests/                    Host-side tests for the core wrapper, with test cartridges (link, printer, GBA)
 tools/build_gba_test_rom.sh  Assembles tests/gbarom.s (needs clang and lld)
