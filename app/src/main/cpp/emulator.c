@@ -8,6 +8,19 @@
 static GB_gameboy_t *gb;
 static bool loaded;
 
+/* Link cable: the partner Game Boy and its own screen. */
+static GB_gameboy_t *partner;
+static bool linked;
+static bool partner_leads;
+static bool show_partner;
+static int64_t link_offset;
+static bool bit_from_gb, bit_from_partner;
+static uint32_t partner_render_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
+static uint32_t partner_frame_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
+static unsigned partner_width = 160, partner_height = 144;
+static bool partner_vblank_occurred;
+static bool partner_frame_odd;
+
 static uint32_t render_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
 static uint32_t frame_buffer[EMU_MAX_WIDTH * EMU_MAX_HEIGHT];
 static unsigned frame_width = 160, frame_height = 144;
@@ -77,9 +90,10 @@ static void vblank_callback(GB_gameboy_t *unused, GB_vblank_type_t type)
     vblank_occurred = true;
 }
 
-static void sample_callback(GB_gameboy_t *unused, GB_sample_t *sample)
+static void sample_callback(GB_gameboy_t *source, GB_sample_t *sample)
 {
-    (void)unused;
+    /* While linked, only the Game Boy on screen is heard. */
+    if (linked && (source == partner) != show_partner) return;
     if (audio_count + 2 > EMU_AUDIO_CAPACITY) return; /* Frontend fell behind; drop. */
     audio_buffer[audio_count++] = sample->left;
     audio_buffer[audio_count++] = sample->right;
@@ -120,6 +134,45 @@ static void boot_rom_load_callback(GB_gameboy_t *target, GB_boot_rom_t type)
     free(data);
 }
 
+static void partner_vblank_callback(GB_gameboy_t *unused, GB_vblank_type_t type)
+{
+    (void)unused;
+    if (type != GB_VBLANK_TYPE_REPEAT) {
+        memcpy(partner_frame_buffer, partner_render_buffer, sizeof(partner_render_buffer[0]) * partner_width * partner_height);
+        partner_frame_odd = GB_is_odd_frame(partner);
+    }
+    partner_vblank_occurred = true;
+}
+
+/* The cable: a bit shifted out of one Game Boy is shifted into the other (as in SameBoy's own frontends). */
+static void gb_bit_start(GB_gameboy_t *unused, bool bit)
+{
+    (void)unused;
+    bit_from_gb = bit;
+}
+
+static bool gb_bit_end(GB_gameboy_t *unused)
+{
+    (void)unused;
+    bool received = GB_serial_get_data_bit(partner);
+    GB_serial_set_data_bit(partner, bit_from_gb);
+    return received;
+}
+
+static void partner_bit_start(GB_gameboy_t *unused, bool bit)
+{
+    (void)unused;
+    bit_from_partner = bit;
+}
+
+static bool partner_bit_end(GB_gameboy_t *unused)
+{
+    (void)unused;
+    bool received = GB_serial_get_data_bit(gb);
+    GB_serial_set_data_bit(gb, bit_from_partner);
+    return received;
+}
+
 static void update_frame_size(void)
 {
     frame_width = GB_get_screen_width(gb);
@@ -155,6 +208,83 @@ GB_model_t emu_pick_model(const uint8_t *rom, size_t size, GB_model_t dmg_model,
     return dmg_model;
 }
 
+/* The Game Boy Printer: strips printed so far, joined into one printout. */
+#define PRINTOUT_MAX_ROWS 4096
+#define PRINTOUT_IDLE_FRAMES 120
+static int link_accessory;
+static uint32_t *printout;
+static unsigned printout_rows;
+static bool printout_fed;
+static unsigned frames_since_print;
+
+static void printout_add_rows(const uint32_t *rows, unsigned count)
+{
+    if (printout_rows + count > PRINTOUT_MAX_ROWS) count = PRINTOUT_MAX_ROWS - printout_rows;
+    if (count == 0) return;
+    uint32_t *grown = realloc(printout, (size_t)(printout_rows + count) * EMU_PRINTOUT_WIDTH * sizeof(uint32_t));
+    if (!grown) return;
+    printout = grown;
+    if (rows) {
+        memcpy(printout + (size_t)printout_rows * EMU_PRINTOUT_WIDTH, rows, (size_t)count * EMU_PRINTOUT_WIDTH * sizeof(uint32_t));
+    } else {
+        /* Blank paper. */
+        uint32_t white = rgb_encode(gb, 0xFF, 0xFF, 0xFF);
+        for (size_t i = 0; i < (size_t)count * EMU_PRINTOUT_WIDTH; i++) printout[(size_t)printout_rows * EMU_PRINTOUT_WIDTH + i] = white;
+    }
+    printout_rows += count;
+}
+
+static void print_image(GB_gameboy_t *g, uint32_t *image, uint8_t height, uint8_t top_margin,
+                        uint8_t bottom_margin, uint8_t exposure)
+{
+    (void)g;
+    (void)exposure;
+    /* Margins are paper feeds; show a little space for them between strips, not before the first. */
+    if (printout_rows > 0) printout_add_rows(NULL, top_margin * 4u);
+    printout_add_rows(image, height);
+    if (bottom_margin > 0) printout_fed = true;
+    frames_since_print = 0;
+}
+
+static void apply_link_accessory(void)
+{
+    if (!gb || !GB_is_inited(gb) || linked) return;
+    if (link_accessory == EMU_LINK_PRINTER) {
+        GB_connect_printer(gb, print_image, NULL);
+    } else {
+        GB_disconnect_serial(gb);
+    }
+}
+
+void emu_set_link_accessory(int accessory)
+{
+    link_accessory = accessory;
+    apply_link_accessory();
+}
+
+unsigned emu_take_printout(uint32_t **pixels)
+{
+    *pixels = NULL;
+    if (printout_rows == 0 || (!printout_fed && frames_since_print < PRINTOUT_IDLE_FRAMES)) return 0;
+    unsigned rows = printout_rows;
+    *pixels = printout;
+    printout = NULL;
+    printout_rows = 0;
+    printout_fed = false;
+    return rows;
+}
+
+static uint8_t camera_image[EMU_CAMERA_WIDTH * EMU_CAMERA_HEIGHT];
+static bool camera_has_image;
+static bool cartridge_has_camera;
+
+static uint8_t camera_get_pixel(GB_gameboy_t *g, uint8_t x, uint8_t y)
+{
+    (void)g;
+    if (x >= EMU_CAMERA_WIDTH || y >= EMU_CAMERA_HEIGHT) return 0;
+    return camera_image[y * EMU_CAMERA_WIDTH + x];
+}
+
 bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned rate)
 {
     if (size < 0x150) {
@@ -165,6 +295,7 @@ bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned ra
         gb = GB_alloc();
         if (!gb) return false;
     }
+    emu_unlink();
     if (GB_is_inited(gb)) {
         GB_free(gb);
     }
@@ -178,6 +309,9 @@ bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned ra
     GB_set_vblank_callback(gb, vblank_callback);
     GB_apu_set_sample_callback(gb, sample_callback);
     GB_set_rumble_callback(gb, rumble_callback);
+    if (camera_has_image) GB_set_camera_get_pixel_callback(gb, camera_get_pixel);
+    apply_link_accessory();
+    cartridge_has_camera = size > 0x147 && rom[0x147] == 0xFC; /* Pocket Camera */
 
     sample_rate = rate ? rate : 48000;
     GB_set_sample_rate(gb, sample_rate);
@@ -201,6 +335,7 @@ bool emu_is_loaded(void)
 
 void emu_unload(void)
 {
+    emu_unlink();
     if (gb && GB_is_inited(gb)) {
         GB_free(gb);
     }
@@ -238,21 +373,39 @@ void emu_run_frame(void)
 {
     if (!loaded) return;
     vblank_occurred = false;
+    if (linked) {
+        /* Run whichever Game Boy is behind, so neither gets more than a few cycles ahead; the
+           order depends only on which game leads, never on which one is shown here. */
+        GB_gameboy_t *first = partner_leads ? partner : gb;
+        GB_gameboy_t *second = partner_leads ? gb : partner;
+        bool *frame_done = partner_leads ? &partner_vblank_occurred : &vblank_occurred;
+        partner_vblank_occurred = false;
+        for (unsigned i = 0; !*frame_done && i < 4000000; i++) {
+            if (link_offset <= 0) {
+                link_offset += GB_run(first);
+            } else {
+                link_offset -= GB_run(second);
+            }
+        }
+        if (frames_since_print < PRINTOUT_IDLE_FRAMES) frames_since_print++;
+        return;
+    }
     /* Bound the loop so a pathological ROM can never hang the emulation thread. */
     for (unsigned i = 0; !vblank_occurred && i < 1000000; i++) {
         GB_run(gb);
     }
+    if (frames_since_print < PRINTOUT_IDLE_FRAMES) frames_since_print++;
 }
 
 void emu_set_rewind_length(unsigned seconds)
 {
     rewind_seconds = seconds;
-    if (loaded) GB_set_rewind_length(gb, seconds);
+    if (loaded && !linked) GB_set_rewind_length(gb, seconds);
 }
 
 bool emu_rewind_frame(void)
 {
-    if (!loaded) return false;
+    if (!loaded || linked) return false;
     /* The core records a state at every frame, so the newest one is the frame on screen.
        Drop it, step back to the one before, then run a frame from there to show it (which
        records it again). This is what SameBoy's own frontend does. */
@@ -264,6 +417,11 @@ bool emu_rewind_frame(void)
 
 const uint32_t *emu_get_frame(unsigned *width, unsigned *height)
 {
+    if (linked && show_partner) {
+        *width = partner_width;
+        *height = partner_height;
+        return partner_frame_buffer;
+    }
     *width = frame_width;
     *height = frame_height;
     return frame_buffer;
@@ -271,7 +429,133 @@ const uint32_t *emu_get_frame(unsigned *width, unsigned *height)
 
 bool emu_is_odd_frame(void)
 {
-    return frame_odd;
+    return linked && show_partner ? partner_frame_odd : frame_odd;
+}
+
+bool emu_link(const uint8_t *rom, size_t size, GB_model_t model, bool leads, uint64_t seed)
+{
+    if (!loaded || size < 0x150) return false;
+    emu_unlink();
+    if (!partner) {
+        partner = GB_alloc();
+        if (!partner) return false;
+    }
+    GB_init(partner, model);
+    GB_set_log_callback(partner, log_callback);
+    GB_set_boot_rom_load_callback(partner, boot_rom_load_callback);
+    GB_set_pixels_output(partner, partner_render_buffer);
+    GB_set_rgb_encode_callback(partner, rgb_encode);
+    GB_set_vblank_callback(partner, partner_vblank_callback);
+    GB_apu_set_sample_callback(partner, sample_callback);
+    GB_set_sample_rate(partner, sample_rate);
+    GB_load_rom_from_buffer(partner, rom, size);
+    GB_set_color_correction_mode(partner, color_correction);
+    static const GB_palette_t *const palettes[] = {&GB_PALETTE_GREY, &GB_PALETTE_DMG, &GB_PALETTE_MGB, &GB_PALETTE_GBL};
+    GB_set_palette(partner, palettes[dmg_palette < 4 ? dmg_palette : 0]);
+    GB_set_border_mode(partner, border_mode);
+    GB_set_highpass_filter_mode(partner, highpass);
+
+    /* Nothing else on the cable, and no rewinding: it would unlink the two in time. */
+    GB_disconnect_serial(gb);
+    GB_set_rewind_length(gb, 0);
+    GB_set_serial_transfer_bit_start_callback(gb, gb_bit_start);
+    GB_set_serial_transfer_bit_end_callback(gb, gb_bit_end);
+    GB_set_serial_transfer_bit_start_callback(partner, partner_bit_start);
+    GB_set_serial_transfer_bit_end_callback(partner, partner_bit_end);
+
+    /* The clock runs on emulated time, not the phone's, so both devices agree on it. */
+    GB_set_rtc_mode(gb, GB_RTC_MODE_ACCURATE);
+    GB_set_rtc_mode(partner, GB_RTC_MODE_ACCURATE);
+
+    /* Power both on from the same random state, leading game first. */
+    partner_leads = leads;
+    GB_random_seed(seed);
+    GB_reset(leads ? partner : gb);
+    GB_reset(leads ? gb : partner);
+    partner_width = GB_get_screen_width(partner);
+    partner_height = GB_get_screen_height(partner);
+    memset(partner_frame_buffer, 0, sizeof(partner_frame_buffer));
+    update_frame_size();
+    link_offset = 0;
+    bit_from_gb = bit_from_partner = false;
+    show_partner = false;
+    audio_count = 0;
+    linked = true;
+    return true;
+}
+
+void emu_unlink(void)
+{
+    if (!linked) return;
+    linked = false;
+    show_partner = false;
+    GB_set_serial_transfer_bit_start_callback(gb, NULL);
+    GB_set_serial_transfer_bit_end_callback(gb, NULL);
+    if (partner && GB_is_inited(partner)) GB_free(partner);
+    GB_set_rtc_mode(gb, GB_RTC_MODE_SYNC_TO_HOST);
+    GB_set_rewind_length(gb, rewind_seconds);
+    apply_link_accessory();
+}
+
+bool emu_is_linked(void)
+{
+    return linked;
+}
+
+void emu_set_partner_keys(unsigned mask)
+{
+    if (linked) GB_set_key_mask(partner, (GB_key_mask_t)mask);
+}
+
+void emu_show_partner(bool show)
+{
+    if (show_partner != show) audio_count = 0;
+    show_partner = linked && show;
+}
+
+size_t emu_partner_battery_size(void)
+{
+    if (!linked) return 0;
+    int size = GB_save_battery_size(partner);
+    return size > 0 ? (size_t)size : 0;
+}
+
+size_t emu_partner_save_battery(uint8_t *buffer, size_t size)
+{
+    size_t needed = emu_partner_battery_size();
+    if (!needed || size < needed) return 0;
+    return GB_save_battery_to_buffer(partner, buffer, needed) == 0 ? needed : 0;
+}
+
+void emu_partner_load_battery(const uint8_t *buffer, size_t size)
+{
+    if (linked) GB_load_battery_from_buffer(partner, buffer, size);
+}
+
+size_t emu_partner_state_size(void)
+{
+    return linked ? GB_get_save_state_size(partner) : 0;
+}
+
+void emu_partner_save_state(uint8_t *buffer)
+{
+    if (linked) GB_save_state_to_buffer(partner, buffer);
+}
+
+bool emu_partner_load_state(const uint8_t *buffer, size_t size)
+{
+    if (!linked) return false;
+    bool success = GB_load_state_from_buffer(partner, buffer, size) == 0;
+    partner_width = GB_get_screen_width(partner);
+    partner_height = GB_get_screen_height(partner);
+    return success;
+}
+
+bool emu_partner_take_battery_dirty(void)
+{
+    if (!linked || !GB_get_battery_dirty(partner)) return false;
+    GB_clear_battery_dirty(partner);
+    return true;
 }
 
 size_t emu_take_audio(int16_t *out, size_t max_samples)
@@ -401,6 +685,60 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
         }
     }
     return num_bytes;
+}
+
+/* A 6-digit Game Genie code (VVA-AAA), which replaces a value whatever it was. */
+static bool is_short_game_genie(const char *code)
+{
+    if (strlen(code) == 8) return false; /* GameShark */
+    unsigned digits = 0;
+    for (; *code; code++) {
+        if (*code != '-') digits++;
+    }
+    return digits == 6;
+}
+
+bool emu_has_camera(void)
+{
+    return loaded && cartridge_has_camera;
+}
+
+void emu_set_camera_image(const uint8_t *pixels)
+{
+    if (pixels) {
+        memcpy(camera_image, pixels, sizeof(camera_image));
+        camera_has_image = true;
+    } else {
+        camera_has_image = false;
+    }
+    if (gb && GB_is_inited(gb)) GB_set_camera_get_pixel_callback(gb, camera_has_image ? camera_get_pixel : NULL);
+}
+
+unsigned emu_set_cheats(const char *codes)
+{
+    if (!loaded) return 0;
+    GB_remove_all_cheats(gb);
+    unsigned count = 0;
+    while (codes && *codes) {
+        const char *end = strchr(codes, '\n');
+        size_t length = end ? (size_t)(end - codes) : strlen(codes);
+        char code[32];
+        if (length > 0 && length < sizeof(code)) {
+            memcpy(code, codes, length);
+            code[length] = 0;
+            const GB_cheat_t *cheat = GB_import_cheat(gb, code, "", true);
+            if (cheat && is_short_game_genie(code)) {
+                /* SameBoy 1.0.3 imports these as "only when the original value is 0"; they have no
+                 * original value, so they should always apply. */
+                GB_update_cheat(gb, cheat, cheat->description, cheat->address, cheat->bank, cheat->value, 0, false,
+                                true);
+            }
+            if (cheat) count++;
+        }
+        codes += length + (end ? 1 : 0);
+    }
+    GB_set_cheats_enabled(gb, count > 0);
+    return count;
 }
 
 double emu_get_rumble(void)

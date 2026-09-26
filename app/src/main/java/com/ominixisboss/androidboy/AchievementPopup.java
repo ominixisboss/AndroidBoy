@@ -94,6 +94,8 @@ final class AchievementPopup extends LinearLayout {
                 return new String[] {"LEADERBOARD ATTEMPT FAILED", event.title, null};
             case Achievements.EVENT_LEADERBOARD_SUBMITTED:
                 return new String[] {"LEADERBOARD SCORE SUBMITTED", event.title, event.description};
+            case Achievements.EVENT_SCOREBOARD:
+                return new String[] {"LEADERBOARD RANK", event.title, event.description};
             case Achievements.EVENT_SERVER_ERROR:
                 return new String[] {"RETROACHIEVEMENTS", "Something went wrong", event.description};
             case Achievements.EVENT_DISCONNECTED:

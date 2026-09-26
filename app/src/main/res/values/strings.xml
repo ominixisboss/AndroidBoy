@@ -14,10 +14,11 @@
     <string name="export_save">Export save file</string>
     <string name="back">Back</string>
     <string name="retroachievements">RetroAchievements</string>
+    <string name="homebrew_hub">Free homebrew games</string>
     <string name="delete">Delete</string>
     <string name="delete_title">Delete %1$s?</string>
     <string name="delete_message">The game, its save file and its save states will be removed from this device.</string>
-    <string name="empty_library">Add a Game Boy or Game Boy Color ROM (.gb, .gbc or a .zip containing one) to get started.</string>
+    <string name="empty_library">Add a Game Boy or Game Boy Color ROM (.gb, .gbc or a .zip containing one) to get started, or pick free homebrew games from the menu (Free homebrew games).</string>
     <string name="import_failed">Could not add the game: %1$s</string>
     <string name="no_save">This game has no save file yet</string>
     <string name="save_imported">Save file imported</string>

@@ -23,11 +23,18 @@ final class EmulatorThread extends Thread {
         void onIdle();
         /** Rewinding stopped: the game is somewhere earlier than it was. */
         void onRewindFinished();
+        /** The Game Boy Printer finished a printout: 160-pixel rows of 0xAABBGGRR pixels. */
+        void onPrintout(int[] pixels);
+        /** The link cable came unplugged (e.g. the other phone went away), with a reason for the player. */
+        void onLinkEnded(String reason);
+        /** Whether the game is held up waiting for the other phone (to show a message after a moment). */
+        void onLinkWaiting(boolean waiting);
     }
 
     private static final String TAG = "AndroidBoy";
     private static final double FRAME_RATE = 4194304.0 / 70224.0; // ~59.73 Hz
     private static final int BATTERY_CHECK_FRAMES = 180;
+    private static final int PRINTOUT_CHECK_FRAMES = 30;
 
     static int outputSampleRate() {
         int rate = AudioTrack.getNativeOutputSampleRate(AudioManager.STREAM_MUSIC);
@@ -45,6 +52,14 @@ final class EmulatorThread extends Thread {
     private volatile boolean running = true;
     private volatile boolean paused;
     private volatile int keys;
+    /** Held keys that press and release by themselves (turbo). */
+    private volatile int turboKeys;
+    private volatile int turboPeriod = 4;
+    private volatile int speedPercent = 100;
+    private int turboFrame;
+    private volatile LinkSession link;
+    private boolean linkWaiting;
+    private long linkWaitStart;
     private volatile boolean fastForward;
     private volatile boolean rewinding;
     private volatile int fastForwardSpeed = 4;
@@ -59,6 +74,32 @@ final class EmulatorThread extends Thread {
 
     void setKeys(int mask) {
         keys = mask;
+    }
+
+    /** A link cable in use (or null): it sets both Game Boys' keys each frame. */
+    void setLink(LinkSession session) {
+        link = session;
+    }
+
+    /** Keys held in turbo mode: pressed for half of every {@link #setTurboPeriod period}, released for the rest. */
+    void setTurboKeys(int mask) {
+        turboKeys = mask;
+    }
+
+    /** Frames per turbo press-and-release; at least 2. */
+    void setTurboPeriod(int frames) {
+        turboPeriod = Math.max(2, frames);
+    }
+
+    /** Game speed in percent, for slow motion; audio plays slower and lower to match. */
+    void setSpeedPercent(int percent) {
+        speedPercent = Math.max(10, Math.min(100, percent));
+    }
+
+    /** The keys the game sees this frame: turbo keys are only down for the first half of each period. */
+    static int effectiveKeys(int keys, int turbo, int frame, int period) {
+        boolean turboDown = frame % period < period / 2;
+        return (keys & ~turbo) | (turboDown ? turbo : 0);
     }
 
     void setFastForward(boolean enabled) {
@@ -124,6 +165,7 @@ final class EmulatorThread extends Thread {
         long nextFrameTime = System.nanoTime();
         int framesSinceBatteryCheck = 0;
         boolean wasMuted = !muted;
+        int playbackSpeed = 100;
         boolean wasRewinding = false;
 
         try {
@@ -143,13 +185,46 @@ final class EmulatorThread extends Thread {
                     track.setVolume(muted ? 0f : 1f);
                 }
 
-                Emulator.nativeSetKeys(keys);
+                if (playbackSpeed != speedPercent) {
+                    // Writes block for longer at a lower rate, which slows the game down with it.
+                    playbackSpeed = speedPercent;
+                    track.setPlaybackRate(sampleRate * playbackSpeed / 100);
+                }
+                int turbo = turboKeys;
+                if (turbo == 0) turboFrame = 0;
+                int frameKeys = effectiveKeys(keys, turbo, turboFrame, turboPeriod);
+                LinkSession session = link;
+                if (session != null) {
+                    int status = session.applyKeys(frameKeys);
+                    if (status == LinkSession.ENDED) {
+                        link = null;
+                        setLinkWaiting(false);
+                        host.onLinkEnded(session.endReason());
+                        continue;
+                    }
+                    if (status == LinkSession.WAITING) {
+                        // The other phone is behind (or paused): check back without running a frame.
+                        if (!linkWaiting) {
+                            linkWaiting = true;
+                            linkWaitStart = System.nanoTime();
+                        } else if (System.nanoTime() - linkWaitStart > 1_000_000_000L) {
+                            host.onLinkWaiting(true);
+                        }
+                        nextFrameTime = System.nanoTime();
+                        continue;
+                    }
+                    setLinkWaiting(false);
+                } else {
+                    Emulator.nativeSetKeys(frameKeys);
+                }
+                turboFrame++;
                 if (wasRewinding != rewinding) {
                     wasRewinding = rewinding;
                     if (!wasRewinding) host.onRewindFinished();
                 }
-                if (rewinding) {
-                    // Stays on the oldest frame once the history runs out.
+                if (rewinding && session == null) {
+                    // Stays on the oldest frame once the history runs out. (Never while linked:
+                    // this frame's keys are already exchanged, and the core keeps no history then.)
                     Emulator.nativeRewindFrame(audio);
                     publishFrame();
                     nextFrameTime += (long) (1e9 / FRAME_RATE);
@@ -164,6 +239,12 @@ final class EmulatorThread extends Thread {
                 if (++framesSinceBatteryCheck >= BATTERY_CHECK_FRAMES) {
                     framesSinceBatteryCheck = 0;
                     if (Emulator.nativeTakeBatteryDirty()) host.onBatteryDirty();
+                    LinkSession linked = link;
+                    if (linked != null) linked.periodic();
+                }
+                if (framesSinceBatteryCheck % PRINTOUT_CHECK_FRAMES == 0) {
+                    int[] printout = Emulator.nativeTakePrintout();
+                    if (printout != null) host.onPrintout(printout);
                 }
 
                 if (fastForward) {
@@ -211,6 +292,11 @@ final class EmulatorThread extends Thread {
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
                 .build();
+    }
+
+    private void setLinkWaiting(boolean waiting) {
+        if (linkWaiting && !waiting) host.onLinkWaiting(false);
+        linkWaiting = waiting;
     }
 
     private void publishFrame() {

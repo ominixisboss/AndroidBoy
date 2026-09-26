@@ -111,7 +111,7 @@ final class AchievementDialogs {
         hardcore.setChecked(achievements.isHardcoreEnabled());
         content.addView(hardcore);
         content.addView(text(activity, "Unlocks count as hardcore, the way RetroAchievements ranks players. "
-                + "Loading save states and rewinding are off while it's on."
+                + "Loading save states, rewinding and cheats are off while it's on."
                 + (inGame ? " Turning it on restarts the game." : ""), 13));
 
         AlertDialog dialog = new AlertDialog.Builder(activity)
@@ -132,7 +132,11 @@ final class AchievementDialogs {
     }
 
     /** The loaded game's achievements, unlocked ones first. */
-    static void showList(Activity activity, Runnable onAccount, Runnable onDismiss) {
+    /**
+     * The game's achievements. {@code richPresence} (what the game says the player is doing) is
+     * shown at the top if the game has it.
+     */
+    static void showList(Activity activity, String richPresence, Runnable onAccount, Runnable onDismiss) {
         Achievements achievements = Achievements.get(activity);
         String[] summary = achievements.gameSummary();
         List<Achievements.Achievement> list = achievements.achievementList();
@@ -149,7 +153,9 @@ final class AchievementDialogs {
         String subtitle = summary != null
                 ? summary[1] + " of " + summary[2] + " unlocked · " + summary[3] + " of " + summary[4] + " points"
                     + (achievements.isHardcoreEnabled() ? " · hardcore" : "")
+                    + (richPresence != null && !richPresence.isEmpty() ? "\nNow: " + richPresence : "")
                 : "";
+        List<Achievements.Leaderboard> leaderboards = achievements.leaderboards();
         int pad = dp(activity, 20);
         view.setPadding(pad, 0, pad, 0);
         AlertDialog dialog = new AlertDialog.Builder(activity)
@@ -158,9 +164,87 @@ final class AchievementDialogs {
                 .setView(view)
                 .setPositiveButton("Done", null)
                 .setNeutralButton("Account", (d, which) -> onAccount.run())
+                .setNegativeButton(leaderboards.isEmpty() ? null : "Leaderboards", null)
                 .create();
         dialog.setOnDismissListener(d -> onDismiss.run());
         dialog.show();
+        if (!leaderboards.isEmpty()) {
+            // Opens over the list rather than closing it.
+            dialog.getButton(DialogInterface.BUTTON_NEGATIVE).setOnClickListener(v -> showLeaderboards(activity, leaderboards));
+        }
+    }
+
+    private static void showLeaderboards(Activity activity, List<Achievements.Leaderboard> leaderboards) {
+        Settings.TwoLineAdapter adapter = new Settings.TwoLineAdapter(activity, leaderboards.size()) {
+            @Override
+            void bind(int position, TextView title, TextView detail) {
+                title.setText(leaderboards.get(position).title);
+                detail.setText(leaderboards.get(position).description);
+            }
+        };
+        new AlertDialog.Builder(activity)
+                .setTitle("Leaderboards")
+                .setView(Settings.listView(activity, adapter, position -> showLeaderboard(activity, leaderboards.get(position))))
+                .setPositiveButton("Back", null)
+                .show();
+    }
+
+    /** The top ten, and the entries around the player. */
+    private static void showLeaderboard(Activity activity, Achievements.Leaderboard leaderboard) {
+        Achievements achievements = Achievements.get(activity);
+        LinearLayout content = column(activity);
+        TextView description = text(activity, leaderboard.description, 13);
+        TextView top = text(activity, "Loading…", 14);
+        top.setTypeface(Typeface.MONOSPACE);
+        TextView around = text(activity, "", 14);
+        around.setTypeface(Typeface.MONOSPACE);
+        content.addView(description);
+        content.addView(heading(activity, "Top 10"));
+        content.addView(top);
+        content.addView(heading(activity, "Around you"));
+        content.addView(around);
+        android.widget.ScrollView scroll = new android.widget.ScrollView(activity);
+        scroll.addView(content);
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle(leaderboard.title)
+                .setView(scroll)
+                .setPositiveButton("Back", null)
+                .setNeutralButton("Website", (d, which) -> openSite(activity, leaderboard.pageUrl()))
+                .show();
+        String me = achievements.username();
+        achievements.fetchLeaderboard(leaderboard.id, false, 10, (entries, total, error) -> {
+            if (!dialog.isShowing()) return;
+            top.setText(entries == null ? error : formatEntries(entries, me, total));
+            // One request at a time for each leaderboard: ask for the player's neighbours next.
+            around.setText("Loading…");
+            achievements.fetchLeaderboard(leaderboard.id, true, 7, (nearby, count, problem) -> {
+                if (!dialog.isShowing()) return;
+                around.setText(nearby == null ? problem
+                        : nearby.isEmpty() ? "You haven't got a score on this one yet." : formatEntries(nearby, me, count));
+            });
+        });
+    }
+
+    /** "  1  Champion        004321", the player's own row marked with a ▶. */
+    static String formatEntries(List<Achievements.LeaderboardEntry> entries, String me, int total) {
+        if (entries.isEmpty()) return "No scores yet.";
+        StringBuilder text = new StringBuilder();
+        for (Achievements.LeaderboardEntry entry : entries) {
+            if (text.length() > 0) text.append('\n');
+            boolean mine = entry.user.equalsIgnoreCase(me == null ? "" : me);
+            text.append(mine ? "▶" : " ")
+                    .append(String.format(java.util.Locale.ROOT, "%4d  %-16s %s", entry.rank,
+                            entry.user.length() > 16 ? entry.user.substring(0, 15) + "…" : entry.user, entry.score));
+        }
+        if (total > 0) text.append("\n\n").append(total).append(total == 1 ? " player" : " players");
+        return text.toString();
+    }
+
+    private static TextView heading(Activity activity, String value) {
+        TextView view = text(activity, value, 14);
+        view.setTypeface(Typeface.DEFAULT_BOLD);
+        view.setPadding(0, dp(activity, 12), 0, dp(activity, 2));
+        return view;
     }
 
     /** One achievement: badge, title with points, description and progress. */

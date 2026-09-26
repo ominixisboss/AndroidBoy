@@ -4,8 +4,18 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <!-- RetroAchievements: logging in, loading a game's achievements and sending unlocks. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- The link cable between two phones: showing this phone's address on the network. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Saving screenshots and printouts to Pictures; Android 10 and later need no permission. -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
+
+    <!-- The Game Boy Camera cartridge sees through the phone's camera. -->
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
     <uses-feature android:name="android.hardware.gamepad" android:required="false" />
 
     <application
@@ -41,6 +51,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".HomebrewActivity"
+            android:exported="false"
+            android:label="Homebrew Hub" />
+        <activity
+            android:name=".AchievementsActivity"
+            android:exported="false"
+            android:label="@string/retroachievements" />
         <activity
             android:name=".EmulatorActivity"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|uiMode|density"

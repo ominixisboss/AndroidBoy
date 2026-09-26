@@ -3,6 +3,9 @@ package com.ominixisboss.androidboy;
 import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.DashPathEffect;
+import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.SystemClock;
@@ -10,6 +13,9 @@ import android.util.SparseIntArray;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
 import android.view.View;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Draws the active skin around the game screen, and turns touches on its controls into key presses.
@@ -45,6 +51,17 @@ final class SkinView extends View {
     private boolean haptics = true;
     private int mask;
 
+    // Moving and resizing controls: where the skin put them, the player's changes, and a drag in progress.
+    private ControlLayout controlLayout;
+    private final List<RectF> baseBounds = new ArrayList<>();
+    private boolean editing;
+    private int editIndex = -1;
+    private final ControlLayout.Adjustment editStart = new ControlLayout.Adjustment();
+    private float editTouchX;
+    private float editTouchY;
+    private float editSpan;
+    private final Paint editPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
     // Press animation: one damped spring per control, plus two for the d-pad's tilt. A press is
     // quick with a slight overshoot; a release springs back past rest and settles, like rubber.
     private static final float PRESS_STIFFNESS = 1500f;
@@ -66,6 +83,34 @@ final class SkinView extends View {
         super(context);
         this.skin = skin;
         this.listener = listener;
+    }
+
+    /** Where the player moved the controls; null leaves them where the skin puts them. */
+    void setControlLayout(ControlLayout controlLayout) {
+        this.controlLayout = controlLayout;
+        relayout();
+    }
+
+    /**
+     * Edit mode: dragging a control moves it and pinching resizes it, instead of pressing it.
+     * Only for skins whose controls can move ({@link Skin#movableControls}).
+     */
+    void setEditing(boolean enabled) {
+        editing = enabled;
+        editIndex = -1;
+        releaseAll();
+        invalidate();
+    }
+
+    boolean isEditing() {
+        return editing;
+    }
+
+    /** Puts the current skin's controls back, in the current orientation. */
+    void resetControlLayout() {
+        if (controlLayout == null) return;
+        controlLayout.reset(skin.id(), ControlLayout.orientation(getWidth(), getHeight()));
+        relayout();
     }
 
     void setSkin(Skin newSkin) {
@@ -130,6 +175,11 @@ final class SkinView extends View {
     private void relayout() {
         if (getWidth() == 0 || getHeight() == 0) return;
         skin.layout(layout, getWidth(), getHeight(), frameWidth, frameHeight, controlsVisible, integerScaling);
+        baseBounds.clear();
+        for (Skin.Control control : layout.controls) baseBounds.add(new RectF(control.bounds));
+        if (controlLayout != null && skin.movableControls()) {
+            controlLayout.apply(skin.id(), getWidth(), getHeight(), layout.controls, baseBounds);
+        }
         // Touches may now be over different controls.
         pointerKeys.clear();
         updateMask();
@@ -162,6 +212,95 @@ final class SkinView extends View {
             }
         }
         skin.drawControls(canvas, layout, mask, motion);
+        if (editing) drawEditOutlines(canvas);
+    }
+
+    private void drawEditOutlines(Canvas canvas) {
+        float density = getResources().getDisplayMetrics().density;
+        editPaint.setStyle(Paint.Style.STROKE);
+        editPaint.setStrokeWidth(2 * density);
+        for (int i = 0; i < layout.controls.size(); i++) {
+            Skin.Control control = layout.controls.get(i);
+            if (!control.visible) continue;
+            editPaint.setColor(i == editIndex ? Color.YELLOW : Color.WHITE);
+            editPaint.setPathEffect(i == editIndex ? null : new DashPathEffect(new float[] {6 * density, 4 * density}, 0));
+            canvas.drawRect(control.bounds, editPaint);
+        }
+        editPaint.setPathEffect(null);
+    }
+
+    /** Edit mode touches: pick a control, drag it, pinch it. Changes are saved as they're made. */
+    private boolean onEditTouch(MotionEvent event) {
+        if (!skin.movableControls() || controlLayout == null) return true;
+        String orientation = ControlLayout.orientation(getWidth(), getHeight());
+        switch (event.getActionMasked()) {
+            case MotionEvent.ACTION_DOWN: {
+                editIndex = controlAt(event.getX(), event.getY());
+                if (editIndex >= 0) beginEdit(event, orientation);
+                break;
+            }
+            case MotionEvent.ACTION_POINTER_DOWN:
+            case MotionEvent.ACTION_POINTER_UP:
+                // A finger joined or left: carry on from where things are.
+                if (editIndex >= 0) beginEdit(event, orientation);
+                break;
+            case MotionEvent.ACTION_MOVE: {
+                if (editIndex < 0) break;
+                Skin.Control control = layout.controls.get(editIndex);
+                ControlLayout.Adjustment adjustment = new ControlLayout.Adjustment();
+                adjustment.dx = editStart.dx + (event.getX(0) - editTouchX) / getWidth();
+                adjustment.dy = editStart.dy + (event.getY(0) - editTouchY) / getHeight();
+                adjustment.scale = editStart.scale;
+                if (event.getPointerCount() >= 2 && editSpan > 0) {
+                    adjustment.scale = ControlLayout.clampScale(editStart.scale * span(event) / editSpan);
+                }
+                controlLayout.put(skin.id(), orientation, control.keys, adjustment);
+                controlLayout.apply(skin.id(), getWidth(), getHeight(), layout.controls, baseBounds);
+                break;
+            }
+            default:
+                break;
+        }
+        invalidate();
+        return true;
+    }
+
+    private void beginEdit(MotionEvent event, String orientation) {
+        Skin.Control control = layout.controls.get(editIndex);
+        ControlLayout.Adjustment current = controlLayout.get(skin.id(), orientation, control.keys);
+        editStart.dx = current.dx;
+        editStart.dy = current.dy;
+        editStart.scale = current.scale;
+        // After a finger lifts, index 0 may be a different finger: use whichever stay down.
+        int lifted = event.getActionMasked() == MotionEvent.ACTION_POINTER_UP ? event.getActionIndex() : -1;
+        int first = lifted == 0 ? 1 : 0;
+        editTouchX = event.getX(first);
+        editTouchY = event.getY(first);
+        // Pinching needs two fingers; when one of two lifts, the other just drags.
+        editSpan = lifted < 0 && event.getPointerCount() >= 2 ? span(event) : 0;
+    }
+
+    private static float span(MotionEvent event) {
+        return (float) Math.hypot(event.getX(0) - event.getX(1), event.getY(0) - event.getY(1));
+    }
+
+    /** The visible control under a point (with some slack), or -1. */
+    private int controlAt(float x, float y) {
+        int best = -1;
+        float bestDistance = Float.MAX_VALUE;
+        for (int i = 0; i < layout.controls.size(); i++) {
+            Skin.Control control = layout.controls.get(i);
+            if (!control.visible) continue;
+            RectF b = control.bounds;
+            float dx = Math.max(0, Math.abs(x - b.centerX()) - b.width() / 2);
+            float dy = Math.max(0, Math.abs(y - b.centerY()) - b.height() / 2);
+            float distance = (float) Math.hypot(dx, dy);
+            if (distance < 24 * getResources().getDisplayMetrics().density && distance < bestDistance) {
+                best = i;
+                bestDistance = distance;
+            }
+        }
+        return best;
     }
 
     /** Puts every control where it rests for the current keys, with no animation. */
@@ -219,6 +358,7 @@ final class SkinView extends View {
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
+        if (editing) return onEditTouch(event);
         if (!controlsVisible) {
             if (event.getActionMasked() == MotionEvent.ACTION_DOWN) listener.onShowControlsRequested();
             return true;

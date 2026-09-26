@@ -75,6 +75,18 @@ final class Settings {
             new int[] {2, 3, 4, 8, 0},
             2);
 
+    // Frames per press-and-release cycle: 4 frames is about 15 presses a second.
+    static final Choice TURBO_SPEED = new Choice("turbo_speed", "Turbo speed",
+            new String[] {"Fast (15 presses a second)", "Medium (10 a second)", "Slow (6 a second)"},
+            new int[] {4, 6, 10},
+            0);
+
+    // Percent of normal speed.
+    static final Choice SLOW_MOTION = new Choice("slow_motion", "Slow-motion speed",
+            new String[] {"75%", "50%", "25%"},
+            new int[] {75, 50, 25},
+            1);
+
     static final Choice CONTROLS = new Choice("controls", "On-screen controls",
             new String[] {"Hide while a gamepad is in use", "Always show", "Never show"},
             new int[] {0, 1, 2},
@@ -115,6 +127,11 @@ final class Settings {
             new int[] {0, 10, 30, 60, 120, 300},
             2);
 
+    static final Choice BOX_ART = new Choice("box_art", "Box art",
+            new String[] {"Download automatically", "Off"},
+            new int[] {1, 0},
+            0);
+
     static final Choice AUTO_SAVE = new Choice("auto_save", "Resume where you left off",
             new String[] {"On", "Off"},
             new int[] {1, 0},
@@ -137,11 +154,13 @@ final class Settings {
             new Category("Display", "Screen filter, colours, scaling, Super Game Boy border",
                     FILTER, FRAME_BLENDING, COLOR_CORRECTION, DMG_PALETTE, SCALING, BORDER),
             new Category("Emulation", "Game Boy models, rewind, fast-forward, resuming",
-                    DMG_MODEL, CGB_MODEL, REWIND, FAST_FORWARD, AUTO_SAVE),
-            new Category("Controls", "On-screen controls, animations, vibration, rumble",
-                    CONTROLS, ANIMATIONS, HAPTICS, RUMBLE),
+                    DMG_MODEL, CGB_MODEL, REWIND, FAST_FORWARD, SLOW_MOTION, AUTO_SAVE),
+            new Category("Controls", "On-screen controls, turbo, animations, vibration, rumble",
+                    CONTROLS, TURBO_SPEED, ANIMATIONS, HAPTICS, RUMBLE),
             new Category("Sound", "Sound on or off, audio filter",
                     SOUND, HIGHPASS),
+            new Category("Game list", "Box art",
+                    BOX_ART),
     };
 
     private static int[] indices(int count) {

@@ -27,6 +27,8 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Runs a game: screen, on-screen controls, hardware input, save states and the in-game menu. */
 public final class EmulatorActivity extends Activity
@@ -34,6 +36,10 @@ public final class EmulatorActivity extends Activity
     static final String EXTRA_ROM = "rom";
     private static final String TAG = "AndroidBoy";
     private static final int REQUEST_IMPORT_SKIN = 1;
+    private static final int REQUEST_STORAGE = 2;
+    private static final int REQUEST_CAMERA = 3;
+    /** Screenshots are saved at 4× the Game Boy's resolution, with sharp pixels. */
+    private static final int SCREENSHOT_SCALE = 4;
 
     // The core is a process-wide singleton; remember which ROM it holds.
     private static String loadedRomPath;
@@ -51,6 +57,7 @@ public final class EmulatorActivity extends Activity
     private SkinView skinView;
     private Achievements achievements;
     private AchievementPopup achievementPopup;
+    private TrackerOverlay trackerOverlay;
     private int shownFrameWidth = 160;
     private int shownFrameHeight = 144;
     private EmulatorThread thread;
@@ -64,6 +71,27 @@ public final class EmulatorActivity extends Activity
     private boolean rewindHeld;
     private boolean rewindTouched;
     private boolean fastForwardToggled;
+    private boolean slowMotion;
+    /** On-screen buttons that act as turbo buttons (Emulator.KEY_A/KEY_B), chosen from the menu. */
+    private int touchTurboKeys;
+    /** Keys held on a controller's turbo buttons (Y for A, X for B). */
+    private int hardwareTurboKeys;
+    /** Carries on between visits to the cheat search screen while this game is open. */
+    private final CheatSearch cheatSearch = new CheatSearch();
+    private GameStore gameStore;
+    /** Printouts waiting for the storage permission (Android 9 and older). */
+    private final List<int[]> pendingPrintouts = new ArrayList<>();
+    private ControllerMapping controllerMapping;
+    private android.util.SparseArray<ControllerMapping.Action> keyTable;
+    /** The phone's camera, while a Game Boy Camera cartridge is running. */
+    private CameraFeed cameraFeed;
+    private boolean cameraPermissionAsked;
+    /** The link cable, while plugged in. */
+    private volatile LinkSession link;
+    /** "Waiting for the other phone…", shown when a linked game is held up. */
+    private android.widget.TextView linkWaitingView;
+    /** Shown while the on-screen buttons are being moved. */
+    private View editBar;
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
 
@@ -83,6 +111,8 @@ public final class EmulatorActivity extends Activity
             return;
         }
         setTitle(RomLibrary.baseName(rom));
+        gameStore = new GameStore(this);
+        gameStore.markPlayed(rom, System.currentTimeMillis());
 
         Window window = getWindow();
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -101,6 +131,9 @@ public final class EmulatorActivity extends Activity
         // The game screen sits under the skin, which leaves a hole for it; see onScreenRectChanged.
         screen = supportsGles3() ? new GlScreenView(this) : new CanvasScreenView(this);
         skinView = new SkinView(this, skin, this);
+        skinView.setControlLayout(new ControlLayout(this));
+        controllerMapping = new ControllerMapping(this);
+        keyTable = controllerMapping.table();
         root.addView(screen.view(), new FrameLayout.LayoutParams(0, 0));
         root.addView(skinView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
@@ -108,6 +141,8 @@ public final class EmulatorActivity extends Activity
         achievements.setListener(this);
         achievementPopup = new AchievementPopup(this);
         root.addView(achievementPopup, achievementPopup.layoutParams());
+        trackerOverlay = new TrackerOverlay(this);
+        root.addView(trackerOverlay, trackerOverlay.layoutParams());
         root.setOnApplyWindowInsetsListener(this::applyInsets);
         setContentView(root);
 
@@ -127,12 +162,16 @@ public final class EmulatorActivity extends Activity
         screen.onResume();
         thread = new EmulatorThread(this, loadedSampleRate);
         thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
+        thread.setTurboPeriod(settings.get(Settings.TURBO_SPEED));
+        thread.setLink(link);
+        updateSpeed();
         thread.setMuted(!settings.isOn(Settings.SOUND));
         thread.setPaused(openDialogs > 0);
         updateFastForward();
         updateRewind();
         pushKeys();
         thread.start();
+        startCameraIfNeeded();
     }
 
     @Override
@@ -140,6 +179,7 @@ public final class EmulatorActivity extends Activity
         super.onPause();
         if (thread == null) return;
         screen.onPause();
+        if (cameraFeed != null) cameraFeed.stop();
         thread.shutdown();
         thread = null;
         if (settings.isOn(Settings.AUTO_SAVE)) {
@@ -151,6 +191,12 @@ public final class EmulatorActivity extends Activity
     protected void onDestroy() {
         super.onDestroy();
         if (achievements != null) achievements.removeListener(this);
+        if (link != null) {
+            // Emulation has stopped (onPause), so this runs right here.
+            link.close();
+            link = null;
+            Emulator.nativeUnlink();
+        }
         if (isFinishing() && rom != null && rom.getPath().equals(loadedRomPath)) {
             achievements.unloadGame();
             Emulator.nativeUnload();
@@ -186,6 +232,8 @@ public final class EmulatorActivity extends Activity
         loadedRomPath = rom.getPath();
         loadedSampleRate = sampleRate;
         achievements.loadGame(data);
+        applyCheats();
+        Emulator.nativeSetLinkAccessory(gameStore.linkAccessory(rom));
 
         File battery = library.batteryFile(rom);
         if (battery.isFile()) {
@@ -284,12 +332,17 @@ public final class EmulatorActivity extends Activity
 
     @Override
     public void onAchievementEvent(Achievements.Event event) {
+        if (trackerOverlay.handle(event)) return;
         if (event.type == Achievements.EVENT_RESET) {
+            trackerOverlay.clear();
+            // Restarting one side would put two phones out of step.
+            if (link instanceof NetLink) unplugLink("Hardcore mode restarted the game, so the link cable was unplugged");
             // Hardcore mode was turned on: the game has to start over.
             onEmulationThread(() -> {
                 Emulator.nativeReset();
                 achievements.onGameReset();
             });
+            applyCheats();
             return;
         }
         achievementPopup.show(event);
@@ -302,7 +355,17 @@ public final class EmulatorActivity extends Activity
             return;
         }
         dialogOpened();
-        AchievementDialogs.showList(this, this::showAchievementAccount, this::dialogClosed);
+        // Rich presence reads game memory: ask on the emulation thread, then show the list.
+        onEmulationThread(() -> {
+            String presence = achievements.richPresence();
+            mainHandler.post(() -> {
+                if (isFinishing()) {
+                    dialogClosed();
+                    return;
+                }
+                AchievementDialogs.showList(this, presence, this::showAchievementAccount, this::dialogClosed);
+            });
+        });
     }
 
     private void showAchievementAccount() {
@@ -312,7 +375,59 @@ public final class EmulatorActivity extends Activity
                 Toast.makeText(this, "Hardcore mode: the game restarts", Toast.LENGTH_SHORT).show();
             }
             updateRewind();
+            applyCheats();
+        }, () -> {
+            applyCheats(); // Logging in or out can switch hardcore mode too.
+            dialogClosed();
+        });
+    }
+
+    // ---- Cheats ----
+
+    private void showCheats() {
+        dialogOpened();
+        CheatDialogs.show(this, library.cheatFile(rom), RomLibrary.baseName(rom), loadedRomIsCgb,
+                achievements.hasAccount() && achievements.isHardcoreEnabled(), this::applyCheats, this::dialogClosed);
+    }
+
+    private void showCheatSearch() {
+        if (achievements.hasAccount() && achievements.isHardcoreEnabled()) {
+            Toast.makeText(this, "Cheats are off in hardcore mode", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        dialogOpened();
+        CheatSearchDialog.show(this, cheatSearch, new CheatSearchDialog.Host() {
+            @Override
+            public void runWithMemory(Runnable task, Runnable done) {
+                onEmulationThread(() -> {
+                    task.run();
+                    mainHandler.post(done);
+                });
+            }
+
+            @Override
+            public void onCheatMade(Cheat cheat) {
+                File file = library.cheatFile(rom);
+                List<Cheat> cheats = Cheat.load(file);
+                cheats.add(cheat);
+                try {
+                    Cheat.save(file, cheats);
+                } catch (IOException e) {
+                    Log.e(TAG, "Could not save cheats", e);
+                    Toast.makeText(EmulatorActivity.this, "Could not save the cheat", Toast.LENGTH_LONG).show();
+                }
+                applyCheats();
+            }
         }, this::dialogClosed);
+    }
+
+    /** Sends the game's enabled cheats to the core; none in hardcore mode. */
+    private void applyCheats() {
+        boolean hardcore = achievements.hasAccount() && achievements.isHardcoreEnabled();
+        // Linked to another phone, a cheat here would put the two out of step.
+        boolean off = hardcore || link instanceof NetLink;
+        String codes = off ? "" : Cheat.activeCodes(Cheat.load(library.cheatFile(rom)));
+        onEmulationThread(() -> Emulator.nativeSetCheats(codes));
     }
 
     // ---- Emulation-thread helpers ----
@@ -400,45 +515,427 @@ public final class EmulatorActivity extends Activity
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (editBar != null) {
+            stopEditingControls();
+            return;
+        }
         showMenu();
     }
 
     private void showMenu() {
         if (openDialogs > 0 || isFinishing()) return;
         boolean fastForward = fastForwardToggled;
-        String[] items = {
-                "Resume",
-                "Save state…",
-                "Load state…",
-                fastForward ? "Stop fast-forward" : "Fast-forward",
-                "Reset",
-                "Skin…",
-                "Settings",
-                "Achievements…",
-                "Quit to game list",
-        };
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        addMenuItem(labels, actions, "Resume", () -> { });
+        LinkSession session = link;
+        if (session instanceof LinkSession.Local) {
+            LinkSession.Local local = (LinkSession.Local) session;
+            boolean other = local.showingPartner();
+            addMenuItem(labels, actions, "Play " + (other ? RomLibrary.baseName(rom) : local.partnerName), () -> {
+                local.setControlPartner(!other);
+                skinView.releaseAll();
+            });
+        }
+        if (session != null) {
+            addMenuItem(labels, actions, "Unplug the link cable", () -> unplugLink(null));
+        } else {
+            // States would unlink the two Game Boys in time, so they're only for a game on its own.
+            addMenuItem(labels, actions, "Save state…", () -> showStateSlots(true));
+            addMenuItem(labels, actions, "Load state…", () -> showStateSlots(false));
+            addMenuItem(labels, actions, "Link cable…", this::showLinkCable);
+        }
+        addMenuItem(labels, actions, fastForward ? "Stop fast-forward" : "Fast-forward", () -> {
+            fastForwardToggled = !fastForward;
+            updateFastForward();
+        });
+        boolean slow = slowMotion;
+        addMenuItem(labels, actions, slow ? "Normal speed" : "Slow motion", () -> {
+            slowMotion = !slow;
+            updateSpeed();
+        });
+        addMenuItem(labels, actions, "Turbo buttons…", this::showTurboChoice);
+        if (session == null) addMenuItem(labels, actions, "Link port…", this::showLinkPort);
+        if (cameraFeed != null) {
+            boolean front = cameraFeed.isFront();
+            addMenuItem(labels, actions, front ? "Camera: use the back camera" : "Camera: use the front camera",
+                    () -> cameraFeed.setFront(!front));
+        }
+        addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
+        if (session == null) addMenuItem(labels, actions, "Reset", this::confirmReset);
+        addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
+        addMenuItem(labels, actions, "Move on-screen buttons", this::startEditingControls);
+        addMenuItem(labels, actions, "Controller buttons…", () -> {
+            dialogOpened();
+            ControllerDialog.show(this, controllerMapping, () -> keyTable = controllerMapping.table(),
+                    this::dialogClosed);
+        });
+        addMenuItem(labels, actions, "Settings", () -> {
+            dialogOpened();
+            settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
+        });
+        addMenuItem(labels, actions, "Achievements…", this::showAchievements);
+        addMenuItem(labels, actions, "Cheats…", this::showCheats);
+        if (session == null) addMenuItem(labels, actions, "Cheat search…", this::showCheatSearch);
+        addMenuItem(labels, actions, "Quit to game list", this::finish);
         showDialog(new AlertDialog.Builder(this)
                 .setTitle(RomLibrary.baseName(rom))
-                .setItems(items, (d, which) -> {
-                    switch (which) {
-                        case 1: showStateSlots(true); break;
-                        case 2: showStateSlots(false); break;
-                        case 3:
-                            fastForwardToggled = !fastForward;
-                            updateFastForward();
-                            break;
-                        case 4: confirmReset(); break;
-                        case 5: showSkinPicker(); break;
-                        case 6:
-                            dialogOpened();
-                            settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
-                            break;
-                        case 7: showAchievements(); break;
-                        case 8: finish(); break;
-                        default: break;
-                    }
-                })
+                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
                 .create());
+    }
+
+    private static void addMenuItem(List<String> labels, List<Runnable> actions, String label, Runnable action) {
+        labels.add(label);
+        actions.add(action);
+    }
+
+    // ---- Screenshots ----
+
+    private void takeScreenshot() {
+        if (Gallery.needsPermission(this)) {
+            requestPermissions(new String[] {android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE);
+            return;
+        }
+        String name = Gallery.fileName(RomLibrary.baseName(rom), System.currentTimeMillis());
+        onEmulationThread(() -> {
+            Frame frame = new Frame();
+            frame.width = Emulator.nativeGetFrameWidth();
+            frame.height = Emulator.nativeGetFrameHeight();
+            if (!Emulator.nativeCopyFrame(frame.pixels)) {
+                toastFromAnyThread("Could not take a screenshot");
+                return;
+            }
+            // Encoding and saving can take a moment; don't hold up the game.
+            new Thread(() -> {
+                try {
+                    Gallery.savePng(this, Gallery.scaleUp(StateThumbnails.toBitmap(frame), SCREENSHOT_SCALE), name);
+                    toastFromAnyThread("Screenshot saved to Pictures/" + Gallery.FOLDER);
+                } catch (IOException | RuntimeException e) {
+                    Log.e(TAG, "Could not save screenshot", e);
+                    toastFromAnyThread("Could not save the screenshot");
+                }
+            }, "Screenshot").start();
+        });
+    }
+
+    // ---- Link cable ----
+
+    private void showLinkCable() {
+        dialogOpened();
+        LinkDialogs.show(this, new LinkDialogs.Callbacks() {
+            @Override
+            public List<File> otherGames() {
+                List<File> games = library.list();
+                games.removeIf(game -> game.getName().equals(rom.getName()));
+                return games;
+            }
+
+            @Override
+            public void linkLocal(File partner) {
+                startLocalLink(partner);
+            }
+
+            @Override
+            public void hostConnected(NetLink.Connection connection) {
+                startHostedLink(connection);
+            }
+
+            @Override
+            public void joinConnected(NetLink.Connection connection) {
+                startJoinedLink(connection);
+            }
+        }, this::dialogClosed);
+    }
+
+    /** Two games on this phone: power both on, linked, from their saves. */
+    private void startLocalLink(File partner) {
+        byte[] partnerRom;
+        try {
+            partnerRom = RomLibrary.readFile(partner);
+        } catch (IOException e) {
+            Toast.makeText(this, "Could not read " + RomLibrary.baseName(partner), Toast.LENGTH_LONG).show();
+            return;
+        }
+        File partnerSave = library.batteryFile(partner);
+        boolean partnerCgb = partnerRom.length > 0x143 && (partnerRom[0x143] & 0x80) != 0;
+        int model = settings.get(partnerCgb ? Settings.CGB_MODEL : Settings.DMG_MODEL);
+        LinkSession.Local session = new LinkSession.Local(partnerSave, RomLibrary.baseName(partner));
+        onEmulationThread(() -> {
+            flushBattery();
+            if (!Emulator.nativeLink(partnerRom, model, false, System.nanoTime())) {
+                toastFromAnyThread("Could not start " + session.partnerName);
+                return;
+            }
+            if (partnerSave.isFile()) {
+                try {
+                    Emulator.nativeLoadPartnerBattery(RomLibrary.readFile(partnerSave));
+                } catch (IOException e) {
+                    Log.w(TAG, "Could not read " + partnerSave, e);
+                }
+            }
+            linkStarted(session, "Linked with " + session.partnerName + ". Switch games from the menu.");
+        });
+    }
+
+    /** Hosting: power both games on, linked, and send the other phone everything it needs to run the same. */
+    private void startHostedLink(NetLink.Connection connection) {
+        Toast.makeText(this, "Connected. Setting up the link…", Toast.LENGTH_SHORT).show();
+        byte[] myRom;
+        try {
+            myRom = RomLibrary.readFile(rom);
+        } catch (IOException e) {
+            connection.close();
+            return;
+        }
+        new Thread(() -> {
+            NetLink.Game guest;
+            try {
+                guest = NetLink.hostReceive(connection);
+            } catch (IOException e) {
+                connection.close();
+                toastFromAnyThread("The link failed: " + e.getMessage());
+                return;
+            }
+            onEmulationThread(() -> {
+                flushBattery();
+                if (!Emulator.nativeLink(guest.rom, guest.model, false, System.nanoTime())) {
+                    connection.close();
+                    toastFromAnyThread("Could not start " + guest.name);
+                    return;
+                }
+                if (guest.data.length > 0) Emulator.nativeLoadPartnerBattery(guest.data);
+                byte[] myState = Emulator.nativeSaveState();
+                byte[] guestState = Emulator.nativeSavePartnerState();
+                NetLink.Game mine = new NetLink.Game(RomLibrary.baseName(rom), Emulator.nativeGetModel(), myRom, myState);
+                try {
+                    NetLink session = NetLink.hostSend(connection, guest, mine, guestState);
+                    linkStarted(session, "Linked with " + guest.name);
+                } catch (IOException e) {
+                    connection.close();
+                    Emulator.nativeUnlink();
+                    toastFromAnyThread("The link failed: " + e.getMessage());
+                }
+            });
+        }, "Link setup").start();
+    }
+
+    /** Joining: send this game, then run both exactly as the hosting phone set them up. */
+    private void startJoinedLink(NetLink.Connection connection) {
+        Toast.makeText(this, "Connected. Setting up the link…", Toast.LENGTH_SHORT).show();
+        byte[] myRom;
+        try {
+            myRom = RomLibrary.readFile(rom);
+        } catch (IOException e) {
+            connection.close();
+            return;
+        }
+        onEmulationThread(() -> {
+            flushBattery();
+            byte[] save = Emulator.nativeSaveBattery();
+            NetLink.Game mine = new NetLink.Game(RomLibrary.baseName(rom), Emulator.nativeGetModel(), myRom,
+                    save != null ? save : new byte[0]);
+            new Thread(() -> {
+                NetLink.JoinResult result;
+                try {
+                    result = NetLink.join(connection, mine);
+                } catch (IOException e) {
+                    connection.close();
+                    toastFromAnyThread("The link failed: " + e.getMessage());
+                    return;
+                }
+                onEmulationThread(() -> {
+                    boolean ok = Emulator.nativeLink(result.host.rom, result.host.model, true, 0)
+                            && Emulator.nativeLoadState(result.guestState)
+                            && Emulator.nativeLoadPartnerState(result.host.data);
+                    if (!ok) {
+                        result.link.close();
+                        Emulator.nativeUnlink();
+                        toastFromAnyThread("The link failed: the games didn't start the same on both phones");
+                        return;
+                    }
+                    linkStarted(result.link, "Linked with " + result.host.name);
+                });
+            }, "Link setup").start();
+        });
+    }
+
+    /**
+     * Emulation thread (or stopped): the Game Boys are linked; start playing. The session takes
+     * over the keys from the very next frame, so both phones count frames from the same moment.
+     */
+    private void linkStarted(LinkSession session, String message) {
+        if (session instanceof NetLink) ((NetLink) session).start();
+        link = session;
+        Thread current = Thread.currentThread();
+        if (current instanceof EmulatorThread) ((EmulatorThread) current).setLink(session);
+        // Otherwise emulation is stopped, and onResume hands the session to the new thread.
+        achievements.onGameReset(); // Both Game Boys were powered on afresh.
+        mainHandler.post(() -> {
+            applyCheats();
+            updateRewind();
+            Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+        });
+    }
+
+    /** Unplugs the cable; the game carries on alone. {@code reason} is shown if given. */
+    private void unplugLink(String reason) {
+        LinkSession session = link;
+        if (session == null) return;
+        link = null;
+        if (thread != null) thread.setLink(null);
+        onEmulationThread(() -> {
+            session.close();
+            Emulator.nativeUnlink();
+        });
+        onLinkWaiting(false);
+        applyCheats();
+        Toast.makeText(this, reason != null ? reason : "Link cable unplugged", Toast.LENGTH_LONG).show();
+    }
+
+    /** Emulation thread (or stopped): writes the game's save now, before it's powered off and on. */
+    private void flushBattery() {
+        if (Emulator.nativeTakeBatteryDirty()) onBatteryDirty();
+    }
+
+    @Override
+    public void onLinkEnded(String reason) {
+        // Emulation thread: the other phone went away. Carry on alone.
+        LinkSession session = link;
+        if (session != null) session.close();
+        Emulator.nativeUnlink();
+        mainHandler.post(() -> {
+            link = null;
+            onLinkWaiting(false);
+            applyCheats();
+            Toast.makeText(this, reason != null ? reason : "Link cable unplugged", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    @Override
+    public void onLinkWaiting(boolean waiting) {
+        mainHandler.post(() -> {
+            if (waiting && linkWaitingView == null) {
+                linkWaitingView = new android.widget.TextView(this);
+                linkWaitingView.setText("Waiting for the other player…");
+                linkWaitingView.setTextColor(0xFFFFFFFF);
+                linkWaitingView.setBackgroundColor(0xCC000000);
+                int pad = Math.round(12 * getResources().getDisplayMetrics().density);
+                linkWaitingView.setPadding(pad, pad / 2, pad, pad / 2);
+                root.addView(linkWaitingView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.WRAP_CONTENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.CENTER));
+            } else if (!waiting && linkWaitingView != null) {
+                root.removeView(linkWaitingView);
+                linkWaitingView = null;
+            }
+        });
+    }
+
+    // ---- Link port: Game Boy Printer ----
+
+    private void showLinkPort() {
+        String[] choices = {"Nothing", "Game Boy Printer"};
+        int[] values = {Emulator.LINK_NOTHING, Emulator.LINK_PRINTER};
+        int current = gameStore.linkAccessory(rom) == Emulator.LINK_PRINTER ? 1 : 0;
+        showDialog(new AlertDialog.Builder(this)
+                .setTitle("Link port")
+                .setSingleChoiceItems(choices, current, (d, which) -> {
+                    int accessory = values[which];
+                    gameStore.setLinkAccessory(rom, accessory);
+                    onEmulationThread(() -> Emulator.nativeSetLinkAccessory(accessory));
+                    if (accessory == Emulator.LINK_PRINTER) {
+                        Toast.makeText(this, "Printouts are saved to Pictures/" + Gallery.FOLDER, Toast.LENGTH_LONG).show();
+                    }
+                    d.dismiss();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create());
+    }
+
+    @Override
+    public void onPrintout(int[] pixels) {
+        mainHandler.post(() -> {
+            if (Gallery.needsPermission(this)) {
+                pendingPrintouts.add(pixels);
+                requestPermissions(new String[] {android.Manifest.permission.WRITE_EXTERNAL_STORAGE}, REQUEST_STORAGE);
+                return;
+            }
+            savePrintout(pixels);
+        });
+    }
+
+    private void savePrintout(int[] pixels) {
+        String name = Gallery.fileName(RomLibrary.baseName(rom) + " printout", System.currentTimeMillis());
+        new Thread(() -> {
+            try {
+                Gallery.savePng(this, Gallery.scaleUp(printoutBitmap(pixels), SCREENSHOT_SCALE), name);
+                toastFromAnyThread("Printed! Saved to Pictures/" + Gallery.FOLDER);
+            } catch (IOException | RuntimeException e) {
+                Log.e(TAG, "Could not save printout", e);
+                toastFromAnyThread("Could not save the printout");
+            }
+        }, "Printout").start();
+    }
+
+    /** A printout's pixels (0xAABBGGRR, 160 wide) as a bitmap. */
+    static android.graphics.Bitmap printoutBitmap(int[] pixels) {
+        int width = 160;
+        int height = Math.max(1, pixels.length / width);
+        int[] colors = new int[width * height];
+        for (int i = 0; i < colors.length && i < pixels.length; i++) {
+            int p = pixels[i];
+            colors[i] = 0xFF000000 | ((p & 0xFF) << 16) | (p & 0xFF00) | ((p >> 16) & 0xFF);
+        }
+        return android.graphics.Bitmap.createBitmap(colors, width, height, android.graphics.Bitmap.Config.ARGB_8888);
+    }
+
+    // ---- Game Boy Camera ----
+
+    /** For a Game Boy Camera cartridge, shows it what the phone's camera sees (asking permission once). */
+    private void startCameraIfNeeded() {
+        if (!Emulator.nativeHasCamera()) return;
+        if (checkSelfPermission(android.Manifest.permission.CAMERA) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            if (!cameraPermissionAsked) {
+                cameraPermissionAsked = true;
+                requestPermissions(new String[] {android.Manifest.permission.CAMERA}, REQUEST_CAMERA);
+            }
+            return;
+        }
+        if (cameraFeed == null) {
+            cameraFeed = new CameraFeed(this, pixels -> {
+                EmulatorThread running = thread;
+                if (running != null) running.post(() -> Emulator.nativeSetCameraImage(pixels));
+            });
+        }
+        cameraFeed.start();
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        boolean granted = grantResults.length > 0 && grantResults[0] == android.content.pm.PackageManager.PERMISSION_GRANTED;
+        if (requestCode == REQUEST_CAMERA) {
+            if (granted) {
+                startCameraIfNeeded();
+            } else {
+                Toast.makeText(this, "Without the camera, the Game Boy Camera only sees static", Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        if (requestCode != REQUEST_STORAGE) return;
+        if (!pendingPrintouts.isEmpty()) {
+            if (granted) {
+                for (int[] printout : pendingPrintouts) savePrintout(printout);
+            } else {
+                Toast.makeText(this, "Saving printouts needs access to storage", Toast.LENGTH_LONG).show();
+            }
+            pendingPrintouts.clear();
+            return;
+        }
+        if (granted) {
+            takeScreenshot();
+        } else {
+            Toast.makeText(this, "Saving pictures needs access to storage", Toast.LENGTH_LONG).show();
+        }
     }
 
     private void showSkinPicker() {
@@ -548,6 +1045,10 @@ public final class EmulatorActivity extends Activity
             if (thread != null) thread.setMuted(!settings.isOn(Settings.SOUND));
         } else if (choice == Settings.FAST_FORWARD) {
             if (thread != null) thread.setFastForwardSpeed(settings.get(Settings.FAST_FORWARD));
+        } else if (choice == Settings.TURBO_SPEED) {
+            if (thread != null) thread.setTurboPeriod(settings.get(Settings.TURBO_SPEED));
+        } else if (choice == Settings.SLOW_MOTION) {
+            updateSpeed();
         } else if (choice == Settings.FILTER || choice == Settings.FRAME_BLENDING) {
             applyScreenSettings();
         } else {
@@ -611,13 +1112,83 @@ public final class EmulatorActivity extends Activity
     }
 
     private void pushKeys() {
-        if (thread != null) thread.setKeys(touchKeys | hardwareKeys | axisKeys);
+        if (thread == null) return;
+        thread.setKeys(touchKeys | hardwareKeys | axisKeys | hardwareTurboKeys);
+        thread.setTurboKeys(hardwareTurboKeys | (touchKeys & touchTurboKeys));
+    }
+
+    private void updateSpeed() {
+        if (thread != null) thread.setSpeedPercent(slowMotion ? settings.get(Settings.SLOW_MOTION) : 100);
+    }
+
+    /** Which on-screen buttons fire repeatedly while held. Controllers have turbo on Y (A) and X (B). */
+    private void showTurboChoice() {
+        boolean[] checked = {(touchTurboKeys & Emulator.KEY_A) != 0, (touchTurboKeys & Emulator.KEY_B) != 0};
+        showDialog(new AlertDialog.Builder(this)
+                .setTitle("Turbo on-screen buttons")
+                .setMultiChoiceItems(new String[] {"A", "B"}, checked, (d, which, isChecked) -> {
+                    int key = which == 0 ? Emulator.KEY_A : Emulator.KEY_B;
+                    touchTurboKeys = isChecked ? touchTurboKeys | key : touchTurboKeys & ~key;
+                    pushKeys();
+                })
+                .setPositiveButton("Done", null)
+                .create());
+    }
+
+    // ---- Moving the on-screen buttons ----
+
+    private void startEditingControls() {
+        if (!skinView.getSkin().movableControls()) {
+            Toast.makeText(this, "This skin's buttons are part of its picture. Pick a built-in skin to move them.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
+        dialogOpened(); // Paused while editing.
+        skinView.setControlsVisible(true);
+        skinView.setEditing(true);
+
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+        bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(0xDD000000);
+        int pad = Math.round(8 * getResources().getDisplayMetrics().density);
+        bar.setPadding(pad * 2, pad, pad, pad);
+        android.widget.TextView hint = new android.widget.TextView(this);
+        hint.setText("Drag a button to move it, pinch to resize");
+        hint.setTextColor(0xFFFFFFFF);
+        bar.addView(hint, new android.widget.LinearLayout.LayoutParams(0,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        android.widget.Button reset = new android.widget.Button(this);
+        reset.setText("Reset");
+        reset.setOnClickListener(v -> skinView.resetControlLayout());
+        android.widget.Button done = new android.widget.Button(this);
+        done.setText("Done");
+        done.setOnClickListener(v -> stopEditingControls());
+        bar.addView(reset);
+        bar.addView(done);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP);
+        root.addView(bar, params);
+        editBar = bar;
+    }
+
+    private void stopEditingControls() {
+        if (editBar == null) return;
+        root.removeView(editBar);
+        editBar = null;
+        skinView.setEditing(false);
+        updateControlsVisibility();
+        dialogClosed();
     }
 
     private void updateRewind() {
         boolean rewind = rewindHeld || rewindTouched;
         if (rewind && settings.get(Settings.REWIND) == 0) {
             Toast.makeText(this, "Rewind is off. Turn it on in Settings → Emulation.", Toast.LENGTH_SHORT).show();
+            rewind = false;
+        }
+        if (rewind && link != null) {
+            Toast.makeText(this, "Rewind is off while the link cable is plugged in", Toast.LENGTH_SHORT).show();
             rewind = false;
         }
         if (rewind && achievements.hardcoreActive()) {
@@ -631,74 +1202,41 @@ public final class EmulatorActivity extends Activity
         if (thread != null) thread.setFastForward(fastForwardToggled || fastForwardHeld || fastForwardTouched);
     }
 
-    private static int mapKey(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_W: return Emulator.KEY_UP;
-            case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_S: return Emulator.KEY_DOWN;
-            case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_A: return Emulator.KEY_LEFT;
-            case KeyEvent.KEYCODE_DPAD_RIGHT: case KeyEvent.KEYCODE_D: return Emulator.KEY_RIGHT;
-            // Positional mapping: the right face button is A and the bottom one is B, as on a Game Boy.
-            case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_X: case KeyEvent.KEYCODE_L:
-                return Emulator.KEY_A;
-            case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_Z: case KeyEvent.KEYCODE_K:
-                return Emulator.KEY_B;
-            case KeyEvent.KEYCODE_BUTTON_START: case KeyEvent.KEYCODE_ENTER: return Emulator.KEY_START;
-            case KeyEvent.KEYCODE_BUTTON_SELECT: case KeyEvent.KEYCODE_SHIFT_RIGHT: case KeyEvent.KEYCODE_DEL:
-                return Emulator.KEY_SELECT;
-            default: return 0;
-        }
-    }
-
-    private static boolean isFastForwardKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_R1 || keyCode == KeyEvent.KEYCODE_BUTTON_R2
-                || keyCode == KeyEvent.KEYCODE_SPACE;
-    }
-
-    private static boolean isRewindKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_L2
-                || keyCode == KeyEvent.KEYCODE_R;
-    }
-
-    private static boolean isMenuKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_MODE || keyCode == KeyEvent.KEYCODE_MENU
-                || keyCode == KeyEvent.KEYCODE_ESCAPE;
-    }
-
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (openDialogs > 0) return super.dispatchKeyEvent(event);
-        int code = event.getKeyCode();
+        ControllerMapping.Action action = keyTable.get(event.getKeyCode());
+        if (action == null) return super.dispatchKeyEvent(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean up = event.getAction() == KeyEvent.ACTION_UP;
-
-        int key = mapKey(code);
-        if (key != 0) {
-            if (down) hardwareKeys |= key;
-            else if (up) hardwareKeys &= ~key;
-            pushKeys();
-            onHardwareInput();
-            return true;
+        switch (action) {
+            case FAST_FORWARD:
+                fastForwardHeld = down;
+                updateFastForward();
+                break;
+            case REWIND:
+                // Key repeats would re-show the "rewind is off" message; only act on changes.
+                if (event.getRepeatCount() == 0 && rewindHeld != down) {
+                    rewindHeld = down;
+                    updateRewind();
+                }
+                break;
+            case MENU:
+                if (up) showMenu();
+                return true;
+            default:
+                if (action.isTurbo()) {
+                    if (down) hardwareTurboKeys |= action.gameKey;
+                    else if (up) hardwareTurboKeys &= ~action.gameKey;
+                } else {
+                    if (down) hardwareKeys |= action.gameKey;
+                    else if (up) hardwareKeys &= ~action.gameKey;
+                }
+                pushKeys();
+                break;
         }
-        if (isFastForwardKey(code)) {
-            fastForwardHeld = down;
-            updateFastForward();
-            onHardwareInput();
-            return true;
-        }
-        if (isRewindKey(code)) {
-            // Key repeats would re-show the "rewind is off" message; only act on changes.
-            if (event.getRepeatCount() == 0 && rewindHeld != down) {
-                rewindHeld = down;
-                updateRewind();
-            }
-            onHardwareInput();
-            return true;
-        }
-        if (isMenuKey(code)) {
-            if (up) showMenu();
-            return true;
-        }
-        return super.dispatchKeyEvent(event);
+        onHardwareInput();
+        return true;
     }
 
     @Override

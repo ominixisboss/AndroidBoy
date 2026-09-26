@@ -15,6 +15,7 @@
 #include "rc_consoles.h"
 
 static int failures;
+static int saw_title_ids;
 #define CHECK(cond, ...) do { \
     if (cond) { printf("ok:   "); } else { printf("FAIL: "); failures++; } \
     printf(__VA_ARGS__); printf("\n"); } while (0)
@@ -59,7 +60,7 @@ static uint32_t RC_CCONV read_memory(uint32_t address, uint8_t *buffer, uint32_t
 static const char *game_data = "{\"Success\":true,"
     "\"GameId\":1234,\"Title\":\"Test Cartridge\",\"ConsoleId\":4,"
     "\"ImageIconUrl\":\"http://server/Images/000001.png\","
-    "\"RichPresenceGameId\":1234,\"RichPresencePatch\":\"\",\"Sets\":[{"
+    "\"RichPresenceGameId\":1234,\"RichPresencePatch\":\"Display:\\r\\nHello from the test\",\"Sets\":[{"
       "\"AchievementSetId\":1111,\"GameId\":1234,\"Title\":null,\"Type\":\"core\","
       "\"ImageIconUrl\":\"http://server/Images/000001.png\","
       "\"Achievements\":["
@@ -70,7 +71,9 @@ static const char *game_data = "{\"Success\":true,"
         "\"MemAddr\":\"0xHa001=246\",\"Author\":\"Test\",\"BadgeName\":\"00002\","
         "\"Created\":1367266583,\"Modified\":1376929305}"
       "],"
-      "\"Leaderboards\":[]"
+      "\"Leaderboards\":[{\"ID\":7,\"Title\":\"Speedrun\",\"Description\":\"Fastest start\","
+        "\"Mem\":\"STA:0=2::CAN:0=1::SUB:0=1::VAL:0\",\"Format\":\"SCORE\",\"LowerIsBetter\":false,"
+        "\"Hidden\":false}]"
     "}]}";
 
 static void RC_CCONV server_call(const rc_api_request_t *request, rc_client_server_callback_t callback,
@@ -96,6 +99,26 @@ static void RC_CCONV server_call(const rc_api_request_t *request, rc_client_serv
     else if (strstr(post, "r=awardachievement")) {
         body = "{\"Success\":true,\"Score\":105,\"SoftcoreScore\":20,\"AchievementID\":1,\"AchievementsRemaining\":1}";
     }
+    else if (strstr(post, "r=allprogress")) {
+        /* Game Boy games for c=4; nothing for Game Boy Color. */
+        body = strstr(post, "c=4")
+            ? "{\"Success\":true,\"Response\":{\"1234\":{\"Achievements\":2,\"Unlocked\":2,\"UnlockedHardcore\":0},"
+              "\"5678\":{\"Achievements\":30,\"Unlocked\":0,\"UnlockedHardcore\":0}}}"
+            : "{\"Success\":true,\"Response\":{}}";
+    }
+    else if (strstr(post, "r=gameinfolist")) {
+        saw_title_ids = strstr(post, "g=1234") != NULL;
+        body = "{\"Success\":true,\"Response\":[{\"ID\":1234,\"Title\":\"Test Cartridge\","
+               "\"ImageIcon\":\"/Images/000001.png\",\"ImageUrl\":\"http://server/Images/000001.png\"}]}";
+    }
+    else if (strstr(post, "r=lbinfo")) {
+        body = "{\"Success\":true,\"LeaderboardData\":{\"LBID\":7,\"LBFormat\":\"SCORE\",\"LowerIsBetter\":0,"
+               "\"LBTitle\":\"Speedrun\",\"LBDesc\":\"Fastest start\",\"LBMem\":\"\",\"GameID\":1234,"
+               "\"LBAuthor\":\"Test\",\"LBCreated\":\"2013-10-20 22:12:21\",\"LBUpdated\":\"2021-06-14 08:18:19\","
+               "\"Entries\":[{\"User\":\"Champion\",\"Score\":4321,\"Rank\":1,\"Index\":1,\"DateSubmitted\":1615654895},"
+               "{\"User\":\"Tester\",\"Score\":1234,\"Rank\":2,\"Index\":2,\"DateSubmitted\":1615654896}],"
+               "\"TotalEntries\":2}}";
+    }
     else if (strstr(post, "r=ping")) {
         body = "{\"Success\":true}";
     }
@@ -105,6 +128,50 @@ static void RC_CCONV server_call(const rc_api_request_t *request, rc_client_serv
     response.body_length = strlen(body);
     response.http_status_code = 200;
     callback(&response, callback_data);
+}
+
+static void RC_CCONV on_progress(int result, const char *error, rc_client_all_user_progress_t *list,
+                                 rc_client_t *client, void *userdata)
+{
+    (void)error; (void)client;
+    int *out = userdata; /* result, entries, first game id, total, unlocked, hardcore */
+    out[0] = result;
+    out[1] = list ? (int)list->num_entries : -1;
+    for (uint32_t i = 0; list && i < list->num_entries; i++) {
+        if (list->entries[i].game_id != 1234) continue;
+        out[2] = (int)list->entries[i].game_id;
+        out[3] = (int)list->entries[i].num_achievements;
+        out[4] = (int)list->entries[i].num_unlocked_achievements;
+        out[5] = (int)list->entries[i].num_unlocked_achievements_hardcore;
+    }
+    if (list) rc_client_destroy_all_user_progress(list);
+}
+
+static char title_result[128];
+static char leaderboard_result[128];
+
+static void RC_CCONV on_leaderboard(int result, const char *error, rc_client_leaderboard_entry_list_t *list,
+                                    rc_client_t *client, void *userdata)
+{
+    (void)client; (void)userdata;
+    if (error) printf("leaderboard error: %s\n", error);
+    if (result == RC_OK && list && list->num_entries == 2) {
+        snprintf(leaderboard_result, sizeof(leaderboard_result), "%u %s %s / %u %s %s of %u",
+                 list->entries[0].rank, list->entries[0].user, list->entries[0].display,
+                 list->entries[1].rank, list->entries[1].user, list->entries[1].display, list->total_entries);
+    }
+    if (list) rc_client_destroy_leaderboard_entry_list(list);
+}
+
+static void RC_CCONV on_titles(int result, const char *error, rc_client_game_title_list_t *list,
+                               rc_client_t *client, void *userdata)
+{
+    (void)error; (void)client; (void)userdata;
+    if (result == RC_OK && list && list->num_entries == 1) {
+        snprintf(title_result, sizeof(title_result), "%u %s %s", list->entries[0].game_id, list->entries[0].title,
+                 list->entries[0].badge_url);
+    }
+    if (list) rc_client_destroy_game_title_list(list);
 }
 
 static void RC_CCONV handle_event(const rc_client_event_t *event, rc_client_t *client)
@@ -192,6 +259,35 @@ int main(int argc, char **argv)
     rc_client_get_user_game_summary(client, &summary);
     CHECK(summary.num_unlocked_achievements == 2 && summary.points_unlocked == 15, "summary: 2 of %u, %u points",
           summary.num_core_achievements, summary.points_unlocked);
+
+    /* Rich presence: what the game says the player is doing, sent with pings. */
+    char presence[64] = "";
+    rc_client_get_rich_presence_message(client, presence, sizeof(presence));
+    CHECK(rc_client_has_rich_presence(client) && strcmp(presence, "Hello from the test") == 0,
+          "rich presence: %s", presence);
+
+    /* Leaderboards: the game's list, and a page of entries. */
+    rc_client_leaderboard_list_t *boards = rc_client_create_leaderboard_list(client,
+                                                                             RC_CLIENT_LEADERBOARD_LIST_GROUPING_NONE);
+    CHECK(boards && boards->num_buckets == 1 && boards->buckets[0].num_leaderboards == 1
+          && boards->buckets[0].leaderboards[0]->id == 7, "the game has one leaderboard");
+    if (boards) rc_client_destroy_leaderboard_list(boards);
+    rc_client_begin_fetch_leaderboard_entries(client, 7, 1, 10, on_leaderboard, NULL);
+    CHECK(strcmp(leaderboard_result, "1 Champion 004321 / 2 Tester 001234 of 2") == 0, "leaderboard entries: %s",
+          leaderboard_result);
+
+    /* The achievements page: progress for every game on a console, then the played games' titles. */
+    int progress_gb[6] = {0}, progress_gbc[6] = {0};
+    rc_client_begin_fetch_all_user_progress(client, RC_CONSOLE_GAMEBOY, on_progress, progress_gb);
+    CHECK(progress_gb[0] == RC_OK && progress_gb[1] == 2 && progress_gb[2] == 1234 && progress_gb[3] == 2 &&
+          progress_gb[4] == 2 && progress_gb[5] == 0, "Game Boy progress: %d games, %d of %d unlocked",
+          progress_gb[1], progress_gb[4], progress_gb[3]);
+    rc_client_begin_fetch_all_user_progress(client, RC_CONSOLE_GAMEBOY_COLOR, on_progress, progress_gbc);
+    CHECK(progress_gbc[0] == RC_OK && progress_gbc[1] == 0, "Game Boy Color progress: none");
+    uint32_t ids[] = {1234};
+    rc_client_begin_fetch_game_titles(client, ids, 1, on_titles, NULL);
+    CHECK(saw_title_ids && strcmp(title_result, "1234 Test Cartridge http://server/Images/000001.png") == 0,
+          "titles and badges: %s", title_result);
 
     rc_client_unload_game(client);
     rc_client_destroy(client);
