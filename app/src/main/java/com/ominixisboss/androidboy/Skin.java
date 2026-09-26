@@ -105,6 +105,11 @@ abstract class Skin {
 
     abstract String id();
 
+    /** Whether the player can move and resize the controls (not when they're part of a picture). */
+    boolean movableControls() {
+        return true;
+    }
+
     abstract String name();
 
     /** Color shown around the skin, e.g. behind display cutouts. */

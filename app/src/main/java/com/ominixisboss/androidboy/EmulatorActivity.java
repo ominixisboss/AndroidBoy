@@ -76,6 +76,10 @@ public final class EmulatorActivity extends Activity
     private int hardwareTurboKeys;
     /** Carries on between visits to the cheat search screen while this game is open. */
     private final CheatSearch cheatSearch = new CheatSearch();
+    private ControllerMapping controllerMapping;
+    private android.util.SparseArray<ControllerMapping.Action> keyTable;
+    /** Shown while the on-screen buttons are being moved. */
+    private View editBar;
     private boolean controlsHiddenByGamepad;
     private int openDialogs;
 
@@ -114,6 +118,9 @@ public final class EmulatorActivity extends Activity
         // The game screen sits under the skin, which leaves a hole for it; see onScreenRectChanged.
         screen = supportsGles3() ? new GlScreenView(this) : new CanvasScreenView(this);
         skinView = new SkinView(this, skin, this);
+        skinView.setControlLayout(new ControlLayout(this));
+        controllerMapping = new ControllerMapping(this);
+        keyTable = controllerMapping.table();
         root.addView(screen.view(), new FrameLayout.LayoutParams(0, 0));
         root.addView(skinView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
@@ -467,6 +474,10 @@ public final class EmulatorActivity extends Activity
     @Override
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
+        if (editBar != null) {
+            stopEditingControls();
+            return;
+        }
         showMenu();
     }
 
@@ -491,6 +502,12 @@ public final class EmulatorActivity extends Activity
         addMenuItem(labels, actions, "Screenshot", this::takeScreenshot);
         addMenuItem(labels, actions, "Reset", this::confirmReset);
         addMenuItem(labels, actions, "Skin…", this::showSkinPicker);
+        addMenuItem(labels, actions, "Move on-screen buttons", this::startEditingControls);
+        addMenuItem(labels, actions, "Controller buttons…", () -> {
+            dialogOpened();
+            ControllerDialog.show(this, controllerMapping, () -> keyTable = controllerMapping.table(),
+                    this::dialogClosed);
+        });
         addMenuItem(labels, actions, "Settings", () -> {
             dialogOpened();
             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
@@ -747,12 +764,50 @@ public final class EmulatorActivity extends Activity
                 .create());
     }
 
-    private static int mapTurboKey(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_BUTTON_Y: return Emulator.KEY_A;
-            case KeyEvent.KEYCODE_BUTTON_X: return Emulator.KEY_B;
-            default: return 0;
+    // ---- Moving the on-screen buttons ----
+
+    private void startEditingControls() {
+        if (!skinView.getSkin().movableControls()) {
+            Toast.makeText(this, "This skin's buttons are part of its picture. Pick a built-in skin to move them.",
+                    Toast.LENGTH_LONG).show();
+            return;
         }
+        dialogOpened(); // Paused while editing.
+        skinView.setControlsVisible(true);
+        skinView.setEditing(true);
+
+        android.widget.LinearLayout bar = new android.widget.LinearLayout(this);
+        bar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        bar.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        bar.setBackgroundColor(0xDD000000);
+        int pad = Math.round(8 * getResources().getDisplayMetrics().density);
+        bar.setPadding(pad * 2, pad, pad, pad);
+        android.widget.TextView hint = new android.widget.TextView(this);
+        hint.setText("Drag a button to move it, pinch to resize");
+        hint.setTextColor(0xFFFFFFFF);
+        bar.addView(hint, new android.widget.LinearLayout.LayoutParams(0,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1));
+        android.widget.Button reset = new android.widget.Button(this);
+        reset.setText("Reset");
+        reset.setOnClickListener(v -> skinView.resetControlLayout());
+        android.widget.Button done = new android.widget.Button(this);
+        done.setText("Done");
+        done.setOnClickListener(v -> stopEditingControls());
+        bar.addView(reset);
+        bar.addView(done);
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP);
+        root.addView(bar, params);
+        editBar = bar;
+    }
+
+    private void stopEditingControls() {
+        if (editBar == null) return;
+        root.removeView(editBar);
+        editBar = null;
+        skinView.setEditing(false);
+        updateControlsVisibility();
+        dialogClosed();
     }
 
     private void updateRewind() {
@@ -772,82 +827,41 @@ public final class EmulatorActivity extends Activity
         if (thread != null) thread.setFastForward(fastForwardToggled || fastForwardHeld || fastForwardTouched);
     }
 
-    private static int mapKey(int keyCode) {
-        switch (keyCode) {
-            case KeyEvent.KEYCODE_DPAD_UP: case KeyEvent.KEYCODE_W: return Emulator.KEY_UP;
-            case KeyEvent.KEYCODE_DPAD_DOWN: case KeyEvent.KEYCODE_S: return Emulator.KEY_DOWN;
-            case KeyEvent.KEYCODE_DPAD_LEFT: case KeyEvent.KEYCODE_A: return Emulator.KEY_LEFT;
-            case KeyEvent.KEYCODE_DPAD_RIGHT: case KeyEvent.KEYCODE_D: return Emulator.KEY_RIGHT;
-            // Positional mapping: the right face button is A and the bottom one is B, as on a Game Boy.
-            case KeyEvent.KEYCODE_BUTTON_B: case KeyEvent.KEYCODE_X: case KeyEvent.KEYCODE_L:
-                return Emulator.KEY_A;
-            case KeyEvent.KEYCODE_BUTTON_A: case KeyEvent.KEYCODE_Z: case KeyEvent.KEYCODE_K:
-                return Emulator.KEY_B;
-            case KeyEvent.KEYCODE_BUTTON_START: case KeyEvent.KEYCODE_ENTER: return Emulator.KEY_START;
-            case KeyEvent.KEYCODE_BUTTON_SELECT: case KeyEvent.KEYCODE_SHIFT_RIGHT: case KeyEvent.KEYCODE_DEL:
-                return Emulator.KEY_SELECT;
-            default: return 0;
-        }
-    }
-
-    private static boolean isFastForwardKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_R1 || keyCode == KeyEvent.KEYCODE_BUTTON_R2
-                || keyCode == KeyEvent.KEYCODE_SPACE;
-    }
-
-    private static boolean isRewindKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_L1 || keyCode == KeyEvent.KEYCODE_BUTTON_L2
-                || keyCode == KeyEvent.KEYCODE_R;
-    }
-
-    private static boolean isMenuKey(int keyCode) {
-        return keyCode == KeyEvent.KEYCODE_BUTTON_MODE || keyCode == KeyEvent.KEYCODE_MENU
-                || keyCode == KeyEvent.KEYCODE_ESCAPE;
-    }
-
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
         if (openDialogs > 0) return super.dispatchKeyEvent(event);
-        int code = event.getKeyCode();
+        ControllerMapping.Action action = keyTable.get(event.getKeyCode());
+        if (action == null) return super.dispatchKeyEvent(event);
         boolean down = event.getAction() == KeyEvent.ACTION_DOWN;
         boolean up = event.getAction() == KeyEvent.ACTION_UP;
-
-        int turbo = mapTurboKey(code);
-        if (turbo != 0) {
-            if (down) hardwareTurboKeys |= turbo;
-            else if (up) hardwareTurboKeys &= ~turbo;
-            pushKeys();
-            onHardwareInput();
-            return true;
+        switch (action) {
+            case FAST_FORWARD:
+                fastForwardHeld = down;
+                updateFastForward();
+                break;
+            case REWIND:
+                // Key repeats would re-show the "rewind is off" message; only act on changes.
+                if (event.getRepeatCount() == 0 && rewindHeld != down) {
+                    rewindHeld = down;
+                    updateRewind();
+                }
+                break;
+            case MENU:
+                if (up) showMenu();
+                return true;
+            default:
+                if (action.isTurbo()) {
+                    if (down) hardwareTurboKeys |= action.gameKey;
+                    else if (up) hardwareTurboKeys &= ~action.gameKey;
+                } else {
+                    if (down) hardwareKeys |= action.gameKey;
+                    else if (up) hardwareKeys &= ~action.gameKey;
+                }
+                pushKeys();
+                break;
         }
-        int key = mapKey(code);
-        if (key != 0) {
-            if (down) hardwareKeys |= key;
-            else if (up) hardwareKeys &= ~key;
-            pushKeys();
-            onHardwareInput();
-            return true;
-        }
-        if (isFastForwardKey(code)) {
-            fastForwardHeld = down;
-            updateFastForward();
-            onHardwareInput();
-            return true;
-        }
-        if (isRewindKey(code)) {
-            // Key repeats would re-show the "rewind is off" message; only act on changes.
-            if (event.getRepeatCount() == 0 && rewindHeld != down) {
-                rewindHeld = down;
-                updateRewind();
-            }
-            onHardwareInput();
-            return true;
-        }
-        if (isMenuKey(code)) {
-            if (up) showMenu();
-            return true;
-        }
-        return super.dispatchKeyEvent(event);
+        onHardwareInput();
+        return true;
     }
 
     @Override

@@ -254,6 +254,11 @@ final class ImageSkin extends Skin {
     }
 
     @Override
+    boolean movableControls() {
+        return false; // The buttons are painted into the skin's picture.
+    }
+
+    @Override
     void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {
         if (!(layout.extras instanceof Placement)) {
             // No artwork for this orientation: show the minimal theme's controls instead.

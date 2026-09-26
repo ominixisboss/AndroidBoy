@@ -31,7 +31,7 @@ final class Backup {
     private static final List<String> FOLDERS = Arrays.asList("saves", "states", "skins", "boxart");
     private static final String ROMS = "roms";
     /** SharedPreferences files that go in a backup, as prefs/<name>.json. */
-    private static final List<String> PREFS = Arrays.asList("settings", "library");
+    private static final List<String> PREFS = Arrays.asList("settings", "library", "controller", "control_layout");
     /** Nothing the app writes is anywhere near this; it stops a damaged or hostile zip filling the disk. */
     private static final int MAX_ENTRY = 64 * 1024 * 1024;
 
