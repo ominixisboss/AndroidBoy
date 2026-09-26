@@ -67,6 +67,7 @@ public class SkinTest {
         for (ThemeSkin theme : ThemeSkin.ALL) skins.add(theme);
         for (SoftSkin soft : SoftSkin.ALL) skins.add(soft);
         for (GlassSkin glass : GlassSkin.ALL) skins.add(glass);
+        for (ClearSkin clear : ClearSkin.ALL) skins.add(clear);
         skins.add(ImageSkin.load(exampleSkinDir()));
         skins.addAll(bundledSkins());
         return skins;
@@ -120,7 +121,7 @@ public class SkinTest {
                     hasMenu |= control.keys == Skin.KEY_MENU;
                     hasDpad |= control.shape == Skin.Control.DPAD;
                 }
-                assertEquals(what + ": has a menu control unless the toolbars provide one", skin.hasMenuButton(), hasMenu);
+                assertTrue(what + ": has a menu control", hasMenu);
                 if (skin instanceof ThemeSkin) {
                     boolean hasRewind = false;
                     boolean hasFastForward = false;
@@ -132,7 +133,8 @@ public class SkinTest {
                 }
                 assertTrue(what + ": has a d-pad", hasDpad);
 
-                if (skin instanceof ThemeSkin || skin instanceof SoftSkin || skin instanceof GlassSkin) {
+                if (skin instanceof ThemeSkin || skin instanceof SoftSkin || skin instanceof GlassSkin
+                        || skin instanceof ClearSkin) {
                     List<Skin.Control> visible = new ArrayList<>();
                     for (Skin.Control c : layout.controls) if (c.visible) visible.add(c);
                     for (int i = 0; i < visible.size(); i++) {
@@ -304,7 +306,8 @@ public class SkinTest {
         for (String name : bundled) {
             assertTrue(ids + " has " + name, ids.contains("bundled:" + name));
         }
-        assertEquals("every theme is listed", ThemeSkin.ALL.length + SoftSkin.ALL.length + GlassSkin.ALL.length + bundled.length, ids.size());
+        assertEquals("every theme is listed", ThemeSkin.ALL.length + SoftSkin.ALL.length + GlassSkin.ALL.length
+                + ClearSkin.ALL.length + bundled.length, ids.size());
     }
 
     @Test
@@ -375,6 +378,7 @@ public class SkinTest {
         List<Skin> skins = new ArrayList<>();
         for (String id : new String[] {"classic", "navy", "neon"}) skins.add(ThemeSkin.find(id));
         skins.add(GlassSkin.find("frosted"));
+        skins.add(ClearSkin.find("clear"));
         skins.add(ImageSkin.load(exampleSkinDir()));
         for (Skin skin : skins) {
             SkinView view = new SkinView(app, skin, new RecordingListener());
@@ -418,6 +422,25 @@ public class SkinTest {
         }
     }
 
+    /** Skins with toolbars still have a menu button, in the middle below the screen like the classic themes. */
+    @Test
+    public void toolbarSkinsHaveACentredMenuButton() {
+        List<Skin> skins = new ArrayList<>();
+        for (SoftSkin soft : SoftSkin.ALL) skins.add(soft);
+        for (GlassSkin glass : GlassSkin.ALL) skins.add(glass);
+        for (ClearSkin clear : ClearSkin.ALL) skins.add(clear);
+        for (Skin skin : skins) {
+            assertTrue(skin.id(), skin.usesToolbars());
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            RectF menu = find(layout, Skin.KEY_MENU).bounds;
+            RectF dpad = find(layout, Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT).bounds;
+            assertEquals(skin.id() + ": centred", PHONE_SHORT / 2f, menu.centerX(), 1f);
+            assertTrue(skin.id() + ": below the screen", menu.top > layout.screen.bottom);
+            assertTrue(skin.id() + ": above the d-pad", menu.bottom < dpad.top);
+        }
+    }
+
     /** Frames of a press and release, side by side, for looking at the animation in the previews. */
     @Test
     public void rendersAnimationStrips() throws IOException {
@@ -427,6 +450,7 @@ public class SkinTest {
         List<Skin> animated = new ArrayList<>();
         for (String id : new String[] {"classic", "sgb", "neon", "oled", "minimal"}) animated.add(ThemeSkin.find(id));
         animated.add(GlassSkin.find("frosted"));
+        animated.add(ClearSkin.find("clear"));
         for (Skin skin : animated) {
             SkinView view = new SkinView(app, skin, new RecordingListener());
             view.setHaptics(false);

@@ -37,6 +37,9 @@ final class SkinPicker {
         void onDismissed();
     }
 
+    /** Request code for choosing the Clear skins' backdrop; both activities pass the result to {@link #importClearBackdrop}. */
+    static final int REQUEST_CLEAR_BACKDROP = 0x0C1E;
+
     private SkinPicker() {}
 
     /**
@@ -123,11 +126,21 @@ final class SkinPicker {
         };
         grid.setAdapter(adapter);
 
-        AlertDialog dialog = new AlertDialog.Builder(activity)
+        AlertDialog.Builder builder = new AlertDialog.Builder(activity)
                 .setTitle(category)
                 .setView(grid)
-                .setNegativeButton(R.string.back, null)
-                .create();
+                .setNegativeButton(R.string.back, null);
+        boolean clear = ClearSkin.CATEGORY.equals(category);
+        if (clear) builder.setNeutralButton("Backdrop…", null);
+        AlertDialog dialog = builder.create();
+        if (clear) {
+            // Set the listener once shown, so tapping it doesn't close the grid.
+            dialog.setOnShowListener(d -> dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v ->
+                    showBackdropOptions(activity, adapter, callbacks, () -> {
+                        dialog.dismiss();
+                        top.dismiss();
+                    })));
+        }
         dialog.setOnDismissListener(d -> loader.shutdownNow());
         grid.setOnItemClickListener((parent, view, position, id) -> {
             library.setActive(entries.get(position).id);
@@ -154,6 +167,80 @@ final class SkinPicker {
     }
 
     /**
+     * The Clear skins' customization: a GIF or picture seen through the plastic, whether the
+     * circuit board shows over it, and how strongly the plastic is tinted. {@code closePicker}
+     * closes the skin picker while the player chooses a file.
+     */
+    static void showBackdropOptions(Activity activity, BaseAdapter previews, Callbacks callbacks, Runnable closePicker) {
+        boolean has = ClearBackdrop.exists(activity);
+        List<String> labels = new ArrayList<>();
+        List<Runnable> actions = new ArrayList<>();
+        labels.add(has ? "Change the GIF or picture…" : "Choose a GIF or picture…");
+        actions.add(() -> {
+            closePicker.run();
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("image/*");
+            activity.startActivityForResult(intent, REQUEST_CLEAR_BACKDROP);
+        });
+        Runnable refresh = () -> {
+            previews.notifyDataSetChanged();
+            callbacks.onSkinChanged();
+        };
+        if (has) {
+            boolean board = ClearBackdrop.showsBoard(activity);
+            labels.add(board ? "Hide the circuit board" : "Show the circuit board over it");
+            actions.add(() -> {
+                ClearBackdrop.setShowsBoard(activity, !board);
+                refresh.run();
+            });
+        }
+        labels.add("Plastic tint: " + ClearBackdrop.TINT_NAMES[ClearBackdrop.tint(activity)]);
+        actions.add(() -> new AlertDialog.Builder(activity)
+                .setTitle("Plastic tint")
+                .setSingleChoiceItems(ClearBackdrop.TINT_NAMES, ClearBackdrop.tint(activity), (d, which) -> {
+                    ClearBackdrop.setTint(activity, which);
+                    refresh.run();
+                    d.dismiss();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show());
+        if (has) {
+            labels.add("Remove the backdrop");
+            actions.add(() -> {
+                ClearBackdrop.remove(activity);
+                refresh.run();
+            });
+        }
+        new AlertDialog.Builder(activity)
+                .setTitle("Clear skins backdrop")
+                .setItems(labels.toArray(new String[0]), (d, which) -> actions.get(which).run())
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * Saves the chosen picture as the Clear skins' backdrop on a background thread, switches to a
+     * Clear skin if another is in use, then calls {@code onDone} on the main thread.
+     */
+    static void importClearBackdrop(Activity activity, SkinLibrary library, Uri uri, Runnable onDone) {
+        Handler main = new Handler(Looper.getMainLooper());
+        new Thread(() -> {
+            try {
+                ClearBackdrop.save(activity, uri);
+                main.post(() -> {
+                    if (!library.activeId().startsWith("clear:")) library.setActive(ClearSkin.ALL[0].id());
+                    Toast.makeText(activity, "Backdrop set for the Clear skins", Toast.LENGTH_SHORT).show();
+                    onDone.run();
+                });
+            } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                main.post(() -> Toast.makeText(activity, "Could not use that picture: " + message, Toast.LENGTH_LONG).show());
+            }
+        }, "Clear backdrop").start();
+    }
+
+    /**
      * Draws a card's preview. Built-in skins are shared with the game screen and quick to draw,
      * so they're drawn on the main thread; image skins load their artwork in the background, each
      * into its own copy.
@@ -161,7 +248,8 @@ final class SkinPicker {
     private static void loadPreview(SkinLibrary library, SkinLibrary.Entry entry, PreviewCard card,
                                     ExecutorService loader, Handler main) {
         card.pendingId = entry.id;
-        boolean builtIn = entry.id.startsWith("theme:") || entry.id.startsWith("soft:") || entry.id.startsWith("glass:");
+        boolean builtIn = entry.id.startsWith("theme:") || entry.id.startsWith("soft:") || entry.id.startsWith("glass:")
+                || entry.id.startsWith("clear:");
         Runnable show = () -> {
             // The card may have been reused for another skin meanwhile.
             Bitmap preview = SkinPreviews.cached(entry.id);

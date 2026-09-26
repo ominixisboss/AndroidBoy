@@ -118,6 +118,14 @@ final class SkinView extends View {
         relayout();
     }
 
+    /** Whether a menu button is on screen now (not when a gamepad has hidden the controls). */
+    boolean hasMenuControl() {
+        for (Skin.Control control : layout.controls) {
+            if (control.visible && (control.keys & Skin.KEY_MENU) != 0) return true;
+        }
+        return false;
+    }
+
     Skin getSkin() {
         return skin;
     }
@@ -199,6 +207,8 @@ final class SkinView extends View {
         canvas.clipOutRect(layout.screen);
         skin.drawBackground(canvas, layout);
         canvas.restore();
+        // An animated backdrop: about 30 frames a second is plenty for a GIF.
+        if (skin.animated()) postInvalidateDelayed(33);
         if (!controlsVisible) return;
         if (animating) {
             long now = SystemClock.uptimeMillis();

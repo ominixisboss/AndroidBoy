@@ -541,6 +541,11 @@ public final class EmulatorActivity extends Activity
 
     @Override
     public void onMenuPressed() {
+        // Like Back: faded-out toolbars come back first, then it opens the menu.
+        if (toolbarsWanted() && !toolbarsShown) {
+            showToolbars();
+            return;
+        }
         showMenu();
     }
 
@@ -741,11 +746,11 @@ public final class EmulatorActivity extends Activity
         };
     }
 
-    /** Whether the toolbars are wanted with this skin: for every skin, never, or skins without a menu button. */
+    /** Whether the toolbars are wanted with this skin: for every skin, never, or the skins made for them. */
     private boolean toolbarsWanted() {
         int mode = settings.get(Settings.TOOLBARS);
         return mode == Settings.TOOLBARS_EVERY_SKIN
-                || (mode != Settings.TOOLBARS_NEVER && !skinView.getSkin().hasMenuButton());
+                || (mode != Settings.TOOLBARS_NEVER && skinView.getSkin().usesToolbars());
     }
 
     /** Whether they fade out after a few seconds (or stay on screen). */
@@ -789,7 +794,8 @@ public final class EmulatorActivity extends Activity
     }
 
     /**
-     * Fades the toolbars out, leaving the small menu button in the corner to bring them back.
+     * Fades the toolbars out. The skin's menu button brings them back, or a small one in the
+     * corner when the skin has none on screen.
      * {@code now} is the full-screen button: straight away, even if they'd otherwise stay.
      */
     private void fadeToolbars(boolean now) {
@@ -804,8 +810,10 @@ public final class EmulatorActivity extends Activity
         toolbarsShown = false;
         fadeTo(toolbars.top, 0f, () -> toolbars.top.setVisibility(toolbarsShown ? View.VISIBLE : View.INVISIBLE));
         fadeTo(toolbars.bottom, 0f, () -> toolbars.bottom.setVisibility(toolbarsShown ? View.VISIBLE : View.INVISIBLE));
-        toolbarsButton.setVisibility(View.VISIBLE);
-        fadeTo(toolbarsButton, 1f, null);
+        if (!skinView.hasMenuControl()) {
+            toolbarsButton.setVisibility(View.VISIBLE);
+            fadeTo(toolbarsButton, 1f, null);
+        }
         makeRoomForToolbars();
     }
 
@@ -832,7 +840,7 @@ public final class EmulatorActivity extends Activity
         }
     }
 
-    /** A small menu button for the top-left corner: brings the faded toolbars back. */
+    /** A small menu button for the top-left corner: brings the faded toolbars back when the skin has no menu button showing. */
     private View createToolbarsButton() {
         android.widget.ImageView button = new android.widget.ImageView(this);
         button.setImageDrawable(Icons.drawable(Icons.MENU, GameToolbars.ICON));
@@ -1240,6 +1248,9 @@ public final class EmulatorActivity extends Activity
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == REQUEST_IMPORT_SKIN && resultCode == RESULT_OK && data != null && data.getData() != null) {
             SkinPicker.importSkin(this, skins, data.getData(), this::applySkin);
+        }
+        if (requestCode == SkinPicker.REQUEST_CLEAR_BACKDROP && resultCode == RESULT_OK && data != null && data.getData() != null) {
+            SkinPicker.importClearBackdrop(this, skins, data.getData(), this::applySkin);
         }
     }
 

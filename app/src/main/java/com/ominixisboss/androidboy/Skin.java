@@ -105,9 +105,17 @@ abstract class Skin {
 
     abstract String id();
 
-    /** Whether the skin has its own menu button; without one, the game screen shows toolbars. */
-    boolean hasMenuButton() {
-        return true;
+    /**
+     * Whether the game screen shows the toolbars with this skin (they fade out; its menu button
+     * or Back brings them back). Other skins' menu buttons open the menu straight away.
+     */
+    boolean usesToolbars() {
+        return false;
+    }
+
+    /** Whether the background moves (an animated backdrop), so the view keeps redrawing. */
+    boolean animated() {
+        return false;
     }
 
     /** Whether the player can move and resize the controls (not when they're part of a picture). */
@@ -136,6 +144,20 @@ abstract class Skin {
      * {@code motion} says how far each control has moved, for animating presses.
      */
     abstract void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion);
+
+    /** A menu glyph: three short lines, centred on (cx, cy) and {@code size} wide. */
+    static void drawMenuGlyph(Canvas canvas, android.graphics.Paint stroke, float cx, float cy, float size, int color) {
+        stroke.setShader(null);
+        stroke.setColor(color);
+        stroke.setStyle(android.graphics.Paint.Style.STROKE);
+        stroke.setStrokeCap(android.graphics.Paint.Cap.ROUND);
+        stroke.setStrokeWidth(size * 0.14f);
+        float half = size / 2;
+        for (int i = -1; i <= 1; i++) {
+            float y = cy + i * size * 0.32f;
+            canvas.drawLine(cx - half, y, cx + half, y, stroke);
+        }
+    }
 
     /** Largest rectangle with the frame's aspect ratio inside {@code area}, centered. */
     static void fitScreen(Rect out, RectF area, int frameWidth, int frameHeight, boolean integerScaling) {

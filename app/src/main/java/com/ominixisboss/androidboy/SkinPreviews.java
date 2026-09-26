@@ -30,6 +30,13 @@ final class SkinPreviews {
         return CACHE.get(id);
     }
 
+    /** Drops the previews of skins whose ids start with {@code prefix}, after they've changed. */
+    static void forget(String prefix) {
+        for (String id : CACHE.snapshot().keySet()) {
+            if (id.startsWith(prefix)) CACHE.remove(id);
+        }
+    }
+
     /** The preview, from the cache or drawn now. Any thread. */
     static Bitmap get(Skin skin) {
         Bitmap bitmap = CACHE.get(skin.id());

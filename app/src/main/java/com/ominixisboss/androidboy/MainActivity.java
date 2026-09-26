@@ -685,6 +685,10 @@ public final class MainActivity extends Activity {
             if (data.getData() != null) SkinPicker.importSkin(this, new SkinLibrary(this), data.getData(), () -> {});
             return;
         }
+        if (requestCode == SkinPicker.REQUEST_CLEAR_BACKDROP) {
+            if (data.getData() != null) SkinPicker.importClearBackdrop(this, new SkinLibrary(this), data.getData(), () -> {});
+            return;
+        }
 
         if (requestCode == REQUEST_BACKUP || requestCode == REQUEST_BACKUP_WITH_GAMES) {
             if (data.getData() != null) writeBackup(data.getData(), requestCode == REQUEST_BACKUP_WITH_GAMES);
