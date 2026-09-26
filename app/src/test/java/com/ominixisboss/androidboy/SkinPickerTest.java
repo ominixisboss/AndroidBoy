@@ -124,6 +124,16 @@ public class SkinPickerTest {
     }
 
     @Test
+    public void clearSkinsAreListedAndLoad() {
+        SkinLibrary library = new SkinLibrary(org.robolectric.RuntimeEnvironment.getApplication());
+        List<SkinLibrary.Entry> clear = library.list(ClearSkin.CATEGORY);
+        assertTrue(clear.size() >= 10);
+        for (SkinLibrary.Entry entry : clear) assertTrue(entry.id, library.load(entry.id) instanceof ClearSkin);
+        library.setActive("clear:atomic");
+        assertEquals("Atomic purple", library.loadActive().name());
+    }
+
+    @Test
     public void previewsLookLikeTheirSkins() {
         Bitmap soft = SkinPreviews.render(SoftSkin.find("blush"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);
         Bitmap theme = SkinPreviews.render(ThemeSkin.find("kiwi"), SkinPreviews.WIDTH, SkinPreviews.HEIGHT);

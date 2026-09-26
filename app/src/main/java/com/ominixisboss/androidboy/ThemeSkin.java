@@ -739,6 +739,11 @@ final class ThemeSkin extends Skin {
      * -1 to 1 on each axis (the springs overshoot slightly).
      */
     private void applyTilt(Canvas canvas, float tiltX, float tiltY, float maxDegrees, float depth) {
+        rock(canvas, tiltMatrix, tilted, tiltX, tiltY, maxDegrees, depth);
+    }
+
+    /** {@link #applyTilt} for any skin drawing in unit coordinates; {@code matrix} and {@code scratch} (8 floats) are reused. */
+    static void rock(Canvas canvas, Matrix matrix, float[] scratch, float tiltX, float tiltY, float maxDegrees, float depth) {
         if (tiltX == 0 && tiltY == 0 && depth == 0) return;
         // Rock about one axis in the pad's plane, at right angles to the held direction, like the
         // real pad pivoting on its centre; turning about x then y would also twist it on a diagonal.
@@ -758,11 +763,11 @@ final class ThemeSkin extends Skin {
             float py = y + ny * shift;
             float pz = depth * cos + along * sin;
             float scale = VIEW_DISTANCE / (VIEW_DISTANCE + pz);
-            tilted[i] = px * scale;
-            tilted[i + 1] = (py + pz * VIEW_SLANT) * scale;
+            scratch[i] = px * scale;
+            scratch[i + 1] = (py + pz * VIEW_SLANT) * scale;
         }
-        tiltMatrix.setPolyToPoly(SQUARE, 0, tilted, 0, 4);
-        canvas.concat(tiltMatrix);
+        matrix.setPolyToPoly(SQUARE, 0, scratch, 0, 4);
+        canvas.concat(matrix);
     }
 
     /** Tints each arm by how far the pad tilts towards it (held) or away from it (raised). */
@@ -1070,14 +1075,14 @@ final class ThemeSkin extends Skin {
                 (int) (Color.green(color) * factor), (int) (Color.blue(color) * factor));
     }
 
-    private static int lighten(int color, float amount) {
+    static int lighten(int color, float amount) {
         return Color.argb(Color.alpha(color),
                 (int) (Color.red(color) + (255 - Color.red(color)) * amount),
                 (int) (Color.green(color) + (255 - Color.green(color)) * amount),
                 (int) (Color.blue(color) + (255 - Color.blue(color)) * amount));
     }
 
-    private static float luminance(int color) {
+    static float luminance(int color) {
         return (0.2126f * Color.red(color) + 0.7152f * Color.green(color) + 0.0722f * Color.blue(color)) / 255f;
     }
 }

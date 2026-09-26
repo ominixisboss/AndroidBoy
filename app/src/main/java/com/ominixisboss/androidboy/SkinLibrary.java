@@ -42,7 +42,7 @@ final class SkinLibrary {
     static final String ARTWORK = "Artwork";
     static final String IMPORTED = "Imported";
     /** Skin picker groups, in the order they're shown. */
-    static final String[] CATEGORIES = {SoftSkin.CATEGORY, GlassSkin.CATEGORY, ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
+    static final String[] CATEGORIES = {SoftSkin.CATEGORY, GlassSkin.CATEGORY, ClearSkin.CATEGORY, ThemeSkin.CLASSICS, ThemeSkin.COLOURS, ThemeSkin.MODERN, ARTWORK, IMPORTED};
 
     /** Image skins that ship with the app, in assets/skins/<name>/. */
     static final String BUNDLED_ASSETS = "skins";
@@ -144,6 +144,9 @@ final class SkinLibrary {
         for (GlassSkin glass : GlassSkin.ALL) {
             entries.add(new Entry(glass.id(), glass.name(), null, GlassSkin.CATEGORY));
         }
+        for (ClearSkin clear : ClearSkin.ALL) {
+            entries.add(new Entry(clear.id(), clear.name(), null, ClearSkin.CATEGORY));
+        }
         for (ThemeSkin theme : ThemeSkin.ALL) {
             entries.add(new Entry(theme.id(), theme.name(), null, theme.category()));
         }
@@ -210,6 +213,9 @@ final class SkinLibrary {
         if (id.equals("theme:smoke")) id = "glass:smoke";
         if (id.startsWith("glass:")) {
             return GlassSkin.find(id.substring("glass:".length()));
+        }
+        if (id.startsWith("clear:")) {
+            return ClearSkin.find(id.substring("clear:".length()));
         }
         if (id.startsWith("theme:")) {
             return ThemeSkin.find(id.substring("theme:".length()));

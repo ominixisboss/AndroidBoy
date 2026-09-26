@@ -193,7 +193,7 @@ final class SoftSkin extends Skin {
                 new RectF(rightCenter - pillWidth / 2, pillY - pillHeight / 2, rightCenter + pillWidth / 2, pillY + pillHeight / 2), true));
     }
 
-    private static void addFaceButtons(Layout out, float ax, float ay, float bx, float by, float radius) {
+    static void addFaceButtons(Layout out, float ax, float ay, float bx, float by, float radius) {
         out.controls.add(new Control(Emulator.KEY_A, Control.CIRCLE, square(ax, ay, radius), true));
         out.controls.add(new Control(Emulator.KEY_B, Control.CIRCLE, square(bx, by, radius), true));
         // Between the two: both at once.
@@ -202,7 +202,7 @@ final class SoftSkin extends Skin {
         out.controls.add(new Control(Emulator.KEY_A | Emulator.KEY_B, Control.CIRCLE, square(mx, my, radius * 0.35f), false));
     }
 
-    private static void addPills(Layout out, float centerX, float y, float pillWidth, float pillHeight, float gap) {
+    static void addPills(Layout out, float centerX, float y, float pillWidth, float pillHeight, float gap) {
         float selectX = centerX - gap / 2 - pillWidth / 2;
         float startX = centerX + gap / 2 + pillWidth / 2;
         out.controls.add(new Control(Emulator.KEY_SELECT, Control.PILL,

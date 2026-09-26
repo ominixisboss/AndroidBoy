@@ -51,6 +51,12 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   the d-pad, so the scene seen through it shifts, the glare slides across and the pressed arm
   catches the light. They use the toolbars, like the Soft skins. (They replace the old Frosted
   and Smoke glass themes; if you used one, you're switched to its Glass skin.)
+- **Clear skins** (Clear, Atomic purple, Grape, Teal, Fire red, Jungle green, Ice blue, Tangerine,
+  Bubblegum, Smoke, Glow in the dark and Crystal white): a see-through handheld shell, like the
+  clear editions of the colour Game Boy. The circuit board, chips, screws, rubber membranes and
+  speaker show through tinted plastic, and the screen sits in a glossy black lens. The d-pad is
+  a glossy cross sunk in a rimmed well, with outlined arrows and a dimple in the middle, and it
+  rocks in 3D towards the direction you press. They use the toolbars too.
 - **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
   Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
@@ -61,7 +67,7 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   Vaporwave, Pastel, and a minimal translucent overlay. Eleven image skins
   come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
   and Marble), and you can import your own as a `.zip` of images plus a layout file;
-  see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Glass, Game Boy classics,
+  see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Glass, Clear, Game Boy classics,
   Colours, Modern & minimal, Artwork (the image skins) and Imported, and shows each group as a
   grid of previews: every skin drawn as it looks in a game, with the one in use outlined.
 - **Screen filters.** All of SameBoy's filters run on the GPU (OpenGL ES 3.0): LCD, monochrome LCD,
@@ -241,7 +247,8 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
   CanvasScreenView        Fallback renderer for devices without OpenGL ES 3
   Skin, ThemeSkin         Skin layout and drawing; the built-in themes
-  SoftSkin, GlassSkin     The Soft and Glass skins
+  SoftSkin, GlassSkin,    The Soft, Glass and Clear skins
+    ClearSkin
   GameToolbars,           The game screen's toolbars and full-screen menu; their icons
     GameMenuView, Icons
   ImageSkin, SkinLibrary  Imported skins: loading, validation, zip import
