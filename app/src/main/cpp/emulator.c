@@ -403,6 +403,44 @@ uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t
     return num_bytes;
 }
 
+/* A 6-digit Game Genie code (VVA-AAA), which replaces a value whatever it was. */
+static bool is_short_game_genie(const char *code)
+{
+    if (strlen(code) == 8) return false; /* GameShark */
+    unsigned digits = 0;
+    for (; *code; code++) {
+        if (*code != '-') digits++;
+    }
+    return digits == 6;
+}
+
+unsigned emu_set_cheats(const char *codes)
+{
+    if (!loaded) return 0;
+    GB_remove_all_cheats(gb);
+    unsigned count = 0;
+    while (codes && *codes) {
+        const char *end = strchr(codes, '\n');
+        size_t length = end ? (size_t)(end - codes) : strlen(codes);
+        char code[32];
+        if (length > 0 && length < sizeof(code)) {
+            memcpy(code, codes, length);
+            code[length] = 0;
+            const GB_cheat_t *cheat = GB_import_cheat(gb, code, "", true);
+            if (cheat && is_short_game_genie(code)) {
+                /* SameBoy 1.0.3 imports these as "only when the original value is 0"; they have no
+                 * original value, so they should always apply. */
+                GB_update_cheat(gb, cheat, cheat->description, cheat->address, cheat->bank, cheat->value, 0, false,
+                                true);
+            }
+            if (cheat) count++;
+        }
+        codes += length + (end ? 1 : 0);
+    }
+    GB_set_cheats_enabled(gb, count > 0);
+    return count;
+}
+
 double emu_get_rumble(void)
 {
     return rumble_amplitude;

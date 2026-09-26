@@ -6,11 +6,7 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -201,25 +197,6 @@ final class Homebrew {
     }
 
     private static byte[] get(String url, int limit) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            connection.setConnectTimeout(15_000);
-            connection.setReadTimeout(30_000);
-            connection.setRequestProperty("User-Agent", "AndroidBoy");
-            int status = connection.getResponseCode();
-            if (status != HttpURLConnection.HTTP_OK) throw new IOException("Homebrew Hub answered " + status);
-            try (InputStream in = connection.getInputStream()) {
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                    if (out.size() > limit) throw new IOException("The download is too large");
-                }
-                return out.toByteArray();
-            }
-        } finally {
-            connection.disconnect();
-        }
+        return Http.get(url, limit, "Homebrew Hub");
     }
 }

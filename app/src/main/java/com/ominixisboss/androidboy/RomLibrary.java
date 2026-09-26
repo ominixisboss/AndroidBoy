@@ -19,7 +19,7 @@ import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
-/** ROMs, battery saves and save states, all kept in the app's private storage. */
+/** ROMs, battery saves, cheats and save states, all kept in the app's private storage. */
 final class RomLibrary {
     /** Slot used for the automatic "resume where you left off" state. */
     static final int AUTO_SLOT = 0;
@@ -62,6 +62,11 @@ final class RomLibrary {
         return new File(statesDir, baseName(rom) + (slot == AUTO_SLOT ? ".auto" : ".s" + slot));
     }
 
+    /** The game's cheats, in RetroArch's .cht format. */
+    File cheatFile(File rom) {
+        return new File(savesDir, baseName(rom) + ".cht");
+    }
+
     /** Screenshot taken when the state in {@code slot} was saved. */
     File thumbnailFile(File rom, int slot) {
         return new File(statesDir, stateFile(rom, slot).getName() + ".png");
@@ -75,6 +80,7 @@ final class RomLibrary {
     void delete(File rom) {
         rom.delete();
         batteryFile(rom).delete();
+        cheatFile(rom).delete();
         for (int slot = 0; slot <= STATE_SLOTS; slot++) {
             stateFile(rom, slot).delete();
             thumbnailFile(rom, slot).delete();

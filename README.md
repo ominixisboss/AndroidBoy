@@ -44,7 +44,7 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   account (main menu → RetroAchievements) and games with achievement sets unlock them as you play,
   with a banner and the badge. The in-game menu's **Achievements…** lists the game's achievements
   and your progress. **Hardcore mode** counts unlocks as hardcore; loading save states (including
-  the automatic resume) and rewinding are off while it's on. Achievement progress is saved with
+  the automatic resume), rewinding and cheats are off while it's on. Achievement progress is saved with
   each save state. Only a login token is kept on the device, never your password, and it's left
   out of backups. The **RetroAchievements** page in the main menu shows your points and every
   Game Boy and Game Boy Color game you've unlocked achievements in, with your progress; tap a game
@@ -53,6 +53,11 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   [Homebrew Hub](https://hh.gbdev.io), the gbdev community's archive of freely distributed
   homebrew games, demos and music for Game Boy and Game Boy Color. Pick one to read about it, then
   download it straight into your library. ROM hacks of commercial games aren't listed.
+- **Cheats.** The in-game menu's **Cheats…** holds each game's GameShark and Game Genie codes:
+  type them in, or **Find online** to search the [libretro cheat database](https://github.com/libretro/libretro-database)
+  (the one RetroArch uses) and pick the cheats you want. Tap a cheat to switch it on or off;
+  long-press to edit or delete it. Cheats are saved per game in RetroArch's `.cht` format, and
+  are off while RetroAchievements hardcore mode is on.
 - **Settings** are grouped into Display, Emulation, Controls and Sound.
 - **Rumble** for rumble cartridges, optionally for all games.
 
@@ -152,7 +157,7 @@ artifact.
 `tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
 loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
-the frame parity used for frame blending. It also runs rcheevos against the emulator with a
+the frame parity used for frame blending, and GameShark and Game Genie cheats. It also runs rcheevos against the emulator with a
 stand-in server (`tests/achievements_test.c`): logging in, identifying the cartridge by its MD5,
 unlocking achievements from what the game writes to memory, and fetching your progress for the
 achievements page. You only need a C compiler.
@@ -179,11 +184,13 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   Achievements            RetroAchievements login, web requests and events; the banner and screens
   AchievementsActivity    Your RetroAchievements points and progress in each game
   Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
+  Cheat, CheatDatabase,   Cheat codes and .cht files; the libretro cheat database;
+    CheatDialogs          the in-game cheat screens
 app/src/main/assets/BootROMs/   Prebuilt SameBoy boot ROMs
 app/src/main/assets/shaders/    SameBoy's filter shaders (unmodified) and the GLES master shader
 app/src/main/assets/skins/      Image skins bundled with the app
 app/src/test/             Robolectric tests for skins (layout, touch, import), achievements and
-                          Homebrew Hub parsing; skin tests write previews
+                          Homebrew Hub parsing, and cheats; skin tests write previews
                           to app/build/skin-previews
 docs/skins.md             The skin file format; docs/skins/example is a complete example
 tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)

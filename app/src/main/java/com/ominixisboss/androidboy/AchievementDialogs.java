@@ -111,7 +111,7 @@ final class AchievementDialogs {
         hardcore.setChecked(achievements.isHardcoreEnabled());
         content.addView(hardcore);
         content.addView(text(activity, "Unlocks count as hardcore, the way RetroAchievements ranks players. "
-                + "Loading save states and rewinding are off while it's on."
+                + "Loading save states, rewinding and cheats are off while it's on."
                 + (inGame ? " Turning it on restarts the game." : ""), 13));
 
         AlertDialog dialog = new AlertDialog.Builder(activity)

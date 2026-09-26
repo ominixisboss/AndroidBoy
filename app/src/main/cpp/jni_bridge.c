@@ -263,6 +263,15 @@ JNIEXPORT void JNICALL JNI_FN(nativeSetRumbleMode)(JNIEnv *env, jclass clazz, ji
     emu_set_rumble_mode((GB_rumble_mode_t)mode);
 }
 
+JNIEXPORT jint JNICALL JNI_FN(nativeSetCheats)(JNIEnv *env, jclass clazz, jstring codes)
+{
+    (void)clazz;
+    const char *text = codes ? (*env)->GetStringUTFChars(env, codes, NULL) : NULL;
+    unsigned count = emu_set_cheats(text ? text : "");
+    if (text) (*env)->ReleaseStringUTFChars(env, codes, text);
+    return (jint)count;
+}
+
 JNIEXPORT jdouble JNICALL JNI_FN(nativeGetRumble)(JNIEnv *env, jclass clazz)
 {
     (void)env; (void)clazz;

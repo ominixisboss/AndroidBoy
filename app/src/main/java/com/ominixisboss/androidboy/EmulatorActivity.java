@@ -186,6 +186,7 @@ public final class EmulatorActivity extends Activity
         loadedRomPath = rom.getPath();
         loadedSampleRate = sampleRate;
         achievements.loadGame(data);
+        applyCheats();
 
         File battery = library.batteryFile(rom);
         if (battery.isFile()) {
@@ -290,6 +291,7 @@ public final class EmulatorActivity extends Activity
                 Emulator.nativeReset();
                 achievements.onGameReset();
             });
+            applyCheats();
             return;
         }
         achievementPopup.show(event);
@@ -312,7 +314,26 @@ public final class EmulatorActivity extends Activity
                 Toast.makeText(this, "Hardcore mode: the game restarts", Toast.LENGTH_SHORT).show();
             }
             updateRewind();
-        }, this::dialogClosed);
+            applyCheats();
+        }, () -> {
+            applyCheats(); // Logging in or out can switch hardcore mode too.
+            dialogClosed();
+        });
+    }
+
+    // ---- Cheats ----
+
+    private void showCheats() {
+        dialogOpened();
+        CheatDialogs.show(this, library.cheatFile(rom), RomLibrary.baseName(rom), loadedRomIsCgb,
+                achievements.hasAccount() && achievements.isHardcoreEnabled(), this::applyCheats, this::dialogClosed);
+    }
+
+    /** Sends the game's enabled cheats to the core; none in hardcore mode. */
+    private void applyCheats() {
+        boolean hardcore = achievements.hasAccount() && achievements.isHardcoreEnabled();
+        String codes = hardcore ? "" : Cheat.activeCodes(Cheat.load(library.cheatFile(rom)));
+        onEmulationThread(() -> Emulator.nativeSetCheats(codes));
     }
 
     // ---- Emulation-thread helpers ----
@@ -415,6 +436,7 @@ public final class EmulatorActivity extends Activity
                 "Skin…",
                 "Settings",
                 "Achievements…",
+                "Cheats…",
                 "Quit to game list",
         };
         showDialog(new AlertDialog.Builder(this)
@@ -434,7 +456,8 @@ public final class EmulatorActivity extends Activity
                             settings.showDialog(this, this::onSettingChanged, this::dialogClosed);
                             break;
                         case 7: showAchievements(); break;
-                        case 8: finish(); break;
+                        case 8: showCheats(); break;
+                        case 9: finish(); break;
                         default: break;
                     }
                 })

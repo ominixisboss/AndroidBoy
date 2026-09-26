@@ -229,7 +229,35 @@ int main(int argc, char **argv)
         CHECK(emu_read_achievement_memory(0x40000, bytes, 1) == 0, "%s: nothing past the map", name);
     }
 
+    /* Cheats: they change what reads see, for the game and anyone else reading memory. */
+    {
+        uint8_t byte;
+        CHECK(emu_set_cheats("019900A0") == 1, "cheats: a GameShark code is accepted");
+        CHECK(emu_read_achievement_memory(0xA000, &byte, 1) == 1 && byte == 0x99,
+              "cheats: GameShark code replaces cartridge RAM reads (0x%02X)", byte);
+        CHECK(emu_set_cheats("99F-F08\n") == 1 && emu_read_achievement_memory(0x7FF0, &byte, 1) == 1 && byte == 0x99,
+              "cheats: Game Genie code replaces ROM reads (0x%02X)", byte);
+        emu_read_achievement_memory(0xA000, &byte, 1);
+        CHECK(byte == 0x42, "cheats: replacing the list removes the old code (0x%02X)", byte);
+        emu_set_cheats("99F-F08-E0A");
+        emu_read_achievement_memory(0x7FF0, &byte, 1);
+        CHECK(byte == 0xFF, "cheats: a Game Genie code with the wrong original value does nothing (0x%02X)", byte);
+        emu_set_cheats("99F-F08-105");
+        emu_read_achievement_memory(0x7FF0, &byte, 1);
+        CHECK(byte == 0x99, "cheats: ...and applies with the right one (0x%02X)", byte);
+        CHECK(emu_set_cheats("01??E4CB\n$8C243F2A\nnonsense\n\n019900A0") == 1, "cheats: invalid lines are skipped");
+        CHECK(emu_set_cheats("") == 0, "cheats: an empty list turns them off");
+        emu_read_achievement_memory(0xA000, &byte, 1);
+        CHECK(byte == 0x42, "cheats: off again (0x%02X)", byte);
+        emu_set_cheats("019900A0");
+        emu_load_rom(rom, rom_size, GB_MODEL_DMG_B, 48000);
+        run_frames(400);
+        emu_read_achievement_memory(0xA000, &byte, 1);
+        CHECK(byte == 0x42, "cheats: loading a ROM clears them (0x%02X)", byte);
+    }
+
     emu_unload();
+    CHECK(emu_set_cheats("019900A0") == 0, "cheats: nothing to cheat with no game");
     uint8_t unused;
     CHECK(emu_read_achievement_memory(0xC000, &unused, 1) == 0, "achievements: nothing to read with no game");
     free(rom);

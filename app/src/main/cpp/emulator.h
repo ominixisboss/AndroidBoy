@@ -95,6 +95,13 @@ void emu_set_rumble_mode(GB_rumble_mode_t mode);
  */
 uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t num_bytes);
 
+/*
+ * Replaces the game's cheats with `codes`: GameShark (01VVAAAA) and Game Genie (VVA-AAA or
+ * VVA-AAA-OOO) codes, one per line. Returns how many codes were accepted; lines that aren't a
+ * valid code are skipped. Loading a ROM clears the cheats; an empty string turns them off.
+ */
+unsigned emu_set_cheats(const char *codes);
+
 double emu_get_rumble(void);
 void emu_get_title(char title[17]);
 

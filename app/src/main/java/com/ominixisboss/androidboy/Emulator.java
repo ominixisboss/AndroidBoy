@@ -73,6 +73,8 @@ final class Emulator {
     static native void nativeSetBorderMode(int mode);
     static native void nativeSetHighpass(int mode);
     static native void nativeSetRumbleMode(int mode);
+    /** Replaces the cheats with these codes, one per line; returns how many were valid. Cleared by loading a ROM. */
+    static native int nativeSetCheats(String codes);
     static native double nativeGetRumble();
     static native String nativeGetTitle();
 }
