@@ -63,8 +63,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   top-left corner brings them back.) Settings → Controls → Toolbars can keep them on screen, show
   them with every skin, or turn them off.
 - **Glass skins** (Frosted, Smoke, Aqua, Rose quartz, Emerald, Amber, Amethyst, Sapphire, Ruby, Sea
-  glass, Opal and Obsidian): glass controls over a colourful backdrop. Each is frosted glass, a
-  blurred copy of what's behind it, with a bright rim and a reflection; pressing a direction tilts
+  glass, Opal and Obsidian): glass controls over a colourful backdrop whose glowing orbs drift
+  slowly about (still when Android's animations are off). Each control is frosted glass, a softened
+  copy of what's behind it (orbs included), with a bright rim and a reflection; pressing a direction tilts
   the d-pad, so the scene seen through it shifts, the glare slides across and the pressed arm
   catches the light. They use the toolbars, like the Soft skins. (They replace the old Frosted
   and Smoke glass themes; if you used one, you're switched to its Glass skin.)

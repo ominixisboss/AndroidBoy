@@ -1,7 +1,5 @@
 package com.ominixisboss.androidboy;
 
-import android.graphics.Bitmap;
-import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.CornerPathEffect;
@@ -15,14 +13,23 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 
 /**
- * Glass skins: controls made of glass over a colourful backdrop. Each control is filled with a
- * blurred copy of the backdrop behind it (frosted glass), tinted, with a bright rim and a
+ * Glass skins: controls made of glass over a colourful backdrop whose soft lights (orbs) drift
+ * slowly about. Each control shows a softened copy of the backdrop behind it, orbs and all
+ * (frosted glass), tinted, with a bright rim and a
  * reflection. Pressing a direction tilts the d-pad: the scene seen through it shifts (refraction),
  * the glare slides across it, and the pressed arm catches the light. Buttons do the same as
  * they're pressed. Same layout as the Soft skins, with the toolbars for the menu.
  */
 final class GlassSkin extends Skin {
     static final String CATEGORY = "Glass";
+
+    /** The orbs: where they sit (fractions of the view), and their size (fraction of its longer side). */
+    private static final float[][] SPOTS = {{0.18f, 0.62f, 0.42f}, {0.85f, 0.55f, 0.38f}, {0.55f, 0.88f, 0.45f},
+            {0.35f, 0.4f, 0.3f}, {0.8f, 0.92f, 0.3f}};
+    /** Milliseconds for the orbs' drift; tests set their own. */
+    static java.util.function.LongSupplier clock = android.os.SystemClock::uptimeMillis;
+    /** How far each orb drifts from its spot, as a fraction of the view. */
+    private static final float DRIFT = 0.14f;
 
     /** One glass theme: its backdrop and its glass. */
     static final class Variant {
@@ -103,13 +110,32 @@ final class GlassSkin extends Skin {
     private final Matrix tiltMatrix = new Matrix();
     private final float[] tilted = new float[8];
     private final RectF rect = new RectF();
-    // The backdrop, sharp and blurred, for the current view size.
-    private Bitmap backdrop;
-    private Bitmap frosted;
-    private BitmapShader frostedShader;
+    // The backdrop, drawn each frame: a gradient for the view's size, and the orbs, each a
+    // gradient of radius 1 at the origin (sharp, and soft for seeing through frosted glass),
+    // moved into place with a local matrix.
+    private LinearGradient backdropGradient;
+    private int gradientWidth;
+    private int gradientHeight;
+    private final RadialGradient[] sharpOrbs;
+    private final RadialGradient[] softOrbs;
+    private final Matrix orbMatrix = new Matrix();
+    private final Paint orbPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    /** Where the orbs are this frame (x, y, radius in pixels, per orb), worked out once per frame. */
+    private final float[] orbs = new float[SPOTS.length * 3];
+    private final RectF sceneBounds = new RectF();
+    private final RectF glassArea = new RectF();
 
     private GlassSkin(Variant variant) {
         this.variant = variant;
+        sharpOrbs = new RadialGradient[SPOTS.length];
+        softOrbs = new RadialGradient[SPOTS.length];
+        for (int i = 0; i < SPOTS.length; i++) {
+            int color = variant.lights[i % variant.lights.length];
+            sharpOrbs[i] = new RadialGradient(0, 0, 1, withAlpha(color, 0xB0), withAlpha(color, 0), Shader.TileMode.CLAMP);
+            // Frosted glass spreads each light wider and fainter.
+            softOrbs[i] = new RadialGradient(0, 0, 1, new int[] {withAlpha(color, 0x90), withAlpha(color, 0x48),
+                    withAlpha(color, 0)}, new float[] {0, 0.45f, 1}, Shader.TileMode.CLAMP);
+        }
         stroke.setStyle(Paint.Style.STROKE);
         stroke.setStrokeJoin(Paint.Join.ROUND);
         text.setTextAlign(Paint.Align.CENTER);
@@ -144,45 +170,61 @@ final class GlassSkin extends Skin {
 
     // ---- Backdrop ----
 
-    /** The backdrop for a view size, and its frosted (blurred) copy, made once per size. */
-    private void ensureBackdrop(int width, int height) {
-        if (backdrop != null && backdrop.getWidth() == width && backdrop.getHeight() == height) return;
-        backdrop = Bitmap.createBitmap(Math.max(1, width), Math.max(1, height), Bitmap.Config.ARGB_8888);
-        Canvas canvas = new Canvas(backdrop);
-        Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        paint.setShader(new LinearGradient(0, 0, width * 0.3f, height, variant.top, variant.bottom, Shader.TileMode.CLAMP));
-        canvas.drawRect(0, 0, width, height, paint);
-        // Soft lights, placed the same way every time.
-        float[][] spots = {{0.18f, 0.62f, 0.42f}, {0.85f, 0.55f, 0.38f}, {0.55f, 0.88f, 0.45f}, {0.35f, 0.4f, 0.3f},
-                {0.8f, 0.92f, 0.3f}};
-        float unit = Math.max(width, height);
-        for (int i = 0; i < spots.length; i++) {
-            int color = variant.lights[i % variant.lights.length];
-            float cx = spots[i][0] * width;
-            float cy = spots[i][1] * height;
-            float radius = spots[i][2] * unit * 0.5f;
-            paint.setShader(new RadialGradient(cx, cy, radius, withAlpha(color, 0xB0), withAlpha(color, 0),
-                    Shader.TileMode.CLAMP));
-            canvas.drawCircle(cx, cy, radius, paint);
-        }
-        frosted = blur(backdrop);
-        frostedShader = new BitmapShader(frosted, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP);
+    @Override
+    boolean animated() {
+        // The orbs drift, unless the system's animations are off.
+        return android.animation.ValueAnimator.areAnimatorsEnabled();
     }
 
-    /** A cheap strong blur: shrink a lot with filtering, then grow back with filtering, twice. */
-    static Bitmap blur(Bitmap source) {
-        int width = source.getWidth();
-        int height = source.getHeight();
-        Bitmap small = Bitmap.createScaledBitmap(source, Math.max(1, width / 24), Math.max(1, height / 24), true);
-        Bitmap smaller = Bitmap.createScaledBitmap(small, Math.max(1, width / 48), Math.max(1, height / 48), true);
-        Bitmap back = Bitmap.createScaledBitmap(smaller, Math.max(1, width / 24), Math.max(1, height / 24), true);
-        return Bitmap.createScaledBitmap(back, width, height, true);
+    /**
+     * Where the orbs are at {@code seconds}: each wanders its own slow loop (periods of 20 to
+     * 40 seconds, never in step) and gently swells and shrinks.
+     */
+    private void placeOrbs(int width, int height, float seconds) {
+        float unit = Math.max(width, height);
+        for (int i = 0; i < SPOTS.length; i++) {
+            double t = seconds * 2 * Math.PI;
+            float dx = (float) Math.sin(t / (23 + 4 * i) + i * 1.7) * DRIFT;
+            float dy = (float) Math.cos(t / (29 + 3 * i) + i * 2.3) * DRIFT * 0.7f;
+            float swell = 1 + 0.12f * (float) Math.sin(t / (19 + 5 * i) + i);
+            orbs[i * 3] = (SPOTS[i][0] + dx) * width;
+            orbs[i * 3 + 1] = (SPOTS[i][1] + dy) * height;
+            orbs[i * 3 + 2] = SPOTS[i][2] * unit * 0.5f * swell;
+        }
+    }
+
+    /** Draws the backdrop (gradient and orbs) over {@code area}; {@code soft} spreads the orbs, as frosted glass does. */
+    private void drawScene(Canvas canvas, RectF area, boolean soft) {
+        orbPaint.setColor(Color.BLACK);
+        orbPaint.setShader(backdropGradient);
+        canvas.drawRect(area, orbPaint);
+        for (int i = 0; i < SPOTS.length; i++) {
+            float x = orbs[i * 3];
+            float y = orbs[i * 3 + 1];
+            float r = orbs[i * 3 + 2] * (soft ? 1.35f : 1f);
+            orbMatrix.setScale(r, r);
+            orbMatrix.postTranslate(x, y);
+            RadialGradient orb = soft ? softOrbs[i] : sharpOrbs[i];
+            orb.setLocalMatrix(orbMatrix);
+            orbPaint.setShader(orb);
+            canvas.drawCircle(x, y, r, orbPaint);
+        }
+        orbPaint.setShader(null);
     }
 
     @Override
     void drawBackground(Canvas canvas, Layout layout) {
-        ensureBackdrop(layout.width, layout.height);
-        canvas.drawBitmap(backdrop, 0, 0, null);
+        if (backdropGradient == null || gradientWidth != layout.width || gradientHeight != layout.height) {
+            gradientWidth = layout.width;
+            gradientHeight = layout.height;
+            backdropGradient = new LinearGradient(0, 0, layout.width * 0.3f, layout.height, variant.top, variant.bottom,
+                    Shader.TileMode.CLAMP);
+        }
+        // Still in previews and with animations off; otherwise drifting with the clock.
+        float seconds = animated() ? clock.getAsLong() / 1000f : 0;
+        placeOrbs(layout.width, layout.height, seconds);
+        sceneBounds.set(0, 0, layout.width, layout.height);
+        drawScene(canvas, sceneBounds, false);
         fill.setShader(null);
         fill.setColor(Color.BLACK);
         if (layout.height >= layout.width && layout.controlsVisible) {
@@ -196,7 +238,15 @@ final class GlassSkin extends Skin {
 
     @Override
     void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {
-        ensureBackdrop(layout.width, layout.height);
+        if (backdropGradient == null) {
+            // Controls drawn without the background (tests): place the backdrop anyway.
+            gradientWidth = layout.width;
+            gradientHeight = layout.height;
+            backdropGradient = new LinearGradient(0, 0, layout.width * 0.3f, layout.height, variant.top, variant.bottom,
+                    Shader.TileMode.CLAMP);
+            placeOrbs(layout.width, layout.height, 0);
+            sceneBounds.set(0, 0, layout.width, layout.height);
+        }
         float density = Math.max(1, layout.width / 400f);
         for (int i = 0; i < layout.controls.size(); i++) {
             Control control = layout.controls.get(i);
@@ -318,17 +368,21 @@ final class GlassSkin extends Skin {
     }
 
     /**
-     * Frosted glass: the blurred backdrop behind {@code shape}, moved by (shiftX, shiftY) and
+     * Frosted glass: the backdrop behind {@code shape}, softened, moved by (shiftX, shiftY) and
      * magnified by {@code zoom} about its middle (refraction), lightened and tinted.
      */
     private void drawGlass(Canvas canvas, Path shape, RectF bounds, float shiftX, float shiftY, float zoom) {
+        canvas.save();
+        canvas.clipPath(shape);
         matrix.reset();
         matrix.postScale(zoom, zoom, bounds.centerX(), bounds.centerY());
         matrix.postTranslate(shiftX, shiftY);
-        frostedShader.setLocalMatrix(matrix);
-        fill.setColor(Color.BLACK);
-        fill.setShader(frostedShader);
-        canvas.drawPath(shape, fill);
+        canvas.concat(matrix);
+        // A little past the view's edges, so refraction never shows an unpainted strip.
+        glassArea.set(sceneBounds);
+        glassArea.inset(-sceneBounds.width() * 0.25f, -sceneBounds.height() * 0.25f);
+        drawScene(canvas, glassArea, true);
+        canvas.restore();
         // Frost: glass scatters light, so it's lighter than what's behind it; then the glass's own colour.
         fill.setShader(new LinearGradient(0, bounds.top, 0, bounds.bottom, 0x40FFFFFF, 0x14FFFFFF, Shader.TileMode.CLAMP));
         canvas.drawPath(shape, fill);
