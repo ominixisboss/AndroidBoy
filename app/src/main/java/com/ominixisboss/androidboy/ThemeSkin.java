@@ -187,6 +187,41 @@ final class ThemeSkin extends Skin {
         return p;
     }
 
+    private static Palette sakura() {
+        Palette p = palette(0xFFFBE3EA, 0xFF6B4A57, 0xFF6B4A57, 0xFFE8739A, 0xFFC9A5B3, 0xFF8C4A64);
+        p.bodyShade = 0xFFF2C6D4;
+        p.accent1 = 0xFFE8739A;
+        p.accent2 = 0xFF9BC48F;
+        p.led = 0xFFE8739A;
+        return p;
+    }
+
+    private static Palette navy() {
+        Palette p = palette(0xFF23355E, 0xFF12182B, 0xFF151B2E, 0xFFE8B84A, 0xFF3D4F7A, 0xFFE8B84A);
+        p.bodyShade = 0xFF141E38;
+        p.accent1 = 0xFFE8B84A;
+        p.accent2 = 0xFFB33A3A;
+        return p;
+    }
+
+    private static Palette vaporwave() {
+        Palette p = palette(0xFF3A2C6E, 0xFF140F2A, 0xFFFF71CE, 0xFF01CDFE, 0xFF05FFA1, 0xFFB967FF);
+        p.bodyShade = 0xFF0E0A22;
+        p.bezelStroke = 0xFFB967FF;
+        p.style = NEON;
+        p.led = 0xFF05FFA1;
+        p.speaker = false;
+        return p;
+    }
+
+    private static Palette amber() {
+        Palette p = terminal();
+        p.dpad = p.buttons = p.startSelect = p.label = 0xFFFFB000;
+        p.bezelStroke = 0xFF6E4C00;
+        p.led = 0xFFFFB000;
+        return p;
+    }
+
     static final ThemeSkin[] ALL = {
             new ThemeSkin("minimal", "Minimal (translucent controls)", MINIMAL),
             new ThemeSkin("classic", "Classic grey", classic()),
@@ -209,6 +244,9 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("ice", "Ice blue", color(0xFF9CCFE8)),
             new ThemeSkin("coral", "Coral", color(0xFFFF6F61)),
             new ThemeSkin("mint", "Mint", mint()),
+            new ThemeSkin("lime", "Lime", color(0xFFA4D233)),
+            new ThemeSkin("sakura", "Sakura", sakura()),
+            new ThemeSkin("navy", "Navy & gold", navy()),
             new ThemeSkin("sunset", "Sunset", sunset()),
             new ThemeSkin("atomic", "Atomic purple", color(0xFF7B67B5)),
             new ThemeSkin("indigo", "Advance indigo",
@@ -219,7 +257,9 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("glass", "Frosted glass", glass()),
             new ThemeSkin("smoke", "Smoke glass", smoke()),
             new ThemeSkin("synthwave", "Synthwave", synthwave()),
+            new ThemeSkin("vaporwave", "Vaporwave", vaporwave()),
             new ThemeSkin("terminal", "Terminal green (outlines)", terminal()),
+            new ThemeSkin("amber", "Amber terminal (outlines)", amber()),
     };
 
     static ThemeSkin find(String id) {
