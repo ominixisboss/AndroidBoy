@@ -47,6 +47,9 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_EXPORT_SAVE = 3;
     private static final int REQUEST_IMPORT_SKIN = 4;
     private static final int REQUEST_PICK_ART = 5;
+    private static final int REQUEST_BACKUP = 6;
+    private static final int REQUEST_BACKUP_WITH_GAMES = 7;
+    private static final int REQUEST_RESTORE = 8;
     private static final String STATE_PENDING_ROM = "pending_rom";
     private static final String TAG = "AndroidBoy";
     /** Home-screen shortcuts open a game through here (the game screen itself isn't exported). */
@@ -147,6 +150,7 @@ public final class MainActivity extends Activity {
         menu.add(0, 2, 2, R.string.settings);
         menu.add(0, 6, 1, R.string.homebrew_hub);
         menu.add(0, 5, 3, R.string.retroachievements);
+        menu.add(0, 7, 3, "Backup & restore");
         menu.add(0, 3, 4, R.string.about);
         return true;
     }
@@ -168,6 +172,9 @@ public final class MainActivity extends Activity {
                 return true;
             case 6:
                 startActivity(new Intent(this, HomebrewActivity.class));
+                return true;
+            case 7:
+                showBackupOptions();
                 return true;
             case 4:
                 SkinPicker.show(this, new SkinLibrary(this), REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {
@@ -191,6 +198,81 @@ public final class MainActivity extends Activity {
         adapter.notifyDataSetChanged();
         updateRecentShortcuts();
         if (new Settings(this).isOn(Settings.BOX_ART)) fetchMissingArt();
+    }
+
+    // ---- Backup ----
+
+    private void showBackupOptions() {
+        String[] items = {
+                "Back up saves, states, cheats and settings",
+                "Back up all that and the games",
+                "Restore from a backup…",
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("Backup & restore")
+                .setItems(items, (d, which) -> {
+                    if (which == 2) {
+                        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                        intent.addCategory(Intent.CATEGORY_OPENABLE);
+                        intent.setType("*/*");
+                        startActivityForResult(intent, REQUEST_RESTORE);
+                        return;
+                    }
+                    Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.setType("application/zip");
+                    intent.putExtra(Intent.EXTRA_TITLE, Gallery.fileName("AndroidBoy backup", System.currentTimeMillis())
+                            .replace(' ', '-') + ".zip");
+                    startActivityForResult(intent, which == 1 ? REQUEST_BACKUP_WITH_GAMES : REQUEST_BACKUP);
+                })
+                .show();
+    }
+
+    private void writeBackup(Uri uri, boolean includeGames) {
+        Toast.makeText(this, "Backing up…", Toast.LENGTH_SHORT).show();
+        io.execute(() -> {
+            String message;
+            try (OutputStream out = getContentResolver().openOutputStream(uri, "wt")) {
+                if (out == null) throw new IOException("Could not open the file");
+                Backup.write(this, out, includeGames);
+                message = "Backup saved";
+            } catch (IOException | SecurityException e) {
+                message = "Could not back up: " + e.getMessage();
+            }
+            String result = message;
+            mainHandler.post(() -> Toast.makeText(this, result, Toast.LENGTH_LONG).show());
+        });
+    }
+
+    private void confirmRestore(Uri uri) {
+        new AlertDialog.Builder(this)
+                .setTitle("Restore this backup?")
+                .setMessage("Saves, states, cheats and settings in the backup replace the ones here with the same "
+                        + "names. Everything else is kept.")
+                .setPositiveButton("Restore", (d, which) -> {
+                    for (File rom : roms) EmulatorActivity.forgetLoadedRom(rom);
+                    io.execute(() -> {
+                        String message;
+                        try (InputStream in = getContentResolver().openInputStream(uri)) {
+                            if (in == null) throw new IOException("Could not open the file");
+                            Backup.Summary summary = Backup.restore(this, in);
+                            message = "Restored " + summary.files + (summary.files == 1 ? " file" : " files")
+                                    + (summary.games > 0 ? ", including " + summary.games
+                                    + (summary.games == 1 ? " game" : " games") : "");
+                        } catch (IOException | SecurityException e) {
+                            message = "Could not restore: " + e.getMessage();
+                        }
+                        String result = message;
+                        mainHandler.post(() -> {
+                            art.evictAll();
+                            artRequested.clear();
+                            refresh();
+                            Toast.makeText(this, result, Toast.LENGTH_LONG).show();
+                        });
+                    });
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     // ---- Box art ----
@@ -601,6 +683,15 @@ public final class MainActivity extends Activity {
 
         if (requestCode == REQUEST_IMPORT_SKIN) {
             if (data.getData() != null) SkinPicker.importSkin(this, new SkinLibrary(this), data.getData(), () -> {});
+            return;
+        }
+
+        if (requestCode == REQUEST_BACKUP || requestCode == REQUEST_BACKUP_WITH_GAMES) {
+            if (data.getData() != null) writeBackup(data.getData(), requestCode == REQUEST_BACKUP_WITH_GAMES);
+            return;
+        }
+        if (requestCode == REQUEST_RESTORE) {
+            if (data.getData() != null) confirmRestore(data.getData());
             return;
         }
 
