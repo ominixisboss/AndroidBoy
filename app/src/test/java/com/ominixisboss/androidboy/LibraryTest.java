@@ -97,4 +97,33 @@ public class LibraryTest {
         for (GameStore.Row row : rows) names.add(row.rom.getName());
         return names;
     }
+
+    /** The start of a Game Boy Advance cartridge header: the logo's first bytes and the fixed 0x96. */
+    private static byte[] gbaRom() {
+        byte[] rom = new byte[0x400];
+        rom[4] = 0x24;
+        rom[5] = (byte) 0xFF;
+        rom[6] = (byte) 0xAE;
+        rom[7] = 0x51;
+        rom[0xB2] = (byte) 0x96;
+        return rom;
+    }
+
+    @Test
+    public void recognisesGbaGames() throws Exception {
+        byte[] gba = gbaRom();
+        assertTrue(RomLibrary.isGbaRom(gba));
+        byte[] gb = new byte[0x400];
+        gb[0x143] = (byte) 0x80;
+        assertFalse(RomLibrary.isGbaRom(gb));
+        assertTrue(Arrays.equals(new String[] {BoxArt.SYSTEM_GBA}, BoxArt.systemsFor(gba)));
+        assertTrue(Arrays.equals(new String[] {BoxArt.SYSTEM_GBC, BoxArt.SYSTEM_GB}, BoxArt.systemsFor(gb)));
+
+        RomLibrary library = new RomLibrary(RuntimeEnvironment.getApplication());
+        File added = library.addRom("Advance Game", gba);
+        assertEquals("Advance Game.gba", added.getName());
+        assertTrue(RomLibrary.isGbaFile(added));
+        assertTrue(library.list().contains(added));
+        assertFalse(RomLibrary.isGbaFile(library.addRom("Colour Game", gb)));
+    }
 }

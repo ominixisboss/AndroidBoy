@@ -32,6 +32,7 @@
 
         <activity
             android:name=".MainActivity"
+            android:theme="@style/Theme.AndroidBoy.Library"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter>
@@ -48,6 +49,7 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/x-gameboy-rom" />
                 <data android:mimeType="application/x-gameboy-color-rom" />
+                <data android:mimeType="application/x-gba-rom" />
             </intent-filter>
         </activity>
 

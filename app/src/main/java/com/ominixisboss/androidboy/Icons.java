@@ -45,7 +45,11 @@ final class Icons {
     static final int SLOW = 28;
     static final int SWAP = 29;
     static final int UNPLUG = 30;
-    static final int COUNT = 31;
+    static final int PLUS = 31;
+    static final int MORE = 32;
+    static final int STAR = 33;
+    static final int SORT = 34;
+    static final int COUNT = 35;
 
     private Icons() {}
 
@@ -296,6 +300,35 @@ final class Icons {
                 p.moveTo(14.5f, 7); p.lineTo(14.5f, 3.5f);
                 p.moveTo(12, 14); p.lineTo(12, 16.5f);
                 p.moveTo(12, 19); p.lineTo(12, 21);
+                break;
+            case PLUS:
+                p.moveTo(12, 5); p.lineTo(12, 19);
+                p.moveTo(5, 12); p.lineTo(19, 12);
+                break;
+            case MORE:
+                // Three dots, stacked.
+                paint.setStyle(Paint.Style.FILL);
+                p.addCircle(12, 5.5f, 1.6f, Path.Direction.CW);
+                p.addCircle(12, 12, 1.6f, Path.Direction.CW);
+                p.addCircle(12, 18.5f, 1.6f, Path.Direction.CW);
+                break;
+            case STAR:
+                for (int i = 0; i < 10; i++) {
+                    double angle = Math.PI / 5 * i - Math.PI / 2;
+                    float radius = i % 2 == 0 ? 9 : 3.8f;
+                    float x = 12 + (float) Math.cos(angle) * radius;
+                    float y = 12.6f + (float) Math.sin(angle) * radius;
+                    if (i == 0) p.moveTo(x, y); else p.lineTo(x, y);
+                }
+                p.close();
+                break;
+            case SORT:
+                // Lines getting shorter, and an arrow.
+                p.moveTo(4, 7); p.lineTo(14, 7);
+                p.moveTo(4, 12); p.lineTo(11, 12);
+                p.moveTo(4, 17); p.lineTo(8, 17);
+                p.moveTo(18, 5); p.lineTo(18, 19);
+                p.moveTo(15.5f, 16.5f); p.lineTo(18, 19); p.lineTo(20.5f, 16.5f);
                 break;
             default:
                 break;

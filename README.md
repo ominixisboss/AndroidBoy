@@ -1,7 +1,8 @@
 # AndroidBoy
 
-A standalone Game Boy and Game Boy Color emulator for Android, built on the
-[SameBoy](https://sameboy.github.io) 1.0.3 core by Lior Halphon.
+A standalone Game Boy, Game Boy Color and Game Boy Advance emulator for Android, built on the
+[SameBoy](https://sameboy.github.io) 1.0.3 core by Lior Halphon, with [mGBA](https://mgba.io)
+0.10.5 by Jeffrey Pfau for Game Boy Advance games.
 
 It doesn't need RetroArch or any other frontend: you install one APK, add your ROMs, and play.
 
@@ -9,10 +10,21 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
 
 - **SameBoy's accurate core.** Emulates the Game Boy, Game Boy Pocket, Super Game Boy (1 and 2),
   Game Boy Color and Game Boy Advance. By default, Game Boy games run on a Game Boy Color, as in SameBoy.
-- **No BIOS files needed.** SameBoy's own open-source boot ROMs are built in, so no Nintendo code is included.
-- **Game library.** Add `.gb`/`.gbc` ROMs, or `.zip` files containing them, from any storage provider.
-  You can also use "Open with" from a file manager. Favourites and recently played games get their
-  own sections, and each game shows its box art and when you last played it. Long-press a game to
+- **Game Boy Advance games** (`.gba`) run on mGBA's GBA core, picked automatically from the
+  cartridge header. They get L and R buttons on every skin (above the d-pad and above A and B),
+  and L1/R1 (or Q/E on a keyboard) on a controller; in Game Boy games those still rewind and
+  fast-forward. Battery saves (SRAM, flash and EEPROM, detected by mGBA), save states, rewind,
+  fast-forward, screenshots, GameShark, Action Replay and CodeBreaker cheats (including the online
+  cheat database's GBA files), box art and RetroAchievements all work as for Game Boy games. The
+  Game Boy extras don't apply: the link cable, Game Boy Printer and Camera, models and palettes.
+- **No BIOS files needed.** SameBoy's own open-source boot ROMs are built in, and mGBA uses its
+  built-in replacement for the GBA BIOS, so no Nintendo code is included.
+- **Game library.** Add `.gb`/`.gbc`/`.gba` ROMs, or `.zip` files containing them, from any storage provider.
+  You can also use "Open with" from a file manager. The library is dark, like the in-game menu:
+  a big "Continue playing" card for your last game, strips of recently played games and favourites,
+  then a grid of box-art covers, each with its system (GB, GBC or GBA) and a star for favourites.
+  Chips filter by favourites or system and sort by recently played or name, and the search button
+  finds games by any words of their name. Games without box art get a cover in their system's colour. Long-press a game to
   favourite it or add it to your home screen; long-pressing the app icon offers the last few games.
 - **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
   (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
@@ -223,7 +235,8 @@ cheats and cheat search, box art matching, backups, controls, the camera and pri
 the two-phone link protocol over a real socket. CI uploads the skin tests' preview images, and
 frame-by-frame strips of a press and release, as the `skin-previews` artifact.
 
-`tests/run_host_test.sh` compiles the SameBoy core and the app's emulator wrapper for your desktop.
+`tests/run_host_test.sh` compiles the SameBoy core, mGBA's GBA core (with CMake, like the app) and
+the app's emulator wrapper for your desktop.
 It runs a small test cartridge (`tests/testrom.asm`) on every supported model. It checks boot ROM
 loading, video, audio rate, joypad input, battery saves, save states, the SGB border, rewind, and
 the frame parity used for frame blending, and GameShark and Game Genie cheats. Two more cartridges
@@ -233,20 +246,29 @@ identically from saved states with the same buttons (what two linked phones rely
 checked in; each `.asm` says how to rebuild it with RGBDS. It also runs rcheevos against the
 emulator with a stand-in server (`tests/achievements_test.c`): logging in, identifying the
 cartridge by its MD5, unlocking achievements from what the game writes to memory, rich presence,
-leaderboards, and fetching your progress for the achievements page. You only need a C compiler.
+leaderboards, and fetching your progress for the achievements page. A small GBA cartridge
+(`tests/gbarom.s`, rebuilt with `tools/build_gba_test_rom.sh`, which needs clang and lld) checks
+Game Boy Advance games: loading, video, audio rate, every button including L and R, SRAM saves,
+the achievement memory map, save states, rewind, CodeBreaker cheats, and switching between a
+Game Boy and a GBA game. You need a C compiler and CMake.
 
 ## Project layout
 
 ```
 sameboy/                  SameBoy 1.0.3: Core/ and BootROMs/ sources, unmodified
 third_party/rcheevos/     rcheevos 12.5.0 (RetroAchievements client library, MIT), unmodified
+third_party/mgba/         mGBA 0.10.5 (MPL-2.0), unmodified, only what its GBA core needs
+                          (see third_party/mgba/ANDROIDBOY.md)
 app/src/main/cpp/         Native code
-  emulator.c/.h           Platform-independent wrapper around the core
+  emulator.c/.h           Platform-independent wrapper around the cores
+  gba_core.c/.h           The Game Boy Advance backend, on mGBA
   jni_bridge.c            JNI bindings, boot ROMs from assets, frame output
   achievements.c          RetroAchievements: rcheevos client, memory map, web requests via Java
   CMakeLists.txt
 app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   MainActivity            Game library, save import/export
+  LibraryScreen,          The game library's screen; what it shows (continue card, strips,
+    GameLibrary             filters, search and the grid of covers)
   EmulatorActivity        Game screen, input, menu, save states
   EmulatorThread          Emulation loop, audio output and pacing
   GlScreenView            OpenGL ES 3 renderer running SameBoy's filters
@@ -282,7 +304,8 @@ app/src/test/             Robolectric tests for skins (layout, touch, import), a
 docs/skins.md             The skin file format; docs/skins/example is a complete example
 tools/build_bootroms.sh   Rebuilds the boot ROMs from sameboy/BootROMs (needs RGBDS 0.7+)
 tools/make_skins.py       Draws the example skin and the bundled image skins (needs Pillow)
-tests/                    Host-side tests for the core wrapper, with test cartridges (link, printer)
+tests/                    Host-side tests for the core wrapper, with test cartridges (link, printer, GBA)
+tools/build_gba_test_rom.sh  Assembles tests/gbarom.s (needs clang and lld)
 ```
 
 To update SameBoy, replace `sameboy/Core`, `sameboy/BootROMs` and `sameboy/version.mk` with the new
@@ -295,7 +318,9 @@ release's copies, and copy its `Shaders/*.fsh` files (except `MasterShader.fsh`)
 SameBoy is © Lior Halphon and licensed under the Expat (MIT) license; see `sameboy/LICENSE`.
 That includes the filter shaders in `app/src/main/assets/shaders/`, and `Master.glsl` there is a port
 of SameBoy's master shader. rcheevos (`third_party/rcheevos`) is © RetroAchievements.org, MIT license.
-The app shows both licenses under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
+mGBA (`third_party/mgba`) is © Jeffrey Pfau and contributors, under the Mozilla Public License 2.0;
+see `third_party/mgba/LICENSE`. It is used unmodified, and its source is in this repository.
+The app shows all three licenses under *About → Licenses*. Nothing from SameBoy's iOS directory is used,
 so its extra distribution condition doesn't apply. The rest of this repository is released under
 CC0 (see `LICENSE`).
 

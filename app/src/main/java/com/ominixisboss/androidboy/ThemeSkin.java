@@ -536,8 +536,8 @@ final class ThemeSkin extends Skin {
     private static final float PILL_ANGLE = -25f;
     private static final float PILL_LENGTH = 0.86f;
     /** The d-pad rocks up to this far towards the held direction. */
-    private static final float SOLID_TILT_DEGREES = 13f;
-    private static final float FLAT_TILT_DEGREES = 8f;
+    private static final float SOLID_TILT_DEGREES = DPAD_TILT_DEGREES;
+    private static final float FLAT_TILT_DEGREES = DPAD_TILT_DEGREES;
     private static final float[] SQUARE = {-1, -1, 1, -1, 1, 1, -1, 1};
     private static final float ARM = 1f / 3;
 
@@ -585,6 +585,9 @@ final class ThemeSkin extends Skin {
                     break;
                 case Control.PILL:
                     drawPill(canvas, g, control, press);
+                    break;
+                case Control.SHOULDER:
+                    drawShoulderButton(canvas, control, press);
                     break;
                 default:
                     if (control.keys == KEY_MENU || control.keys == KEY_REWIND || control.keys == KEY_FAST_FORWARD) {
@@ -725,14 +728,6 @@ final class ThemeSkin extends Skin {
         canvas.restore();
     }
 
-    /** The viewer's distance from the d-pad, in d-pad radii: nearer exaggerates the perspective. */
-    private static final float VIEW_DISTANCE = 4f;
-    /**
-     * The pad is seen from slightly in front, so anything deeper shows a little lower down; that's
-     * what makes its bottom edge, and a raised side's wall, visible.
-     */
-    private static final float VIEW_SLANT = 0.4f;
-
     /**
      * Maps the canvas onto the d-pad's plane at {@code depth} below its resting face, rocked
      * about its centre: the held side goes down and away, the opposite side comes up. Tilts are
@@ -742,9 +737,12 @@ final class ThemeSkin extends Skin {
         rock(canvas, tiltMatrix, tilted, tiltX, tiltY, maxDegrees, depth);
     }
 
-    /** {@link #applyTilt} for any skin drawing in unit coordinates; {@code matrix} and {@code scratch} (8 floats) are reused. */
+    /**
+     * {@link #applyTilt} for any skin drawing in unit coordinates, seen the way every skin's d-pad
+     * is (see {@link Skin#DPAD_VIEW_DISTANCE}); {@code matrix} and {@code scratch} (8 floats) are reused.
+     */
     static void rock(Canvas canvas, Matrix matrix, float[] scratch, float tiltX, float tiltY, float maxDegrees, float depth) {
-        rock(canvas, matrix, scratch, tiltX, tiltY, maxDegrees, depth, VIEW_DISTANCE, VIEW_SLANT);
+        rock(canvas, matrix, scratch, tiltX, tiltY, maxDegrees, depth, DPAD_VIEW_DISTANCE, DPAD_VIEW_SLANT);
     }
 
     /** {@link #rock} seen from {@code viewDistance} radii away, deeper parts showing {@code viewSlant} lower down. */
@@ -875,6 +873,23 @@ final class ThemeSkin extends Skin {
     }
 
     // ---- Start and Select ----
+
+    /** L and R, in the Start and Select buttons' colours and this theme's style. */
+    private void drawShoulderButton(Canvas canvas, Control control, float press) {
+        int color = palette.startSelect;
+        switch (palette.style) {
+            case SOLID:
+                drawShoulder(canvas, control, press, lighten(color, 0.22f), shade(color, 0.75f), shade(color, 0.5f),
+                        luminance(color) > 0.5f ? 0xFF303030 : 0xFFF0F0F0);
+                break;
+            case TRANSLUCENT:
+                drawShoulder(canvas, control, press, color, color, palette.rim, palette.label);
+                break;
+            default: // Outlines, glowing or not.
+                drawShoulder(canvas, control, press, 0, 0, color, color);
+                break;
+        }
+    }
 
     private void drawPill(Canvas canvas, Geometry g, Control control, float press) {
         RectF b = control.bounds;

@@ -1,4 +1,5 @@
 #include "emulator.h"
+#include "gba_core.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -7,6 +8,8 @@
 
 static GB_gameboy_t *gb;
 static bool loaded;
+/* A Game Boy Advance game is loaded: calls go to gba_core.c. */
+static bool gba_mode;
 
 /* Link cable: the partner Game Boy and its own screen. */
 static GB_gameboy_t *partner;
@@ -287,10 +290,23 @@ static uint8_t camera_get_pixel(GB_gameboy_t *g, uint8_t x, uint8_t y)
 
 bool emu_load_rom(const uint8_t *rom, size_t size, GB_model_t model, unsigned rate)
 {
+    if (gba_is_rom(rom, size)) {
+        emu_unload();
+        sample_rate = rate ? rate : 48000;
+        if (!gba_load(rom, size, sample_rate, log_sink)) {
+            emu_log("Could not load the Game Boy Advance ROM");
+            return false;
+        }
+        gba_set_rewind_length(rewind_seconds);
+        gba_mode = true;
+        loaded = true;
+        return true;
+    }
     if (size < 0x150) {
         emu_log("ROM is too small (%zu bytes)", size);
         return false;
     }
+    if (gba_mode) emu_unload();
     if (!gb) {
         gb = GB_alloc();
         if (!gb) return false;
@@ -333,8 +349,19 @@ bool emu_is_loaded(void)
     return loaded;
 }
 
+int emu_get_system(void)
+{
+    return gba_mode ? EMU_SYSTEM_GBA : EMU_SYSTEM_GB;
+}
+
 void emu_unload(void)
 {
+    if (gba_mode) {
+        gba_unload();
+        gba_mode = false;
+        loaded = false;
+        return;
+    }
     emu_unlink();
     if (gb && GB_is_inited(gb)) {
         GB_free(gb);
@@ -347,31 +374,44 @@ void emu_unload(void)
 void emu_reset(void)
 {
     if (!loaded) return;
+    if (gba_mode) {
+        gba_reset();
+        return;
+    }
     GB_reset(gb);
     update_frame_size();
 }
 
 void emu_switch_model(GB_model_t model)
 {
-    if (!loaded) return;
+    if (!loaded || gba_mode) return;
     GB_switch_model_and_reset(gb, model);
     update_frame_size();
 }
 
 GB_model_t emu_get_model(void)
 {
+    if (gba_mode) return GB_MODEL_AGB_A;
     return loaded ? GB_get_model(gb) : GB_MODEL_CGB_E;
 }
 
 void emu_set_keys(unsigned mask)
 {
     if (!loaded) return;
+    if (gba_mode) {
+        gba_set_keys(mask);
+        return;
+    }
     GB_set_key_mask(gb, (GB_key_mask_t)mask);
 }
 
 void emu_run_frame(void)
 {
     if (!loaded) return;
+    if (gba_mode) {
+        gba_run_frame();
+        return;
+    }
     vblank_occurred = false;
     if (linked) {
         /* Run whichever Game Boy is behind, so neither gets more than a few cycles ahead; the
@@ -400,11 +440,16 @@ void emu_run_frame(void)
 void emu_set_rewind_length(unsigned seconds)
 {
     rewind_seconds = seconds;
+    if (gba_mode) {
+        gba_set_rewind_length(seconds);
+        return;
+    }
     if (loaded && !linked) GB_set_rewind_length(gb, seconds);
 }
 
 bool emu_rewind_frame(void)
 {
+    if (gba_mode) return gba_rewind_frame();
     if (!loaded || linked) return false;
     /* The core records a state at every frame, so the newest one is the frame on screen.
        Drop it, step back to the one before, then run a frame from there to show it (which
@@ -417,6 +462,11 @@ bool emu_rewind_frame(void)
 
 const uint32_t *emu_get_frame(unsigned *width, unsigned *height)
 {
+    if (gba_mode) {
+        *width = GBA_WIDTH;
+        *height = GBA_HEIGHT;
+        return gba_get_frame();
+    }
     if (linked && show_partner) {
         *width = partner_width;
         *height = partner_height;
@@ -429,11 +479,13 @@ const uint32_t *emu_get_frame(unsigned *width, unsigned *height)
 
 bool emu_is_odd_frame(void)
 {
+    if (gba_mode) return false;
     return linked && show_partner ? partner_frame_odd : frame_odd;
 }
 
 bool emu_link(const uint8_t *rom, size_t size, GB_model_t model, bool leads, uint64_t seed)
 {
+    if (gba_mode) return false; /* The link cable is Game Boy only. */
     if (!loaded || size < 0x150) return false;
     emu_unlink();
     if (!partner) {
@@ -560,6 +612,7 @@ bool emu_partner_take_battery_dirty(void)
 
 size_t emu_take_audio(int16_t *out, size_t max_samples)
 {
+    if (gba_mode) return gba_take_audio(out, max_samples);
     size_t count = audio_count < max_samples ? audio_count : max_samples;
     count &= ~(size_t)1; /* Keep stereo pairs together. */
     memcpy(out, audio_buffer, count * sizeof(int16_t));
@@ -570,6 +623,7 @@ size_t emu_take_audio(int16_t *out, size_t max_samples)
 
 size_t emu_battery_size(void)
 {
+    if (gba_mode) return gba_battery_size();
     if (!loaded) return 0;
     int size = GB_save_battery_size(gb);
     return size > 0 ? (size_t)size : 0;
@@ -577,6 +631,7 @@ size_t emu_battery_size(void)
 
 size_t emu_save_battery(uint8_t *buffer, size_t size)
 {
+    if (gba_mode) return gba_save_battery(buffer, size);
     size_t needed = emu_battery_size();
     if (!needed || size < needed) return 0;
     /* Returns 0 on success. */
@@ -586,11 +641,16 @@ size_t emu_save_battery(uint8_t *buffer, size_t size)
 void emu_load_battery(const uint8_t *buffer, size_t size)
 {
     if (!loaded) return;
+    if (gba_mode) {
+        gba_load_battery(buffer, size);
+        return;
+    }
     GB_load_battery_from_buffer(gb, buffer, size);
 }
 
 bool emu_take_battery_dirty(void)
 {
+    if (gba_mode) return gba_take_battery_dirty();
     if (!loaded || !GB_get_battery_dirty(gb)) return false;
     GB_clear_battery_dirty(gb);
     return true;
@@ -598,18 +658,24 @@ bool emu_take_battery_dirty(void)
 
 size_t emu_state_size(void)
 {
+    if (gba_mode) return gba_state_size();
     return loaded ? GB_get_save_state_size(gb) : 0;
 }
 
 void emu_save_state(uint8_t *buffer)
 {
     if (!loaded) return;
+    if (gba_mode) {
+        gba_save_state(buffer);
+        return;
+    }
     GB_save_state_to_buffer(gb, buffer);
 }
 
 bool emu_load_state(const uint8_t *buffer, size_t size)
 {
     if (!loaded) return false;
+    if (gba_mode) return gba_load_state(buffer, size);
     GB_model_t state_model;
     if (GB_get_state_model_from_buffer(buffer, size, &state_model) == 0 && state_model != GB_get_model(gb)) {
         /* States carry their model; switch so e.g. a DMG state can be loaded while on CGB. */
@@ -623,19 +689,19 @@ bool emu_load_state(const uint8_t *buffer, size_t size)
 void emu_set_color_correction(GB_color_correction_mode_t mode)
 {
     color_correction = mode;
-    if (loaded) GB_set_color_correction_mode(gb, mode);
+    if (loaded && !gba_mode) GB_set_color_correction_mode(gb, mode);
 }
 
 void emu_set_dmg_palette(unsigned index)
 {
     dmg_palette = index;
-    if (loaded) apply_palette();
+    if (loaded && !gba_mode) apply_palette();
 }
 
 void emu_set_border_mode(GB_border_mode_t mode)
 {
     border_mode = mode;
-    if (loaded) {
+    if (loaded && !gba_mode) {
         GB_set_border_mode(gb, mode);
         update_frame_size();
     }
@@ -644,13 +710,13 @@ void emu_set_border_mode(GB_border_mode_t mode)
 void emu_set_highpass(GB_highpass_mode_t mode)
 {
     highpass = mode;
-    if (loaded) GB_set_highpass_filter_mode(gb, mode);
+    if (loaded && !gba_mode) GB_set_highpass_filter_mode(gb, mode);
 }
 
 void emu_set_rumble_mode(GB_rumble_mode_t mode)
 {
     rumble_mode = mode;
-    if (loaded) GB_set_rumble_mode(gb, mode);
+    if (loaded && !gba_mode) GB_set_rumble_mode(gb, mode);
 }
 
 /* One byte from a region of core memory, `offset` bytes in; false if it's past the end. */
@@ -666,6 +732,7 @@ static bool read_direct(GB_direct_access_t region, uint32_t offset, uint8_t *out
 
 uint32_t emu_read_achievement_memory(uint32_t address, uint8_t *buffer, uint32_t num_bytes)
 {
+    if (gba_mode) return gba_read_achievement_memory(address, buffer, num_bytes);
     if (!gb || !loaded) return 0;
     for (uint32_t i = 0; i < num_bytes; i++) {
         uint32_t a = address + i;
@@ -700,7 +767,7 @@ static bool is_short_game_genie(const char *code)
 
 bool emu_has_camera(void)
 {
-    return loaded && cartridge_has_camera;
+    return loaded && !gba_mode && cartridge_has_camera;
 }
 
 void emu_set_camera_image(const uint8_t *pixels)
@@ -711,12 +778,13 @@ void emu_set_camera_image(const uint8_t *pixels)
     } else {
         camera_has_image = false;
     }
-    if (gb && GB_is_inited(gb)) GB_set_camera_get_pixel_callback(gb, camera_has_image ? camera_get_pixel : NULL);
+    if (!gba_mode && gb && GB_is_inited(gb)) GB_set_camera_get_pixel_callback(gb, camera_has_image ? camera_get_pixel : NULL);
 }
 
 unsigned emu_set_cheats(const char *codes)
 {
     if (!loaded) return 0;
+    if (gba_mode) return gba_set_cheats(codes);
     GB_remove_all_cheats(gb);
     unsigned count = 0;
     while (codes && *codes) {
@@ -743,6 +811,7 @@ unsigned emu_set_cheats(const char *codes)
 
 double emu_get_rumble(void)
 {
+    if (gba_mode) return 0;
     return rumble_amplitude;
 }
 
@@ -750,6 +819,10 @@ void emu_get_title(char title[17])
 {
     if (!loaded) {
         title[0] = 0;
+        return;
+    }
+    if (gba_mode) {
+        gba_get_title(title);
         return;
     }
     GB_get_rom_title(gb, title);

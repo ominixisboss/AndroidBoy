@@ -422,6 +422,51 @@ public class SkinTest {
         }
     }
 
+    /** Game Boy Advance games get L and R on every skin, clear of the screen and the other buttons. */
+    @Test
+    public void everySkinGetsShoulderButtonsForGbaGames() throws IOException {
+        int[][] sizes = {{PHONE_SHORT, PHONE_LONG}, {PHONE_LONG, PHONE_SHORT}, {1600, 2560}, {2560, 1600}};
+        for (Skin skin : allSkins()) {
+            for (int[] size : sizes) {
+                int width = size[0];
+                int height = size[1];
+                boolean portrait = height > width;
+                String what = skin.id() + " " + width + "x" + height;
+                Skin.Layout layout = new Skin.Layout();
+                skin.layout(layout, width, height, 240, 160, true, false);
+                int before = layout.controls.size();
+                Skin.addShoulderButtons(layout);
+                assertEquals(what + ": L and R added", before + 2, layout.controls.size());
+                Skin.Control l = find(layout, Emulator.KEY_L);
+                Skin.Control r = find(layout, Emulator.KEY_R);
+                assertEquals(Skin.Control.SHOULDER, l.shape);
+                assertTrue(what + ": L left of R", l.bounds.centerX() < r.bounds.centerX());
+                assertEquals(what + ": same size", l.bounds.width(), r.bounds.width(), 0.5f);
+                for (Skin.Control shoulder : new Skin.Control[] {l, r}) {
+                    RectF b = shoulder.bounds;
+                    assertTrue(what + ": big enough to press " + b, b.height() >= Math.min(width, height) * 0.03f);
+                    assertTrue(what + ": inside the view " + b, b.left >= 0 && b.top >= 0 && b.right <= width && b.bottom <= height);
+                    if (portrait) {
+                        assertFalse(what + ": not over the screen " + b, RectF.intersects(b, new RectF(layout.screen)));
+                    }
+                    for (Skin.Control other : layout.controls) {
+                        if (other == shoulder || !other.visible) continue;
+                        assertFalse(what + ": " + Integer.toHexString(shoulder.keys) + " clear of "
+                                + Integer.toHexString(other.keys), RectF.intersects(b, other.bounds));
+                    }
+                }
+                // Drawing them works in every style.
+                android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(width / 4, height / 4,
+                        android.graphics.Bitmap.Config.ARGB_8888);
+                android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+                canvas.scale(0.25f, 0.25f);
+                Skin.Motion motion = new Skin.Motion();
+                motion.snap(layout, Emulator.KEY_L);
+                skin.drawControls(canvas, layout, Emulator.KEY_L, motion);
+            }
+        }
+    }
+
     /** Skins with toolbars still have a menu button, in the middle below the screen like the classic themes. */
     @Test
     public void toolbarSkinsHaveACentredMenuButton() {

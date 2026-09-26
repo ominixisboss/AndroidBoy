@@ -100,6 +100,8 @@ final class GlassSkin extends Skin {
     private final Paint stroke = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint text = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Matrix matrix = new Matrix();
+    private final Matrix tiltMatrix = new Matrix();
+    private final float[] tilted = new float[8];
     private final RectF rect = new RectF();
     // The backdrop, sharp and blurred, for the current view size.
     private Bitmap backdrop;
@@ -209,6 +211,14 @@ final class GlassSkin extends Skin {
     }
 
     private void drawDpad(Canvas canvas, RectF b, int held, float tiltX, float tiltY, float density) {
+        // Tipped towards the held direction like every skin's d-pad.
+        canvas.save();
+        tiltDpad(canvas, b, tiltX, tiltY, tiltMatrix, tilted);
+        drawTiltedDpad(canvas, b, held, tiltX, tiltY, density);
+        canvas.restore();
+    }
+
+    private void drawTiltedDpad(Canvas canvas, RectF b, int held, float tiltX, float tiltY, float density) {
         float size = b.width();
         float arm = size * 0.34f;
         Path shape = roundedPlus(b, arm, arm * 0.26f);
@@ -243,7 +253,8 @@ final class GlassSkin extends Skin {
 
     private void drawButton(Canvas canvas, Control control, float press, float density) {
         RectF b = control.bounds;
-        boolean pill = control.shape == Control.PILL;
+        boolean shoulder = control.shape == Control.SHOULDER;
+        boolean pill = control.shape == Control.PILL || shoulder;
         float shrink = 1 - 0.035f * Math.min(1, press);
         float halfWidth = b.width() / 2 * shrink;
         float halfHeight = b.height() / 2 * shrink;
@@ -260,6 +271,13 @@ final class GlassSkin extends Skin {
         drawGlare(canvas, rect, 0, press * 0.9f);
         canvas.restore();
         drawRim(canvas, shape, rect, density);
+        if (shoulder) {
+            text.setColor(variant.label);
+            text.setTextSize(rect.height() * 0.6f);
+            canvas.drawText(control.keys == Emulator.KEY_L ? "L" : "R", rect.centerX(),
+                    rect.centerY() - (text.descent() + text.ascent()) / 2, text);
+            return;
+        }
         if (pill) {
             text.setColor(withAlpha(variant.label, 0xC0));
             text.setTextSize(b.height() * 0.62f);

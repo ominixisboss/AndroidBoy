@@ -30,6 +30,7 @@ final class BoxArt {
     static final String SITE = "https://github.com/libretro-thumbnails";
     static final String SYSTEM_GB = "Nintendo - Game Boy";
     static final String SYSTEM_GBC = "Nintendo - Game Boy Color";
+    static final String SYSTEM_GBA = "Nintendo - Game Boy Advance";
     private static final String DATS = "https://raw.githubusercontent.com/libretro/libretro-database/master/metadat/no-intro/";
     private static final String THUMBNAILS = "https://raw.githubusercontent.com/libretro-thumbnails/";
     private static final String TREES = "https://api.github.com/repos/libretro-thumbnails/";
@@ -105,9 +106,8 @@ final class BoxArt {
     /** Finds and downloads {@code rom}'s picture. Returns whether it now has one. Call off the main thread. */
     boolean fetch(File rom) throws IOException {
         byte[] data = RomLibrary.readFile(rom);
-        boolean color = data.length > 0x143 && (data[0x143] & 0x80) != 0;
-        String[] systems = color ? new String[] {SYSTEM_GBC, SYSTEM_GB} : new String[] {SYSTEM_GB, SYSTEM_GBC};
-        Match match = identify(crc32(data), color);
+        String[] systems = systemsFor(data);
+        Match match = identify(crc32(data), systems);
         // First the exact name: the known cartridge's, or else the file's.
         String name = match != null ? match.name : RomLibrary.baseName(rom);
         List<Match> exact = new ArrayList<>();
@@ -159,9 +159,21 @@ final class BoxArt {
         missingFile(rom).delete();
     }
 
+    /** Where to look for a ROM's picture: its own system first (Game Boy games are often in both lists). */
+    static String[] systemsFor(byte[] data) {
+        if (RomLibrary.isGbaRom(data)) return new String[] {SYSTEM_GBA};
+        boolean color = data.length > 0x143 && (data[0x143] & 0x80) != 0;
+        return color ? new String[] {SYSTEM_GBC, SYSTEM_GB} : new String[] {SYSTEM_GB, SYSTEM_GBC};
+    }
+
     /** The cartridge with this checksum, looking in its own system's list first. */
     Match identify(long crc, boolean color) throws IOException {
-        for (String system : color ? new String[] {SYSTEM_GBC, SYSTEM_GB} : new String[] {SYSTEM_GB, SYSTEM_GBC}) {
+        return identify(crc, color ? new String[] {SYSTEM_GBC, SYSTEM_GB} : new String[] {SYSTEM_GB, SYSTEM_GBC});
+    }
+
+    /** The cartridge with this checksum, from the lists of {@code systems} in order. */
+    Match identify(long crc, String[] systems) throws IOException {
+        for (String system : systems) {
             String name = knownGames(system).get(crc);
             if (name != null) return new Match(system, name);
         }

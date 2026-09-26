@@ -101,6 +101,12 @@ JNIEXPORT void JNICALL JNI_FN(nativeSwitchModel)(JNIEnv *env, jclass clazz, jint
     emu_switch_model((GB_model_t)model);
 }
 
+JNIEXPORT jint JNICALL JNI_FN(nativeGetSystem)(JNIEnv *env, jclass clazz)
+{
+    (void)env; (void)clazz;
+    return (jint)emu_get_system();
+}
+
 JNIEXPORT jint JNICALL JNI_FN(nativeGetModel)(JNIEnv *env, jclass clazz)
 {
     (void)env; (void)clazz;

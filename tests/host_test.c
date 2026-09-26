@@ -124,10 +124,150 @@ static void test_model(const uint8_t *rom, size_t rom_size, GB_model_t model, co
     free(battery);
 }
 
+/* The pixel at (x, y) of the last frame, as red, green and blue. */
+static void pixel_at(unsigned x, unsigned y, unsigned *r, unsigned *g, unsigned *b)
+{
+    unsigned width, height;
+    const uint32_t *frame = emu_get_frame(&width, &height);
+    uint32_t p = frame[y * width + x];
+    *r = p & 0xFF;
+    *g = (p >> 8) & 0xFF;
+    *b = (p >> 16) & 0xFF;
+}
+
+/* Frames counted by tests/gbarom.gba, from cartridge SRAM bytes 2-3. */
+static unsigned gba_frame_count(void)
+{
+    uint8_t save[0x8000];
+    if (emu_save_battery(save, sizeof(save)) < 4) return 0;
+    return save[2] | (save[3] << 8);
+}
+
+static void test_gba(const char *path, const uint8_t *gb_rom, size_t gb_rom_size)
+{
+    size_t size;
+    uint8_t *rom = read_file(path, &size);
+    CHECK(rom != NULL, "GBA: test ROM readable");
+    if (!rom) return;
+
+    CHECK(emu_load_rom(rom, size, GB_MODEL_CGB_E, 48000), "GBA: ROM loads");
+    CHECK(emu_get_system() == EMU_SYSTEM_GBA && emu_get_model() == GB_MODEL_AGB_A, "GBA: runs as a Game Boy Advance");
+    char title[17];
+    emu_get_title(title);
+    CHECK(strcmp(title, "ANDROIDBOY") == 0, "GBA: title read from the header (\"%s\")", title);
+
+    size_t samples = run_frames(120);
+    double per_frame = samples / 2.0 / 120;
+    CHECK(per_frame > 780 && per_frame < 830, "GBA: ~804 stereo samples per frame at 48 kHz (got %.1f)", per_frame);
+    unsigned width, height;
+    emu_get_frame(&width, &height);
+    CHECK(width == 240 && height == 160, "GBA: frame is 240x160 (got %ux%u)", width, height);
+    CHECK(frame_is_opaque(), "GBA: frame pixels are opaque");
+    unsigned r, g, b;
+    pixel_at(120, 80, &r, &g, &b);
+    CHECK(r == 0 && g == 0 && b == 0, "GBA: no keys, black screen (%u,%u,%u)", r, g, b);
+
+    emu_set_keys(1 << GB_KEY_A);
+    run_frames(3);
+    pixel_at(0, 0, &r, &g, &b);
+    CHECK(r > 0 && g == 0 && b == 0, "GBA: A reaches the game as A (%u,%u,%u)", r, g, b);
+    emu_set_keys(1 << GB_KEY_START);
+    run_frames(3);
+    unsigned start_red;
+    pixel_at(0, 0, &start_red, &g, &b);
+    CHECK(start_red > r && g == 0, "GBA: Start reaches the game as Start (red %u)", start_red);
+    emu_set_keys(EMU_KEY_L);
+    run_frames(3);
+    unsigned l_green;
+    pixel_at(239, 159, &r, &l_green, &b);
+    CHECK(r == 0 && l_green > 100, "GBA: L reaches the game as L (green %u)", l_green);
+    emu_set_keys(EMU_KEY_R);
+    run_frames(3);
+    unsigned r_green;
+    pixel_at(239, 159, &r, &r_green, &b);
+    CHECK(r == 0 && r_green > 30 && r_green < l_green, "GBA: R reaches the game as R (green %u)", r_green);
+    emu_set_keys((1 << GB_KEY_LEFT) | (1 << GB_KEY_DOWN));
+    run_frames(3);
+    uint8_t save[0x8000];
+    CHECK(emu_battery_size() == 0x8000, "GBA: SRAM save detected (%zu bytes)", emu_battery_size());
+    CHECK(emu_take_battery_dirty() && !emu_take_battery_dirty(), "GBA: save marked dirty once");
+    CHECK(emu_save_battery(save, sizeof(save)) == 0x8000 && save[0] == 0xA0 && save[1] == 0x00,
+          "GBA: Left+Down seen by the game (0x%02X%02X)", save[1], save[0]);
+    emu_set_keys(0);
+    run_frames(2);
+    CHECK(emu_take_battery_dirty(), "GBA: a changed save is dirty again");
+
+    /* RetroAchievements: EWRAM at $08000 holds the frame counter the ROM also writes to SRAM. */
+    uint8_t bytes[4];
+    unsigned count = gba_frame_count();
+    CHECK(emu_read_achievement_memory(0x8000, bytes, 4) == 4 &&
+          (bytes[0] | (bytes[1] << 8)) == count, "GBA: achievements read EWRAM (%u)", count);
+    CHECK(emu_read_achievement_memory(0x48002, bytes, 2) == 2 && (bytes[0] | (bytes[1] << 8)) == count,
+          "GBA: achievements read cartridge SRAM");
+    CHECK(emu_read_achievement_memory(0x7FFE, bytes, 4) == 4, "GBA: reads run from IWRAM on into EWRAM");
+    CHECK(emu_read_achievement_memory(0x50000, bytes, 1) == 0 && emu_read_achievement_memory(0x58000, bytes, 1) == 0,
+          "GBA: nothing past the save or the map");
+
+    /* Save states. */
+    size_t state_size = emu_state_size();
+    CHECK(state_size > 0x40000, "GBA: save state has a size (%zu)", state_size);
+    uint8_t *state = malloc(state_size);
+    emu_save_state(state);
+    unsigned saved = gba_frame_count();
+    run_frames(90);
+    CHECK(emu_load_state(state, state_size), "GBA: save state loads");
+    CHECK(gba_frame_count() == saved + 1, "GBA: state restored the game (%u, saved at %u)", gba_frame_count(), saved);
+    CHECK(!emu_load_state(state, 100), "GBA: a truncated state is refused");
+    free(state);
+
+    /* Rewind. */
+    emu_set_rewind_length(10);
+    run_frames(400);
+    unsigned now = gba_frame_count();
+    bool moved = true;
+    for (int i = 0; i < 60 && moved; i++) moved = emu_rewind_frame();
+    unsigned back = gba_frame_count();
+    CHECK(moved && back < now && now - back >= 50 && now - back <= 130, "GBA: 60 rewind steps go back (%u -> %u)", now, back);
+    unsigned steps = 0;
+    while (emu_rewind_frame() && steps < 5000) steps++;
+    unsigned oldest = gba_frame_count();
+    CHECK(steps > 100 && now - oldest <= 620, "GBA: rewinding stops at the recorded history (%u steps, back to %u)", steps,
+          oldest);
+    run_frames(10);
+    CHECK(gba_frame_count() == oldest + 10, "GBA: playing resumes from there (%u)", gba_frame_count());
+    emu_set_rewind_length(0);
+    run_frames(10);
+    CHECK(!emu_rewind_frame(), "GBA: rewind off records nothing");
+    emu_set_rewind_length(30);
+
+    /* Cheats: a CodeBreaker 8-bit write to EWRAM. */
+    CHECK(emu_set_cheats("32000010 0055\n") == 1, "GBA: a CodeBreaker code is accepted");
+    run_frames(2);
+    CHECK(emu_read_achievement_memory(0x8010, bytes, 1) == 1 && bytes[0] == 0x55, "GBA: the cheat applies (0x%02X)", bytes[0]);
+    CHECK(emu_set_cheats("") == 0, "GBA: cheats can be cleared");
+    CHECK(emu_set_cheats("not a code\n") == 0, "GBA: junk is refused");
+
+    emu_reset();
+    run_frames(5);
+    CHECK(gba_frame_count() < 10, "GBA: reset starts the game over (%u)", gba_frame_count());
+    CHECK(!emu_link(gb_rom, gb_rom_size, GB_MODEL_CGB_E, false, 1), "GBA: no link cable");
+
+    /* And back to a Game Boy game. */
+    CHECK(emu_load_rom(gb_rom, gb_rom_size, GB_MODEL_CGB_E, 48000) && emu_get_system() == EMU_SYSTEM_GB,
+          "GBA: a Game Boy game loads after it");
+    run_frames(10);
+    emu_get_frame(&width, &height);
+    CHECK(width == 160 && height == 144, "GBA: back to a 160x144 screen (%ux%u)", width, height);
+    CHECK(emu_load_rom(rom, size, GB_MODEL_CGB_E, 48000) && emu_get_system() == EMU_SYSTEM_GBA,
+          "GBA: and a GBA game again");
+    run_frames(10);
+    free(rom);
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 3) {
-        fprintf(stderr, "Usage: %s <rom> <boot rom dir> [printer test rom] [link test rom]\n", argv[0]);
+        fprintf(stderr, "Usage: %s <rom> <boot rom dir> [printer test rom] [link test rom] [GBA test rom]\n", argv[0]);
         return 2;
     }
     boot_rom_dir = argv[2];
@@ -370,7 +510,10 @@ int main(int argc, char **argv)
         free(link_rom);
     }
 
+    if (argc > 5) test_gba(argv[5], rom, rom_size);
+
     emu_unload();
+    CHECK(emu_get_system() == EMU_SYSTEM_GB, "no game: back to the Game Boy");
     CHECK(emu_set_cheats("019900A0") == 0, "cheats: nothing to cheat with no game");
     uint8_t unused;
     CHECK(emu_read_achievement_memory(0xC000, &unused, 1) == 0, "achievements: nothing to read with no game");

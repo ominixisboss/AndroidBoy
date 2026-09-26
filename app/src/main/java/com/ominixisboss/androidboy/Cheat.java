@@ -42,8 +42,12 @@ final class Cheat {
     boolean isValid() {
         List<String> codes = codes();
         if (codes.isEmpty()) return false;
+        String previous = "";
         for (String part : codes) {
-            if (!isValidCode(part)) return false;
+            // A Game Boy Advance CodeBreaker code's second half: 8 digits, then 4.
+            boolean secondHalf = part.length() == 4 && isHex(part) && previous.length() == 8 && isHex(previous);
+            if (!secondHalf && !isValidCode(part)) return false;
+            previous = part;
         }
         return true;
     }
@@ -59,6 +63,13 @@ final class Cheat {
     static boolean isValidCode(String code) {
         code = normalize(code);
         if (code.length() == 8 && isHex(code)) return true;
+        // Game Boy Advance: GameShark / Action Replay (8+8 digits), CodeBreaker (8+4), VBA (address:value).
+        if ((code.length() == 16 || code.length() == 12) && isHex(code)) return true;
+        int colon = code.indexOf(':');
+        if (colon == 8 && isHex(code.substring(0, 8)) && code.length() > 9 && code.length() <= 17
+                && isHex(code.substring(9))) {
+            return true;
+        }
         String digits = code.replace("-", "");
         if ((digits.length() != 6 && digits.length() != 9) || !isHex(digits)) return false;
         int encoded = Integer.parseInt(digits.substring(2, 6), 16);

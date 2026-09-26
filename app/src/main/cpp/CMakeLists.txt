@@ -73,6 +73,26 @@ target_compile_definitions(rcheevos PUBLIC
 )
 target_compile_options(rcheevos PRIVATE -std=gnu11 -O2 -Wno-unused-function)
 
-add_library(androidboy SHARED emulator.c jni_bridge.c achievements.c)
+# Game Boy Advance: mGBA (MPL-2.0), vendored with only what its GBA core needs (see
+# third_party/mgba/ANDROIDBOY.md). LIBMGBA_ONLY builds just the static library: no frontends
+# and no dependencies (no zlib, PNG or SQLite), and M_CORE_GB off leaves Game Boy games to SameBoy.
+set(MGBA_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/mgba)
+set(LIBMGBA_ONLY ON)
+set(M_CORE_GBA ON)
+set(M_CORE_GB OFF)
+set(ENABLE_SCRIPTING OFF)
+add_subdirectory(${MGBA_DIR} mgba EXCLUDE_FROM_ALL)
+# Always optimized, like SameBoy: a debug build should still run games at full speed.
+target_compile_options(mgba PRIVATE -O3 -Wno-unused-parameter -Wno-sign-compare)
+
+# mGBA builds with private definitions (USE_PTHREADS and the like) that change the layout of
+# structs in its headers, so the code using those headers must see exactly the same ones.
+# Some are on the target, some (USE_PTHREADS, M_CORE_GBA) on mGBA's directory.
+get_target_property(MGBA_TARGET_DEFINITIONS mgba COMPILE_DEFINITIONS)
+get_directory_property(MGBA_DIRECTORY_DEFINITIONS DIRECTORY ${MGBA_DIR} COMPILE_DEFINITIONS)
+set_source_files_properties(gba_core.c PROPERTIES
+    COMPILE_DEFINITIONS "${MGBA_TARGET_DEFINITIONS};${MGBA_DIRECTORY_DEFINITIONS}")
+
+add_library(androidboy SHARED emulator.c jni_bridge.c achievements.c gba_core.c)
 target_compile_options(androidboy PRIVATE -std=gnu11 -O2 -Wall -Wno-multichar)
-target_link_libraries(androidboy sameboy rcheevos android log m)
+target_link_libraries(androidboy sameboy rcheevos mgba android log m)

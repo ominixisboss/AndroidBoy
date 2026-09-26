@@ -67,6 +67,8 @@ final class ImageSkin extends Skin {
     private final Orientation portrait;
     private final Orientation landscape;
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
+    private final android.graphics.Matrix tiltMatrix = new android.graphics.Matrix();
+    private final float[] tilted = new float[8];
     private final Paint highlight = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Rect source = new Rect();
     private final RectF destination = new RectF();
@@ -272,8 +274,21 @@ final class ImageSkin extends Skin {
             int index = i++;
             Control control = layout.controls.get(index);
             if (control.shape == Control.DPAD) {
-                // Follows the pad's tilt, arm by arm.
+                canvas.save();
+                if (Math.abs(motion.tiltX) > 0.01f || Math.abs(motion.tiltY) > 0.01f) {
+                    // Tipped towards the held direction like every skin's d-pad: the pad's part of
+                    // the picture, redrawn tilted over its place (which then shows as its hole).
+                    tiltDpad(canvas, control.bounds, motion.tiltX, motion.tiltY, tiltMatrix, tilted);
+                    RectF r = entry.getValue();
+                    float sx = o.image.getWidth() / o.width;
+                    float sy = o.image.getHeight() / o.height;
+                    source.set((int) (r.left * sx), (int) (r.top * sy), (int) Math.ceil(r.right * sx),
+                            (int) Math.ceil(r.bottom * sy));
+                    canvas.drawBitmap(o.image, source, control.bounds, imagePaint);
+                }
+                // Then the pressed arms, following the tilt.
                 drawDpadArms(canvas, o, entry.getValue(), control.bounds, motion);
+                canvas.restore();
                 continue;
             }
             // Pressed artwork fades in and out with the press animation.
@@ -293,6 +308,12 @@ final class ImageSkin extends Skin {
                 highlight.setAlpha(Math.round(80 * amount));
                 canvas.drawOval(control.bounds, highlight);
             }
+        }
+        // L and R for Game Boy Advance games: the artwork has none, so draw them plainly.
+        for (int index = 0; index < layout.controls.size(); index++) {
+            Control control = layout.controls.get(index);
+            if (control.shape != Control.SHOULDER || !control.visible) continue;
+            drawShoulder(canvas, control, Math.min(1, motion.press(index)), 0x66FFFFFF, 0x40FFFFFF, 0x99FFFFFF, 0xE6FFFFFF);
         }
     }
 
