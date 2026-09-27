@@ -81,6 +81,36 @@ public class SkinTest {
     }
 
     @Test
+    public void imageSkinButtonsMove() throws IOException {
+        // The example has a picture without its buttons, so they can be moved.
+        ImageSkin skin = ImageSkin.load(exampleSkinDir());
+        assertTrue(skin.movableControls());
+        Skin.Layout layout = new Skin.Layout();
+        skin.layout(layout, 1080, 1920, 160, 144, true, false);
+        Skin.Control a = null;
+        for (Skin.Control control : layout.controls) if (control.keys == Emulator.KEY_A) a = control;
+        int oldX = (int) a.bounds.centerX();
+        int oldY = (int) a.bounds.centerY();
+        Bitmap before = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(before), layout);
+        int button = before.getPixel(oldX, oldY);
+
+        a.bounds.offset(-400, 250);
+        Bitmap after = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(after), layout);
+        // Where A was is filled in from the bare picture; A's artwork is where it went.
+        Bitmap bare = android.graphics.BitmapFactory.decodeFile(new File(exampleSkinDir(), "portrait_bare.webp").getPath());
+        assertTrue(colorDistance(after.getPixel(oldX, oldY), bare.getPixel(oldX, oldY)) < 16);
+        assertTrue(colorDistance(after.getPixel(oldX, oldY), button) > 40);
+        assertTrue(colorDistance(after.getPixel(oldX - 400, oldY + 250), button) < 24);
+    }
+
+    private static int colorDistance(int a, int b) {
+        return Math.max(Math.abs(Color.red(a) - Color.red(b)),
+                Math.max(Math.abs(Color.green(a) - Color.green(b)), Math.abs(Color.blue(a) - Color.blue(b))));
+    }
+
+    @Test
     public void liveDpads() throws Exception {
         // The joystick's ball goes the way it's pushed, no further on a diagonal than straight.
         float[] rest = Dpad3D.ballCenter(0, 0);
@@ -681,7 +711,7 @@ public class SkinTest {
     private void assertRejected(String json, String expected) throws IOException {
         File dir = temp.newFolder();
         for (File file : exampleSkinDir().listFiles()) {
-            if (file.getName().endsWith(".png")) Files.copy(file.toPath(), new File(dir, file.getName()).toPath());
+            if (!file.getName().equals("skin.json")) Files.copy(file.toPath(), new File(dir, file.getName()).toPath());
         }
         Files.write(new File(dir, "skin.json").toPath(), json.getBytes(StandardCharsets.UTF_8));
         try {

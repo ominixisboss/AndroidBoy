@@ -56,6 +56,11 @@ final class ImageSkin extends Skin {
         float[] camera;
         /** How much of the picture, below {@link #height}, is extra body that needn't be shown. */
         float below;
+        /** The picture without its controls, so they can be moved; null if the skin has none. */
+        Bitmap bare;
+        /** Each control's artwork lifted off the picture (and pressed), made when first moved. */
+        final Map<String, Bitmap> sprites = new java.util.HashMap<>();
+        final Map<String, Bitmap> pressedSprites = new java.util.HashMap<>();
 
         /** The whole picture's height, extra body included. */
         float fullHeight() {
@@ -136,6 +141,9 @@ final class ImageSkin extends Skin {
         o.image = decode(dir, json.getString("image"), imageSize);
         if (json.has("pressedImage")) {
             o.pressedImage = decode(dir, json.getString("pressedImage"), new int[2]);
+        }
+        if (json.has("bareImage")) {
+            o.bare = decode(dir, json.getString("bareImage"), new int[2]);
         }
         JSONArray size = json.optJSONArray("size");
         if (size != null) {
@@ -330,11 +338,108 @@ final class ImageSkin extends Skin {
                 canvas.drawBitmap(image, source, edge, imagePaint);
             }
         }
+        drawMovedControls(canvas, layout, p);
     }
 
+    /**
+     * The buttons are painted into the picture: they can move when the skin also has the picture
+     * without them, to fill in where they were.
+     */
     @Override
     boolean movableControls() {
-        return false; // The buttons are painted into the skin's picture.
+        return (portrait == null || portrait.bare != null) && (landscape == null || landscape.bare != null);
+    }
+
+    // ---- Moved controls ----
+
+    /** The part of the picture a control's artwork covers: its rectangle, plus room for its well, shadow and label. */
+    private static RectF artworkArea(RectF r, Orientation o) {
+        float margin = Math.max(Math.max(r.width(), r.height()) * 0.12f, 30);
+        return new RectF(Math.max(0, r.left - margin), Math.max(0, r.top - margin),
+                Math.min(o.width, r.right + margin), Math.min(o.fullHeight(), r.bottom + margin));
+    }
+
+    /** Where a control's artwork goes on screen, following the control from {@code base} to {@code bounds}. */
+    private static RectF movedArea(RectF area, RectF r, Placement p, RectF bounds) {
+        float k = bounds.width() / Math.max(1e-3f, r.width() * p.scale) * p.scale;
+        return new RectF(bounds.left - (r.left - area.left) * k, bounds.top - (r.top - area.top) * k,
+                bounds.right + (area.right - r.right) * k, bounds.bottom + (area.bottom - r.bottom) * k);
+    }
+
+    private static boolean moved(RectF bounds, RectF base) {
+        return Math.abs(bounds.left - base.left) > 0.5f || Math.abs(bounds.top - base.top) > 0.5f
+                || Math.abs(bounds.width() - base.width()) > 0.5f;
+    }
+
+    /**
+     * A control's artwork from {@code picture}: see-through wherever it matches the bare picture,
+     * so its well, shadow and label come with it but not the body around them.
+     */
+    private static Bitmap lift(Bitmap picture, Bitmap bare, RectF area, Orientation o) {
+        float sx = picture.getWidth() / o.width;
+        float sy = picture.getHeight() / o.fullHeight();
+        int left = Math.max(0, (int) (area.left * sx));
+        int top = Math.max(0, (int) (area.top * sy));
+        int w = Math.max(1, Math.min(picture.getWidth() - left, (int) Math.ceil(area.width() * sx)));
+        int h = Math.max(1, Math.min(picture.getHeight() - top, (int) Math.ceil(area.height() * sy)));
+        int[] art = new int[w * h];
+        picture.getPixels(art, 0, w, left, top, w, h);
+        // The bare picture may be a different size: sample it at the same places.
+        Bitmap plain = Bitmap.createScaledBitmap(Bitmap.createBitmap(bare,
+                Math.max(0, (int) (area.left * bare.getWidth() / o.width)),
+                Math.max(0, (int) (area.top * bare.getHeight() / o.fullHeight())),
+                Math.max(1, Math.min(bare.getWidth() - (int) (area.left * bare.getWidth() / o.width),
+                        (int) Math.ceil(area.width() * bare.getWidth() / o.width))),
+                Math.max(1, Math.min(bare.getHeight() - (int) (area.top * bare.getHeight() / o.fullHeight()),
+                        (int) Math.ceil(area.height() * bare.getHeight() / o.fullHeight())))), w, h, true);
+        int[] under = new int[w * h];
+        plain.getPixels(under, 0, w, 0, 0, w, h);
+        for (int i = 0; i < art.length; i++) {
+            int a = art[i];
+            int b = under[i];
+            int d = Math.max(Math.abs(Color.red(a) - Color.red(b)),
+                    Math.max(Math.abs(Color.green(a) - Color.green(b)), Math.abs(Color.blue(a) - Color.blue(b))));
+            // Small differences are compression noise; from there it fades in.
+            int alpha = Math.max(0, Math.min(255, (d - 10) * 255 / 30));
+            art[i] = (alpha << 24) | (a & 0xFFFFFF);
+        }
+        return Bitmap.createBitmap(art, w, h, Bitmap.Config.ARGB_8888);
+    }
+
+    /**
+     * Fills in where moved controls were, from the bare picture, then draws their artwork where
+     * they are now. Everything is filled in first, so a control can be moved over another's place.
+     */
+    private void drawMovedControls(Canvas canvas, Layout layout, Placement p) {
+        Orientation o = p.orientation;
+        if (o.bare == null) return;
+        int i = 0;
+        boolean any = false;
+        for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
+            Control control = layout.controls.get(i++);
+            if (!moved(control.bounds, map(p, entry.getValue()))) continue;
+            any = true;
+            RectF area = artworkArea(entry.getValue(), o);
+            float sx = o.bare.getWidth() / o.width;
+            float sy = o.bare.getHeight() / o.fullHeight();
+            source.set((int) (area.left * sx), (int) (area.top * sy), (int) Math.ceil(area.right * sx),
+                    (int) Math.ceil(area.bottom * sy));
+            canvas.drawBitmap(o.bare, source, map(p, area), imagePaint);
+        }
+        if (!any) return;
+        i = 0;
+        for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
+            Control control = layout.controls.get(i++);
+            RectF r = entry.getValue();
+            if (!control.visible || !moved(control.bounds, map(p, r))) continue;
+            Bitmap sprite = o.sprites.get(entry.getKey());
+            RectF area = artworkArea(r, o);
+            if (sprite == null) {
+                sprite = lift(o.image, o.bare, area, o);
+                o.sprites.put(entry.getKey(), sprite);
+            }
+            canvas.drawBitmap(sprite, null, movedArea(area, r, p, control.bounds), imagePaint);
+        }
     }
 
     @Override
@@ -377,7 +482,20 @@ final class ImageSkin extends Skin {
             float amount = Math.min(1, motion.press(index));
             if (amount <= 0.01f) continue;
             int alpha = Math.round(255 * amount);
-            if (o.pressedImage != null) {
+            RectF base = map(p, entry.getValue());
+            if (o.pressedImage != null && o.bare != null && moved(control.bounds, base)) {
+                // Moved: the pressed artwork lifted off its picture, following the control. Only
+                // its own rectangle: pressed pictures may leave everything else out.
+                RectF r = entry.getValue();
+                Bitmap sprite = o.pressedSprites.get(entry.getKey());
+                if (sprite == null) {
+                    sprite = lift(o.pressedImage, o.bare, r, o);
+                    o.pressedSprites.put(entry.getKey(), sprite);
+                }
+                imagePaint.setAlpha(alpha);
+                canvas.drawBitmap(sprite, null, control.bounds, imagePaint);
+                imagePaint.setAlpha(255);
+            } else if (o.pressedImage != null) {
                 // Copy the pressed artwork for just this control's area.
                 RectF r = entry.getValue();
                 float sx = o.pressedImage.getWidth() / o.width;

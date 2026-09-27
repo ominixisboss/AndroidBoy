@@ -689,6 +689,10 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
         style.draw_top(image, big[0], s)
         style.draw_grille(image, s, scaled(GRILLE, s))
     style.draw_bezel(image, screen, s, portrait)
+    # The picture without its controls, for filling in where the player moves them from.
+    bare = image.copy()
+    x, y, w, h = screen
+    ImageDraw.Draw(bare).rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 255))
     style.draw_wells(image, controls, s)
     style.draw_labels(image, controls, s)
 
@@ -705,6 +709,7 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
         x, y, w, h = screen
         ImageDraw.Draw(picture).rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 255))
         pictures.append(picture)
+    pictures.append(bare)
     if portrait:
         # The very top and bottom rows are stretched on phones taller still: make them even.
         for picture in pictures:
@@ -719,7 +724,7 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
             draw.rectangle([x - 2 * s, y - 2 * s, x + w + 2 * s, y + h + 2 * s], fill=255)
         plain = Image.new("RGBA", big, tuple(style.body_bottom) + (255,))
         pictures[1] = Image.composite(pictures[1], plain, keep)
-    for picture, suffix in zip(pictures, ("", "_pressed")):
+    for picture, suffix in zip(pictures, ("", "_pressed", "_bare")):
         picture = picture.convert("RGB").resize(size, Image.LANCZOS)
         path = os.path.join(out, name + suffix + "." + extension)
         if extension == "webp":
@@ -738,9 +743,10 @@ def write_skin(style, out, display_name, quantize=False, mask_pressed=False, ext
         if old.endswith((".png", ".webp")):
             os.remove(os.path.join(out, old))
     e = extension
-    portrait = dict(image="portrait." + e, pressedImage="portrait_pressed." + e, camera=CAMERA, extendsBelow=BELOW,
-                    **PORTRAIT)
-    landscape = dict(image="landscape." + e, pressedImage="landscape_pressed." + e, **LANDSCAPE)
+    portrait = dict(image="portrait." + e, pressedImage="portrait_pressed." + e, bareImage="portrait_bare." + e,
+                    camera=CAMERA, extendsBelow=BELOW, **PORTRAIT)
+    landscape = dict(image="landscape." + e, pressedImage="landscape_pressed." + e, bareImage="landscape_bare." + e,
+                     **LANDSCAPE)
     render(style, out, "portrait", (1080, 1920 + BELOW), PORTRAIT, True, quantize, mask_pressed, e)
     render(style, out, "landscape", (1920, 1080), LANDSCAPE, False, quantize, mask_pressed, e)
     skin = {
@@ -1460,7 +1466,7 @@ STYLES = [Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, 
 
 def main(only=None):
     if not only:
-        write_skin(Midnight(), EXAMPLE, "Midnight (example)", quantize=True, mask_pressed=True)
+        write_skin(Midnight(), EXAMPLE, "Midnight (example)", mask_pressed=True, extension="webp")
     for cls in STYLES:
         if only and cls.name.lower() not in only:
             continue
