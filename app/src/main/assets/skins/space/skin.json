@@ -7,6 +7,16 @@
     "color": "#222640",
     "arrows": "#50E6FF"
   },
+  "buttonStyle": {
+    "a": "#CDD4E2",
+    "b": "#CDD4E2",
+    "letters": "#182246",
+    "pills": "#222640",
+    "utility": "#222640",
+    "icons": "#50E6FF",
+    "material": "plastic",
+    "surround": "#04040C"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

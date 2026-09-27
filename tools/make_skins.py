@@ -609,9 +609,24 @@ class Style:
             return
         x, y, w, h = controls["dpad"]
         hollow(image, ellipse(box_of(x, y, w, h, 0.98)), darken(self.body_bottom, 0.12), depth=5 * s, opacity=0.35)
+        if self.live_buttons:
+            return  # The live buttons bring their own sockets.
         for name in ("a", "b"):
             x, y, w, h = controls[name]
             hollow(image, ellipse(box_of(x, y, w, h, 1.08)), darken(self.body_bottom, 0.15), depth=4 * s, opacity=0.45)
+
+    live_buttons = True          # A, B, Start, Select and the small buttons drawn live by the app, in 3D.
+
+    def button_style(self):
+        """The buttons the app draws live, in 3D, over the picture (see "buttonStyle" in docs/skins.md)."""
+        if not self.live_buttons:
+            return None
+        return {"a": hexify(self.a), "b": hexify(self.b), "letters": hexify(self.letters), "pills": hexify(self.pill),
+                "utility": hexify(self.utility), "icons": hexify(self.icon),
+                "material": "rubber" if self.button_shine < 0.2 else "plastic", "surround": hexify(self.body_bottom)}
+
+    def draw_under_button(self, image, name, box, s):
+        """Painted under a live button (a glow, a ring); nothing by default."""
 
     def dpad_style(self):
         """The d-pad the app draws live, in 3D, over the picture (see "dpadStyle" in docs/skins.md)."""
@@ -697,18 +712,22 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
         x, y, w, h = controls["speaker"]
         style.draw_grille(image, s, [x, y, x + w, y + h])
     style.draw_wells(image, controls, s)
+    if style.button_style():
+        for key in ("a", "b", "select", "start", "menu", "fastForward", "rewind"):
+            style.draw_under_button(image, key, controls[key], s)
     style.draw_labels(image, controls, s)
 
     pictures = []
     for pressed in (False, True):
         picture = image.copy()
         style.draw_dpad(picture, controls["dpad"], pressed, s)
-        for key in ("b", "a"):
-            style.draw_button(picture, key, controls[key], pressed, s)
-        for key in ("select", "start"):
-            style.draw_pill(picture, controls[key], pressed, s)
-        for key in ("menu", "fastForward", "rewind"):
-            style.draw_utility(picture, key, controls[key], pressed, s)
+        if not style.button_style():
+            for key in ("b", "a"):
+                style.draw_button(picture, key, controls[key], pressed, s)
+            for key in ("select", "start"):
+                style.draw_pill(picture, controls[key], pressed, s)
+            for key in ("menu", "fastForward", "rewind"):
+                style.draw_utility(picture, key, controls[key], pressed, s)
         x, y, w, h = screen
         ImageDraw.Draw(picture).rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 255))
         pictures.append(picture)
@@ -767,9 +786,11 @@ def write_skin(style, out, display_name, quantize=False, mask_pressed=False, ext
         "author": "AndroidBoy",
         "backgroundColor": style.background,
         "dpadStyle": style.dpad_style(),
+        "buttonStyle": style.button_style(),
         "portrait": portrait,
         "landscape": landscape,
     }
+    skin = {key: value for key, value in skin.items() if value is not None}
     with open(os.path.join(out, "skin.json"), "w") as f:
         json.dump(skin, f, indent=2)
         f.write("\n")
@@ -878,6 +899,7 @@ class Arcade(Style):
     icon = (240, 240, 245)
     grille = False
     STRIPES = [(230, 57, 70), (247, 127, 0), (252, 191, 73)]
+    live_buttons = False  # Its concave arcade buttons are painted.
 
     def body(self, size, s):
         image = gradient(size, self.body_top, self.body_bottom)
@@ -992,6 +1014,8 @@ class Woodgrain(Style):
     def draw_wells(self, image, controls, s):
         x, y, w, h = controls["dpad"]
         hollow(image, ellipse(box_of(x, y, w, h, 1.02)), darken(self.CREAM, 0.12), depth=5 * s, opacity=0.3)
+        if self.live_buttons:
+            return
         for name in ("a", "b"):
             x, y, w, h = controls[name]
             hollow(image, ellipse(box_of(x, y, w, h, 1.1)), darken(self.CREAM, 0.12), depth=4 * s, opacity=0.35)
@@ -1061,10 +1085,10 @@ class Space(Style):
         ImageDraw.Draw(front).rectangle([0, 0, w, py], fill=0)
         image.alpha_composite(tint(front, (236, 200, 150), 0.95))
 
-    def draw_button(self, image, name, box, pressed, s):
-        x, y, w, h = box
-        glow(image, ellipse(box_of(x, y, w, h, 0.96)), self.accent, 8 * s, 0.9 if pressed else 0.45)
-        super().draw_button(image, name, box, pressed, s)
+    def draw_under_button(self, image, name, box, s):
+        if name in ("a", "b"):
+            x, y, w, h = box
+            glow(image, ellipse(box_of(x, y, w, h, 1.0)), self.accent, 9 * s, 0.55)
 
 
 class Camo(Style):
@@ -1254,20 +1278,6 @@ class Ocean(Style):
             region.done()
             stamp(image, ellipse([x - r * 0.5, y - r * 0.6, x - r * 0.1, y - r * 0.2]), (255, 255, 255), 0.6)
 
-    def draw_button(self, image, name, box, pressed, s):
-        super().draw_button(image, name, box, pressed, s)
-        # A pearl's pink and blue sheen.
-        x, y, w, h = box
-        drop = 3 * s if pressed else 0
-        shape = ellipse(box_of(x, y + drop, w, h, 0.9))
-        region = Region(image, shape, 2)
-        m = region.mask(shape)
-        sheen = gradient(region.size, (255, 190, 220), (170, 220, 255), horizontal=True)
-        sheen.putalpha(m.point(lambda v: v * 30 // 255))
-        region.put(sheen)
-        region.done()
-        text(image, (x + w / 2, y + h / 2 + drop), name.upper(), h * 0.4, self.letters, "bold")
-
 
 class Lava(Style):
     """Cooling basalt split by glowing magma, with molten orange buttons."""
@@ -1305,10 +1315,10 @@ class Lava(Style):
                  glow_radius=4 * s)
         return image
 
-    def draw_button(self, image, name, box, pressed, s):
-        x, y, w, h = box
-        glow(image, ellipse(box_of(x, y, w, h, 0.9)), (255, 100, 20), 12 * s, 0.9 if pressed else 0.5)
-        super().draw_button(image, name, box, pressed, s)
+    def draw_under_button(self, image, name, box, s):
+        if name in ("a", "b"):
+            x, y, w, h = box
+            glow(image, ellipse(box_of(x, y, w, h, 0.98)), (255, 100, 20), 13 * s, 0.6)
 
 
 class Pixel(Style):
@@ -1326,6 +1336,7 @@ class Pixel(Style):
     wordmark = (255, 214, 64)
     accent = (255, 214, 64)
     wordmark_font = "mono"
+    live_buttons = False  # Pixel-art buttons, painted.
 
     @staticmethod
     def block_rect(image, box, color, px, border=None, shade=True):
@@ -1468,10 +1479,10 @@ class Marble(Style):
             x, y, w, h = controls[name]
             metal(image, ellipse(box_of(x, y, w, h, 1.04)), GOLD, lift=4 * s)
 
-    def draw_pill(self, image, box, pressed, s):
-        x, y, w, h = box
-        metal(image, poly(capsule_points(x + w / 2, y + h / 2, w * 0.86, h * 0.66, 0)), GOLD, lift=3 * s)
-        super().draw_pill(image, box, pressed, s)
+    def draw_under_button(self, image, name, box, s):
+        if name in ("select", "start"):
+            x, y, w, h = box
+            metal(image, poly(capsule_points(x + w / 2, y + h / 2, w * 0.92, h * 0.74, 0)), GOLD, lift=3 * s)
 
 
 STYLES = [Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel, Marble]

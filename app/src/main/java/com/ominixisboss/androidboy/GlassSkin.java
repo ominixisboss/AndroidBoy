@@ -309,10 +309,22 @@ final class GlassSkin extends Skin {
         float halfWidth = b.width() / 2 * shrink;
         float halfHeight = b.height() / 2 * shrink;
         rect.set(b.centerX() - halfWidth, b.centerY() - halfHeight, b.centerX() + halfWidth, b.centerY() + halfHeight);
-        Path shape = new Path();
         float corner = pill ? rect.height() / 2 : rect.width() / 2;
+        // A slab of glass: its edge shows below the face, which stands proud at rest and sinks
+        // into the slab when pressed.
+        float thickness = rect.height() * (pill ? 0.2f : 0.09f);
+        float p = Math.max(-0.2f, Math.min(1.15f, press));
+        float lift = thickness * (0.75f * (1 - p) + 0.1f * p);
+        RectF foot = new RectF(rect);
+        foot.offset(0, thickness - lift);
+        Path slab = new Path();
+        slab.addRoundRect(foot, corner, corner, Path.Direction.CW);
+        drawShadow(canvas, slab, density);
+        rect.offset(0, -lift);
+        slab.addRect(rect.left, rect.centerY(), rect.right, foot.centerY(), Path.Direction.CW);
+        drawGlassEdge(canvas, slab, rect.top, foot.bottom);
+        Path shape = new Path();
         shape.addRoundRect(rect, corner, corner, Path.Direction.CW);
-        drawShadow(canvas, shape, density);
         // Pressing pushes the glass in: the scene through it magnifies a little and shifts down.
         drawGlass(canvas, shape, rect, 0, rect.height() * 0.08f * press, 1 + 0.08f * press);
         canvas.save();
@@ -346,6 +358,21 @@ final class GlassSkin extends Skin {
         text.setShadowLayer(density * 2, 0, density, 0x40000000);
         canvas.drawText(letter, rect.centerX(), rect.centerY() - (text.descent() + text.ascent()) / 2, text);
         text.clearShadowLayer();
+    }
+
+    /** The side of a glass slab: light caught along it, fading down to a darker lower edge. */
+    private final Paint edge = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+    private void drawGlassEdge(Canvas canvas, Path slab, float top, float bottom) {
+        edge.setStyle(Paint.Style.FILL);
+        edge.setShader(new LinearGradient(0, top, 0, bottom,
+                new int[] {0x30FFFFFF, 0x55FFFFFF, 0x26000000}, new float[] {0, 0.55f, 1}, Shader.TileMode.CLAMP));
+        canvas.drawPath(slab, edge);
+        edge.setShader(null);
+        edge.setStyle(Paint.Style.STROKE);
+        edge.setStrokeWidth(Math.max(1, (bottom - top) * 0.012f));
+        edge.setColor(0x50FFFFFF);
+        canvas.drawPath(slab, edge);
     }
 
     /** The plus shape with rounded corners. */

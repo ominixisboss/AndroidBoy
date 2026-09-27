@@ -831,77 +831,31 @@ final class ClearSkin extends Skin {
     }
 
     /** A domed, glossy A or B button with its letter moulded in, sitting in a hole in the shell. */
+    private Button3D key3d;
+    private Button3D pill3d;
+
     private void drawButton(Canvas canvas, Control control, float press) {
         RectF b = control.bounds;
-        float r = b.width() / 2;
+        float r = b.width() / 2 * 0.95f;
         float cx = b.centerX();
-        float cy = b.centerY();
-        float down = Math.min(1f, press);
         int keys = variant.keys;
         boolean dark = luminance(keys) < 0.3f;
-        // The hole in the shell.
-        fill.setColor(0x70000000);
-        canvas.drawCircle(cx, cy + r * 0.03f, r * 1.08f, fill);
-        // The button's shadow, which it covers as it goes down.
-        fill.setColor(0x50000000);
-        canvas.drawCircle(cx, cy + r * 0.12f * (1 - down), r * 0.98f, fill);
-        float radius = r * (1 - 0.05f * down);
-        float y = cy + r * 0.05f * down;
-        fill.setShader(new RadialGradient(cx - radius * 0.35f, y - radius * 0.4f, radius * 1.5f,
-                new int[] {lighten(keys, dark ? 0.3f : 0.35f), keys, shade(keys, 0.7f)}, new float[] {0, 0.55f, 1},
-                Shader.TileMode.CLAMP));
-        fill.setColor(Color.BLACK);
-        canvas.drawCircle(cx, y, radius, fill);
-        fill.setShader(null);
-        if (down > 0.01f) {
-            fill.setColor(Color.argb((int) (70 * down), 0, 0, 0));
-            canvas.drawCircle(cx, y, radius, fill);
-        }
-        // The window's reflection.
-        fill.setColor(Color.argb((int) ((dark ? 110 : 150) * (1 - 0.5f * down)), 255, 255, 255));
-        rect.set(cx - radius * 0.55f, y - radius * 0.7f, cx - radius * 0.05f, y - radius * 0.35f);
-        canvas.save();
-        canvas.rotate(-30, rect.centerX(), rect.centerY());
-        canvas.drawOval(rect, fill);
-        canvas.restore();
-        stroke.setStrokeWidth(r * 0.04f);
-        stroke.setColor(dark ? 0xFF000000 : shade(keys, 0.6f));
-        canvas.drawCircle(cx, y, radius, stroke);
+        if (key3d == null) key3d = new Button3D(keys, Button3D.PLASTIC);
+        // A glossy key standing in its hole in the shell (see Button3D).
+        key3d.drawRound(canvas, cx, b.centerY(), r, press, plastic);
+        float y = Button3D.capY(b.centerY(), r, press);
         if (control.keys == KEY_MENU) {
-            drawMenuGlyph(canvas, stroke, cx, y, radius, dark ? 0xB0FFFFFF : shade(keys, 0.45f));
+            drawMenuGlyph(canvas, stroke, cx, y, r, dark ? 0xB0FFFFFF : shade(keys, 0.45f));
             return;
         }
-        // The letter, moulded in: a light edge under a dark one.
         String letter = control.keys == Emulator.KEY_A ? "A" : control.keys == Emulator.KEY_B ? "B" : "";
-        text.setTextSize(radius * 0.85f);
-        float baseline = y - (text.descent() + text.ascent()) / 2;
-        text.setColor(dark ? 0x40FFFFFF : 0x80FFFFFF);
-        canvas.drawText(letter, cx + radius * 0.03f, baseline + radius * 0.04f, text);
-        text.setColor(dark ? 0xFF050506 : shade(keys, 0.55f));
-        canvas.drawText(letter, cx, baseline, text);
+        key3d.drawLetter(canvas, letter, cx, b.centerY(), r, press, dark ? 0xFF050506 : shade(keys, 0.55f));
     }
 
     /** A rubber Start or Select button. */
     private void drawPill(Canvas canvas, RectF b, float press) {
-        float down = Math.min(1f, press);
-        float grow = b.height() * 0.18f;
-        rect.set(b.left - grow, b.top - grow, b.right + grow, b.bottom + grow);
-        fill.setColor(0x70000000);
-        canvas.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, fill);
-        float shrink = 1 - 0.05f * down;
-        float halfWidth = b.width() / 2 * shrink;
-        float halfHeight = b.height() / 2 * shrink;
-        float y = b.centerY() + b.height() * 0.06f * down;
-        rect.set(b.centerX() - halfWidth, y - halfHeight, b.centerX() + halfWidth, y + halfHeight);
-        int color = variant.pills;
-        useShader(new LinearGradient(0, rect.top, 0, rect.bottom, lighten(color, 0.22f), shade(color, 0.8f),
-                Shader.TileMode.CLAMP));
-        canvas.drawRoundRect(rect, halfHeight, halfHeight, fill);
-        fill.setShader(null);
-        if (down > 0.01f) {
-            fill.setColor(Color.argb((int) (60 * down), 0, 0, 0));
-            canvas.drawRoundRect(rect, halfHeight, halfHeight, fill);
-        }
+        if (pill3d == null) pill3d = new Button3D(variant.pills, Button3D.RUBBER);
+        pill3d.drawPill(canvas, b, press, plastic);
     }
 
     // ---- Helpers ----
