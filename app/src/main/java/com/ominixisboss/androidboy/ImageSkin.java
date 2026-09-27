@@ -30,6 +30,7 @@ final class ImageSkin extends Skin {
     private static final Map<String, Integer> CONTROL_KEYS = new LinkedHashMap<>();
     static {
         CONTROL_KEYS.put("dpad", Emulator.KEY_UP | Emulator.KEY_DOWN | Emulator.KEY_LEFT | Emulator.KEY_RIGHT);
+        CONTROL_KEYS.put("speaker", Skin.KEY_SPEAKER);
         CONTROL_KEYS.put("up", Emulator.KEY_UP);
         CONTROL_KEYS.put("down", Emulator.KEY_DOWN);
         CONTROL_KEYS.put("left", Emulator.KEY_LEFT);
@@ -273,8 +274,10 @@ final class ImageSkin extends Skin {
         fitScreen(out.screen, map(p, o.screen), frameWidth, frameHeight, integerScaling);
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
             String key = entry.getKey();
-            int shape = key.equals("dpad") ? Control.DPAD : Control.RECT;
-            out.controls.add(new Control(CONTROL_KEYS.get(key), shape, map(p, entry.getValue()), true));
+            int shape = key.equals("dpad") ? Control.DPAD : key.equals("speaker") ? Control.SPEAKER : Control.RECT;
+            // The spot between A and B only exists for touch, as in every skin: the layout editor
+            // doesn't offer it, and it follows A and B when they're moved.
+            out.controls.add(new Control(CONTROL_KEYS.get(key), shape, map(p, entry.getValue()), !key.equals("ab")));
         }
     }
 
@@ -417,7 +420,9 @@ final class ImageSkin extends Skin {
         boolean any = false;
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
             Control control = layout.controls.get(i++);
-            if (!moved(control.bounds, map(p, entry.getValue()))) continue;
+            // Invisible controls (the A+B spot) have no artwork of their own: their patch of the
+            // picture is A's and B's.
+            if (!control.visible || !moved(control.bounds, map(p, entry.getValue()))) continue;
             any = true;
             RectF area = artworkArea(entry.getValue(), o);
             float sx = o.bare.getWidth() / o.width;
@@ -455,6 +460,8 @@ final class ImageSkin extends Skin {
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
             int index = i++;
             Control control = layout.controls.get(index);
+            if (control.shape == Control.SPEAKER) continue; // Painted in the picture; moved like the others.
+            if (!control.visible) continue; // The A+B spot: A and B show themselves pressed.
             if (control.shape == Control.DPAD && dpad != null) {
                 // Drawn live: a solid cross that rocks, or a joystick that leans.
                 dpad.draw(canvas, control.bounds, motion.tiltX, motion.tiltY);

@@ -261,6 +261,7 @@ final class ClearSkin extends Skin {
             g.speakerX = width * 0.8f;
             g.speakerY = speakerY;
             g.speakerRadius = speaker;
+            out.controls.add(new Control(KEY_SPEAKER, Control.SPEAKER, square(g.speakerX, speakerY, speaker), true));
         }
     }
 
@@ -273,6 +274,13 @@ final class ClearSkin extends Skin {
     @Override
     void drawBackground(Canvas canvas, Layout layout) {
         Geometry g = layout.extras instanceof Geometry ? (Geometry) layout.extras : new Geometry();
+        // The speaker goes wherever its control has been moved (the body is redrawn when it moves).
+        for (Control control : layout.controls) {
+            if (control.shape != Control.SPEAKER) continue;
+            g.speakerX = control.bounds.centerX();
+            g.speakerY = control.bounds.centerY();
+            g.speakerRadius = control.bounds.width() / 2;
+        }
         int key = bodyKey(layout);
         if (body == null || body.getWidth() != layout.width || body.getHeight() != layout.height || bodyKey != key) {
             body = Bitmap.createBitmap(Math.max(1, layout.width), Math.max(1, layout.height), Bitmap.Config.ARGB_8888);
@@ -404,7 +412,7 @@ final class ClearSkin extends Skin {
         float u = Math.min(w, h);
         // Rubber membranes under the keys, their mint green showing through.
         for (Control control : layout.controls) {
-            if (!control.visible) continue;
+            if (!control.visible || control.shape == Control.SPEAKER) continue;
             RectF b = control.bounds;
             if (control.shape == Control.DPAD) {
                 drawMembraneCircle(canvas, b.centerX(), b.centerY(), b.width() * 0.6f, u);
@@ -660,7 +668,7 @@ final class ClearSkin extends Skin {
     void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {
         for (int i = 0; i < layout.controls.size(); i++) {
             Control control = layout.controls.get(i);
-            if (!control.visible) continue;
+            if (!control.visible || control.shape == Control.SPEAKER) continue; // Part of the body.
             float press = Math.max(0, Math.min(1.2f, motion.press(i)));
             if (control.shape == Control.DPAD) {
                 drawDpad(canvas, control.bounds, motion.tiltX, motion.tiltY);

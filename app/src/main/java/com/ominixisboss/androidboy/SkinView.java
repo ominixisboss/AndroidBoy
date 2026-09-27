@@ -479,6 +479,7 @@ final class SkinView extends View {
         Skin.Control best = null;
         float bestDistance = Float.MAX_VALUE;
         for (Skin.Control control : layout.controls) {
+            if (control.shape == Skin.Control.SPEAKER) continue; // Only there to look at.
             RectF b = control.bounds;
             float halfWidth = b.width() / 2;
             float halfHeight = b.height() / 2;
