@@ -1,10 +1,112 @@
+<div align="center">
+
+<img src="docs/images/hero.png" alt="AndroidBoy running with the Arcade, Glass, Woodgrain, Clear and Space skins" width="100%">
+
 # AndroidBoy
 
-A standalone Game Boy, Game Boy Color and Game Boy Advance emulator for Android, built on the
-[SameBoy](https://sameboy.github.io) 1.0.3 core by Lior Halphon, with [mGBA](https://mgba.io)
-0.10.5 by Jeffrey Pfau for Game Boy Advance games.
+**Game Boy, Game Boy Color and Game Boy Advance on your Android phone.**<br>
+One APK, no BIOS files, no frontend: install it, add your games, play.
 
-It doesn't need RetroArch or any other frontend: you install one APK, add your ROMs, and play.
+[![Latest release](https://img.shields.io/github/v/release/ominixisboss/AndroidBoy?label=download&color=e8467c)](https://github.com/ominixisboss/AndroidBoy/releases/latest)
+![Android 8.0+](https://img.shields.io/badge/Android-8.0%2B-3ddc84?logo=android&logoColor=white)
+![Game Boy · Color · Advance](https://img.shields.io/badge/plays-GB%20%C2%B7%20GBC%20%C2%B7%20GBA-6b5bd6)
+![Built on SameBoy and mGBA](https://img.shields.io/badge/built%20on-SameBoy%20%2B%20mGBA-2b2d5c)
+[![License: CC0](https://img.shields.io/badge/license-CC0-lightgrey)](LICENSE)
+
+[**Download the latest APK**](https://github.com/ominixisboss/AndroidBoy/releases/latest) ·
+[Skins](#skins) · [Screens](#screens) · [Screen filters](#screen-filters) · [All features](#features) · [Building](#building)
+
+</div>
+
+AndroidBoy is a standalone emulator built on the [SameBoy](https://sameboy.github.io) 1.0.3 core by
+Lior Halphon, with [mGBA](https://mgba.io) 0.10.5 by Jeffrey Pfau for Game Boy Advance games. It
+doesn't need RetroArch or any other frontend.
+
+## Highlights
+
+- 🎮 **Accurate emulation** of every Game Boy from the original to the Advance. Game Boy Color
+  games open with SameBoy's start-up animation, spelling out *ANDROIDBOY*.
+- 🎨 **74 skins**: artwork consoles, frosted glass over drifting orbs, see-through Clear shells,
+  soft pastels and themes after the original handhelds. They all reach up behind your phone's
+  camera cutout (the artwork skins put it in the strip above the screen), and you can drag and
+  resize any button.
+- 🕹️ **Buttons that move like real ones**: a 3D d-pad that rocks toward the direction you hold, an
+  arcade joystick that leans when you push it, and buttons that spring down and bounce back.
+- 🏆 **RetroAchievements**, with hardcore mode, leaderboards and a page for every achievement.
+- ⏪ **Rewind, fast-forward, slow motion, 9 save-state slots** and automatic resume.
+- 🔌 **Link cable** between two games on one phone or two phones on Wi-Fi, plus the **Game Boy
+  Printer** and **Camera**.
+- 📚 **A game library** with box art, favourites, search and **free homebrew games** to download.
+
+## Skins
+
+### Artwork
+
+Eleven hand-drawn consoles, each with its own texture and parts: the walnut *Deluxe*, *Arcade*
+with a ball-top joystick, *Orbit* with a ringed planet, veined *Marble* with gold trim, glowing
+*Magma*, a pixel-art *Press Start*, and more. The strip above each screen is where a hole-punch
+camera sits, and the body carries on to the bottom of tall phones.
+
+<p align="center"><img src="docs/images/skins-artwork.png" alt="The eleven artwork skins" width="100%"></p>
+
+The d-pads are drawn live in 3D. They tip toward the direction you hold, showing their sides,
+while Arcade's stick leans the way you push it (diagonals too) and springs back:
+
+<p align="center"><img src="docs/images/dpads.png" alt="The Arcade joystick and a 3D d-pad, at rest and pushed up, right and diagonally" width="70%"></p>
+
+### Glass
+
+Frosted-glass controls over a colourful backdrop whose glowing orbs drift slowly about. Each
+control shows a softened copy of what's behind it, with a bright rim and a reflection.
+
+<p align="center"><img src="docs/images/skins-glass.png" alt="The twelve Glass skins" width="80%"></p>
+
+### Clear
+
+See-through shells like the clear editions of the colour Game Boy: circuit board, chips, screws and
+speaker behind tinted plastic. You can put your own picture or GIF behind the plastic.
+
+<p align="center"><img src="docs/images/skins-clear.png" alt="The twelve Clear skins" width="80%"></p>
+
+### Soft
+
+A plain, lightly textured background, the screen edge to edge, and big pastel controls outlined
+in ink, with toolbars for everything else.
+
+<p align="center"><img src="docs/images/skins-soft.png" alt="The eight Soft skins" width="100%"></p>
+
+### Classics, colours and modern
+
+Themes styled after the original handhelds (Classic grey, Pocket, Super grey, Berry, Grape…) plus
+modern ones like OLED black, Neon, Synthwave, Vaporwave and Terminal.
+
+<p align="center"><img src="docs/images/skins-themes.png" alt="Sixteen of the built-in themes" width="100%"></p>
+
+Every skin works in landscape too:
+
+<p align="center"><img src="docs/images/landscape.png" alt="The Orbit and Aqua glass skins in landscape" width="100%"></p>
+
+You can also [make your own](docs/skins.md): a `.zip` of pictures and a layout file.
+
+## Screens
+
+The game library with its *Continue playing* card, the full-screen Game Menu, and an
+achievement's page:
+
+<p align="center"><img src="docs/images/screens.png" alt="The game library, the Game Menu and an achievement's page" width="90%"></p>
+
+## Screen filters
+
+All of SameBoy's filters run on the GPU. Here's the start-up logo through six of them:
+
+| | |
+| :---: | :---: |
+| <img src="docs/images/filter-sharp.png" alt="Sharp pixels" width="100%"><br>**Sharp pixels** | <img src="docs/images/filter-lcd.png" alt="LCD display" width="100%"><br>**LCD display** |
+| <img src="docs/images/filter-crt.png" alt="CRT display" width="100%"><br>**CRT display** | <img src="docs/images/filter-omniscale.png" alt="OmniScale" width="100%"><br>**OmniScale** |
+| <img src="docs/images/filter-hq2x.png" alt="HQ2x" width="100%"><br>**HQ2x** | <img src="docs/images/filter-monolcd.png" alt="Monochrome LCD" width="100%"><br>**Monochrome LCD** |
+
+<sub>The pictures above are drawn by the app's own code and shaders, with a frame from its start-up
+animation in the screen, not photos of a phone.</sub>
 
 ## Features
 
@@ -78,6 +180,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   too. **Backdrop…** in the Clear category puts your own GIF or picture behind the plastic in
   place of the circuit board (GIFs animate on Android 9 and later); you can still show the board
   over it, and turn the plastic's tint down to light or none.
+- **Camera cutouts.** Skins reach up behind a phone's camera cutout instead of stopping below it,
+  with the screen and buttons always below it; the artwork skins put a hole-punch camera in the
+  strip above the screen.
 - **Game Menu.** The in-game menu fills the screen, grouped into Quick access, Input, Display,
   Speed, System and More, each item with an icon and a line about what it does.
 - **Skins.** Built-in themes styled after the original handhelds, with shaded Game Boy-style
@@ -85,9 +190,10 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   and pink, Light gold, Gold edition, Super grey, Red & white, Berry, Grape, Kiwi, Dandelion, Teal,
   Ice blue, Coral, Mint, Lime, Sakura, Navy & gold, Sunset, Atomic purple and Advance indigo.
   Modern ones too: OLED black, Terminal green and Amber terminal (outlines), Neon, Synthwave,
-  Vaporwave, Pastel, and a minimal translucent overlay. Eleven image skins
+  Vaporwave, Pastel, and a minimal translucent overlay. Eleven artwork skins
   come with the app (Midnight, Arcade, Woodgrain, Space, Camo, Candy, Carbon, Ocean, Lava, Pixel
-  and Marble), and you can import your own as a `.zip` of images plus a layout file;
+  and Marble), with 3D d-pads drawn live (Arcade has a joystick), and you can import your own as a
+  `.zip` of images plus a layout file;
   see [docs/skins.md](docs/skins.md). The skin picker groups them into Soft, Glass, Clear, Game Boy classics,
   Colours, Modern & minimal, Artwork (the image skins) and Imported, and shows each group as a
   grid of previews: every skin drawn as it looks in a game, with the one in use outlined.
@@ -107,8 +213,11 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   the automatic resume), rewinding and cheats are off while it's on. Achievement progress is saved with
   each save state. Only a login token is kept on the device, never your password, and it's left
   out of backups. The **RetroAchievements** page in the main menu shows your points and every
-  Game Boy and Game Boy Color game you've unlocked achievements in, with your progress; tap a game
-  to open it on the website. In a game, the achievements list shows what the game says you're doing
+  Game Boy, Game Boy Color and Game Boy Advance game you've unlocked achievements in, with your
+  progress; tap a game to open it on the website. In a game, the full-screen achievements list groups
+  the game's achievements (locked and unlocked); tap one for its page: when you unlocked it, your
+  progress, whether it's missable, and how rare it is. A game without achievements offers your
+  profile instead. The list also shows what the game says you're doing
   (rich presence, which is also shown on your profile) and its **Leaderboards**, each with the top
   ten and the players around you. During a leaderboard attempt its live score or time sits in the
   corner, as does an achievement's progress when it changes.
