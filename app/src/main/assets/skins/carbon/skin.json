@@ -1,10 +1,15 @@
 {
   "name": "Carbon",
   "author": "AndroidBoy",
-  "backgroundColor": "#111214",
+  "backgroundColor": "#141416",
   "portrait": {
-    "image": "portrait.png",
-    "pressedImage": "portrait_pressed.png",
+    "image": "portrait.webp",
+    "pressedImage": "portrait_pressed.webp",
+    "camera": [
+      540,
+      48
+    ],
+    "extendsBelow": 480,
     "screen": [
       90,
       140,
@@ -69,8 +74,8 @@
     }
   },
   "landscape": {
-    "image": "landscape.png",
-    "pressedImage": "landscape_pressed.png",
+    "image": "landscape.webp",
+    "pressedImage": "landscape_pressed.webp",
     "screen": [
       540,
       90,

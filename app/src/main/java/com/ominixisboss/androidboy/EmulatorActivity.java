@@ -7,6 +7,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Insets;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -72,6 +73,10 @@ public final class EmulatorActivity extends Activity
     private SkinView skinView;
     private Achievements achievements;
     private AchievementPopup achievementPopup;
+    /** How far the camera cutout reaches down from the top, and its bounds (empty if none). */
+    private int topInset;
+    private final RectF topCutout = new RectF();
+    private int toolbarsButtonMargin;
     /** The RetroAchievements profile was opened over the game. */
     private boolean returningFromProfile;
     private TrackerOverlay trackerOverlay;
@@ -606,6 +611,7 @@ public final class EmulatorActivity extends Activity
                 closeMenu();
             }
         });
+        menuView.setPadding(0, topInset, 0, 0);
         frame.addView(menuView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT));
         menuView.animateIn();
@@ -853,13 +859,23 @@ public final class EmulatorActivity extends Activity
     private void makeRoomForToolbars() {
         boolean pinned = toolbarsWanted() && !toolbarsFade() && toolbarsShown;
         FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) root.getLayoutParams();
-        int top = pinned ? toolbars.top.getHeight() : 0;
+        int top = pinned ? topInset + toolbars.top.getHeight() : 0;
         int bottom = pinned ? toolbars.bottom.getHeight() : 0;
         if (params.topMargin != top || params.bottomMargin != bottom) {
             params.topMargin = top;
             params.bottomMargin = bottom;
             root.setLayoutParams(params);
         }
+        // Unless the toolbars are in the way, the game area starts at the very top, behind the camera.
+        int under = pinned ? 0 : topInset;
+        skinView.setTopInset(under, pinned ? null : topCutout);
+        FrameLayout.LayoutParams popup = achievementPopup.layoutParams();
+        popup.topMargin += under;
+        achievementPopup.setLayoutParams(popup);
+        FrameLayout.LayoutParams tracker = trackerOverlay.layoutParams();
+        tracker.topMargin += under;
+        trackerOverlay.setLayoutParams(tracker);
+        if (editBar != null) setTopMargin(editBar, under);
     }
 
     /** A small menu button for the top-left corner: brings the faded toolbars back when the skin has no menu button showing. */
@@ -879,6 +895,7 @@ public final class EmulatorActivity extends Activity
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(size, size,
                 android.view.Gravity.TOP | android.view.Gravity.START);
         params.setMargins(pad, pad, pad, pad);
+        toolbarsButtonMargin = pad;
         button.setLayoutParams(params);
         button.setVisibility(View.GONE);
         button.setAlpha(0f);
@@ -1494,6 +1511,7 @@ public final class EmulatorActivity extends Activity
         bar.addView(done);
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT, android.view.Gravity.TOP);
+        params.topMargin = ((FrameLayout.LayoutParams) root.getLayoutParams()).topMargin > 0 ? 0 : topInset;
         root.addView(bar, params);
         editBar = bar;
     }
@@ -1642,8 +1660,39 @@ public final class EmulatorActivity extends Activity
                 bottom = Math.max(bottom, insets.getDisplayCutout().getSafeInsetBottom());
             }
         }
-        view.setPadding(left, top, right, bottom);
+        // The top is left open: the skin reaches up behind the camera, and the toolbars, menu and
+        // popups are moved below it instead (see applyTopInset).
+        view.setPadding(left, 0, right, bottom);
+        RectF cutout = new RectF();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && insets.getDisplayCutout() != null) {
+            for (Rect r : insets.getDisplayCutout().getBoundingRects()) {
+                // The one at the top edge: a hole-punch camera or a notch.
+                if (r.top <= 0 && r.bottom > 0 && r.bottom <= top) cutout.set(r);
+            }
+        }
+        cutout.offset(-left, 0);
+        if (top != topInset || !cutout.equals(topCutout)) {
+            topInset = top;
+            topCutout.set(cutout);
+            applyTopInset();
+        }
         return insets;
+    }
+
+    /** Moves what mustn't sit behind the camera below it, and tells the skin where the camera is. */
+    private void applyTopInset() {
+        setTopMargin(toolbars.top, topInset);
+        setTopMargin(toolbarsButton, toolbarsButtonMargin + topInset);
+        // The menu covers everything, the camera's strip included, with its content below it.
+        if (menuView != null) menuView.setPadding(0, topInset, 0, 0);
+        makeRoomForToolbars();
+    }
+
+    private static void setTopMargin(View view, int margin) {
+        android.view.ViewGroup.MarginLayoutParams params = (android.view.ViewGroup.MarginLayoutParams) view.getLayoutParams();
+        if (params == null || params.topMargin == margin) return;
+        params.topMargin = margin;
+        view.setLayoutParams(params);
     }
 
     @SuppressWarnings("deprecation")

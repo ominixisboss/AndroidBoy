@@ -51,6 +51,50 @@ public class SkinTest {
     @Rule
     public TemporaryFolder temp = new TemporaryFolder();
 
+    @Test
+    public void imageSkinsLineUpWithTheCamera() throws IOException {
+        // The example marks the camera at y 48 of its 1080x1920 portrait picture.
+        ImageSkin skin = ImageSkin.load(exampleSkinDir());
+        Skin.Layout layout = new Skin.Layout();
+        // A 1080x2400 phone whose hole-punch camera is centred 60 pixels down.
+        layout.topInset = 100;
+        layout.topCutout.set(510, 30, 570, 90);
+        skin.layout(layout, 1080, 2400, 160, 144, true, false);
+        // Full width, moved down 12 so the camera point sits on the hole: the screen (y 140) lands at 152.
+        assertEquals(90, layout.screen.left);
+        assertEquals(152, layout.screen.top);
+        assertTrue(layout.screen.top >= layout.topInset);
+
+        // No cutout: the picture starts at the top.
+        Skin.Layout plain = new Skin.Layout();
+        skin.layout(plain, 1080, 2400, 160, 144, true, false);
+        assertEquals(140, plain.screen.top);
+
+        // A deep notch: the screen still clears it, and the controls stay on screen.
+        Skin.Layout notch = new Skin.Layout();
+        notch.topInset = 220;
+        notch.topCutout.set(340, 0, 740, 220);
+        skin.layout(notch, 1080, 2000, 160, 144, true, false);
+        assertTrue(notch.screen.top >= 220);
+        for (Skin.Control control : notch.controls) assertTrue(control.bounds.bottom <= 2000.5f);
+    }
+
+    @Test
+    public void drawnSkinsMoveBelowTheCamera() {
+        // SkinView lays drawn skins out under the cutout and moves them down, the body reaching up behind it.
+        Skin skin = ThemeSkin.fallback();
+        Skin.Layout below = new Skin.Layout();
+        skin.layout(below, 1080, 2300, 160, 144, true, false);
+        Skin.Layout moved = new Skin.Layout();
+        skin.layout(moved, 1080, 2300, 160, 144, true, false);
+        skin.moveDown(moved, 100);
+        assertEquals(2400, moved.height);
+        assertEquals(below.screen.top + 100, moved.screen.top);
+        for (int i = 0; i < moved.controls.size(); i++) {
+            assertEquals(below.controls.get(i).bounds.top + 100, moved.controls.get(i).bounds.top, 0.01f);
+        }
+    }
+
     private static File exampleSkinDir() {
         // Gradle runs tests in app/; other runners may use the repository root.
         for (String path : new String[] {"../docs/skins/example", "docs/skins/example"}) {

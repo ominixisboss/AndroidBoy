@@ -40,6 +40,9 @@ final class SkinView extends View {
     }
 
     private final Listener listener;
+    private static final RectF EMPTY = new RectF();
+    private int topInset;
+    private final RectF topCutout = new RectF();
     private final Skin.Layout layout = new Skin.Layout();
     private final SparseIntArray pointerKeys = new SparseIntArray();
     private final Rect lastScreen = new Rect();
@@ -189,9 +192,32 @@ final class SkinView extends View {
         relayout();
     }
 
+    /**
+     * How far the camera cutout reaches down from the top of this view, and its bounds in this
+     * view (empty for none). The skin's body reaches up behind it; the screen and controls stay
+     * below it.
+     */
+    void setTopInset(int inset, RectF cutout) {
+        int clamped = Math.max(0, inset);
+        RectF bounds = cutout != null ? cutout : new RectF();
+        if (clamped == topInset && bounds.equals(topCutout)) return;
+        topInset = clamped;
+        topCutout.set(bounds);
+        relayout();
+    }
+
     private void relayout() {
         if (getWidth() == 0 || getHeight() == 0) return;
-        skin.layout(layout, getWidth(), getHeight(), frameWidth, frameHeight, controlsVisible, integerScaling);
+        // Only while there's room under the cutout for the skin; a tiny window ignores it.
+        int inset = topInset < getHeight() / 3 ? topInset : 0;
+        layout.topInset = inset;
+        layout.topCutout.set(inset > 0 ? topCutout : EMPTY);
+        if (inset > 0 && !skin.handlesTopInset()) {
+            skin.layout(layout, getWidth(), getHeight() - inset, frameWidth, frameHeight, controlsVisible, integerScaling);
+            skin.moveDown(layout, inset);
+        } else {
+            skin.layout(layout, getWidth(), getHeight(), frameWidth, frameHeight, controlsVisible, integerScaling);
+        }
         if (shoulderButtons) Skin.addShoulderButtons(layout);
         baseBounds.clear();
         for (Skin.Control control : layout.controls) baseBounds.add(new RectF(control.bounds));

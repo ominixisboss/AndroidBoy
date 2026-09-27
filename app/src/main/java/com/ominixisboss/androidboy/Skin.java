@@ -51,6 +51,14 @@ abstract class Skin {
         final List<Control> controls = new ArrayList<>();
         /** Skin-specific extras computed during layout (e.g. bezel geometry). */
         Object extras;
+        /**
+         * Given by the view, and kept through {@link #reset}: how far down from the top the camera
+         * cutout (or anything else the screen and controls shouldn't go under) reaches, and the
+         * camera's own bounds (empty if there's no cutout at the top). The skin's body still
+         * reaches up behind it.
+         */
+        int topInset;
+        final RectF topCutout = new RectF();
 
         void reset(int w, int h, boolean controls) {
             width = w;
@@ -138,6 +146,31 @@ abstract class Skin {
      */
     abstract void layout(Layout out, int width, int height, int frameWidth, int frameHeight,
                          boolean controlsVisible, boolean integerScaling);
+
+    /**
+     * Whether {@link #layout} places everything around {@link Layout#topInset} itself. Otherwise
+     * the view lays the skin out in the space below it and moves it down with {@link #moveDown},
+     * so the body still covers the top.
+     */
+    boolean handlesTopInset() {
+        return false;
+    }
+
+    /**
+     * Moves a layout made for the space below a top inset down into place: the screen, controls
+     * and extras shift down by {@code dy} and the body covers the whole view, up behind the cutout.
+     */
+    final void moveDown(Layout out, int dy) {
+        if (dy == 0) return;
+        out.height += dy;
+        out.screen.offset(0, dy);
+        for (Control control : out.controls) control.bounds.offset(0, dy);
+        offsetExtras(out.extras, dy);
+    }
+
+    /** Shifts this skin's {@link Layout#extras} down by {@code dy}, for {@link #moveDown}. */
+    void offsetExtras(Object extras, float dy) {
+    }
 
     /** Draws everything except the game screen (the caller clips it out) and the controls. */
     abstract void drawBackground(Canvas canvas, Layout layout);

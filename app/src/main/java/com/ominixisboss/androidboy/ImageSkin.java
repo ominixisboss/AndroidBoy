@@ -52,6 +52,15 @@ final class ImageSkin extends Skin {
         float height;
         final RectF screen = new RectF();
         final Map<String, RectF> controls = new LinkedHashMap<>();
+        /** Where a camera cutout at the top of the display should sit in the picture; null if not given. */
+        float[] camera;
+        /** How much of the picture, below {@link #height}, is extra body that needn't be shown. */
+        float below;
+
+        /** The whole picture's height, extra body included. */
+        float fullHeight() {
+            return height + below;
+        }
     }
 
     private static final class Placement {
@@ -68,6 +77,7 @@ final class ImageSkin extends Skin {
     private final Orientation landscape;
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final android.graphics.Matrix tiltMatrix = new android.graphics.Matrix();
+    private final RectF edge = new RectF();
     private final float[] tilted = new float[8];
     private final Paint highlight = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Rect source = new Rect();
@@ -132,6 +142,12 @@ final class ImageSkin extends Skin {
             o.height = imageSize[1];
         }
         if (o.width <= 0 || o.height <= 0) throw new IOException(what + ": the size must be positive");
+        // Extra body below the controls, shown on screens taller than the rest of the picture.
+        o.below = (float) json.optDouble("extendsBelow", 0);
+        if (o.below < 0 || o.below >= o.height / 2) {
+            throw new IOException(what + ": \"extendsBelow\" must be less than half the picture's height");
+        }
+        o.height -= o.below;
 
         parseRect(o.screen, json.getJSONArray("screen"), o, what + " screen");
         if (o.screen.width() < 16 || o.screen.height() < 16) throw new IOException(what + ": the screen is too small");
@@ -148,6 +164,16 @@ final class ImageSkin extends Skin {
         }
         if (!o.controls.containsKey("menu")) {
             throw new IOException(what + ": a \"menu\" control is required, or the menu can only be opened with Back");
+        }
+        JSONArray camera = json.optJSONArray("camera");
+        if (camera != null) {
+            if (camera.length() != 2) throw new IOException(what + ": \"camera\" must be [x, y]");
+            float x = (float) camera.getDouble(0);
+            float y = (float) camera.getDouble(1);
+            if (x < 0 || y < 0 || x > o.width || y >= o.screen.top) {
+                throw new IOException(what + ": \"camera\" must be inside the picture, above the screen");
+            }
+            o.camera = new float[] {x, y};
         }
         return o;
     }
@@ -218,19 +244,18 @@ final class ImageSkin extends Skin {
     void layout(Layout out, int width, int height, int frameWidth, int frameHeight,
                 boolean controlsVisible, boolean integerScaling) {
         Orientation o = orientationFor(width, height);
+        int inset = out.topInset;
         if (o == null || !controlsVisible) {
             // No artwork for this orientation, or a gamepad is in use: lay out like the minimal theme,
             // on this skin's background colour. Layout.extras then isn't a Placement.
-            ThemeSkin.fallback().layout(out, width, height, frameWidth, frameHeight, controlsVisible, integerScaling);
+            Skin fallback = ThemeSkin.fallback();
+            fallback.layout(out, width, height - inset, frameWidth, frameHeight, controlsVisible, integerScaling);
+            fallback.moveDown(out, inset);
             return;
         }
         out.reset(width, height, true);
-        Placement p = new Placement();
-        p.orientation = o;
-        p.scale = Math.min(width / o.width, height / o.height);
-        p.offsetX = (width - o.width * p.scale) / 2;
-        p.offsetY = (height - o.height * p.scale) / 2;
-        out.extras = p;
+        out.extras = place(o, width, height, inset, out.topCutout);
+        Placement p = (Placement) out.extras;
 
         fitScreen(out.screen, map(p, o.screen), frameWidth, frameHeight, integerScaling);
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
@@ -238,6 +263,38 @@ final class ImageSkin extends Skin {
             int shape = key.equals("dpad") ? Control.DPAD : Control.RECT;
             out.controls.add(new Control(CONTROL_KEYS.get(key), shape, map(p, entry.getValue()), true));
         }
+    }
+
+    @Override
+    boolean handlesTopInset() {
+        return true;
+    }
+
+    /**
+     * Where the picture goes in a {@code width}×{@code height} view whose top {@code inset} pixels
+     * are behind a camera cutout ({@code cutout}, empty if unknown). A picture that marks where the
+     * camera goes is lined up with it, reaching up behind it; others fit in the space below.
+     */
+    private static Placement place(Orientation o, int width, int height, int inset, RectF cutout) {
+        Placement p = new Placement();
+        p.orientation = o;
+        if (o.camera == null || inset <= 0) {
+            float top = Math.max(0, inset);
+            float room = height - top;
+            p.scale = Math.min(width / o.width, room / o.height);
+            p.offsetX = (width - o.width * p.scale) / 2;
+            p.offsetY = o.camera != null ? 0 : top + (room - o.height * p.scale) / 2;
+            return p;
+        }
+        // Big enough to fill the width, but small enough that the screen clears the cutout with
+        // the whole picture still on screen.
+        p.scale = Math.min(width / o.width, Math.min(height / o.height, (height - inset) / (o.height - o.screen.top)));
+        p.offsetX = (width - o.width * p.scale) / 2;
+        float cameraY = cutout.isEmpty() ? inset / 2f : cutout.centerY();
+        float lowest = inset - o.screen.top * p.scale;          // Any higher and the screen is under the cutout.
+        float highest = Math.max(lowest, height - o.height * p.scale); // Any lower and the bottom is cut off.
+        p.offsetY = Math.max(lowest, Math.min(highest, cameraY - o.camera[1] * p.scale));
+        return p;
     }
 
     private static RectF map(Placement p, RectF r) {
@@ -251,8 +308,23 @@ final class ImageSkin extends Skin {
         if (!(layout.extras instanceof Placement)) return;
         Placement p = (Placement) layout.extras;
         destination.set(p.offsetX, p.offsetY, p.offsetX + p.orientation.width * p.scale,
-                p.offsetY + p.orientation.height * p.scale);
-        canvas.drawBitmap(p.orientation.image, null, destination, imagePaint);
+                p.offsetY + p.orientation.fullHeight() * p.scale);
+        Bitmap image = p.orientation.image;
+        canvas.drawBitmap(image, null, destination, imagePaint);
+        if (p.orientation.camera != null) {
+            // A picture made to line up with the camera: its top and bottom edges carry on to the
+            // edges of the view, so the body looks continuous on phones taller than the picture.
+            if (destination.top > 0.5f) {
+                source.set(0, 0, image.getWidth(), 1);
+                edge.set(destination.left, 0, destination.right, destination.top + 1);
+                canvas.drawBitmap(image, source, edge, imagePaint);
+            }
+            if (destination.bottom < layout.height - 0.5f) {
+                source.set(0, image.getHeight() - 1, image.getWidth(), image.getHeight());
+                edge.set(destination.left, destination.bottom - 1, destination.right, layout.height);
+                canvas.drawBitmap(image, source, edge, imagePaint);
+            }
+        }
     }
 
     @Override
@@ -281,7 +353,7 @@ final class ImageSkin extends Skin {
                     tiltDpad(canvas, control.bounds, motion.tiltX, motion.tiltY, tiltMatrix, tilted);
                     RectF r = entry.getValue();
                     float sx = o.image.getWidth() / o.width;
-                    float sy = o.image.getHeight() / o.height;
+                    float sy = o.image.getHeight() / o.fullHeight();
                     source.set((int) (r.left * sx), (int) (r.top * sy), (int) Math.ceil(r.right * sx),
                             (int) Math.ceil(r.bottom * sy));
                     canvas.drawBitmap(o.image, source, control.bounds, imagePaint);
@@ -299,7 +371,7 @@ final class ImageSkin extends Skin {
                 // Copy the pressed artwork for just this control's area.
                 RectF r = entry.getValue();
                 float sx = o.pressedImage.getWidth() / o.width;
-                float sy = o.pressedImage.getHeight() / o.height;
+                float sy = o.pressedImage.getHeight() / o.fullHeight();
                 source.set((int) (r.left * sx), (int) (r.top * sy), (int) Math.ceil(r.right * sx), (int) Math.ceil(r.bottom * sy));
                 imagePaint.setAlpha(alpha);
                 canvas.drawBitmap(o.pressedImage, source, control.bounds, imagePaint);
@@ -345,7 +417,7 @@ final class ImageSkin extends Skin {
                 bounds.left + bounds.width() * (column + 1) / 3, bounds.top + bounds.height() * (row + 1) / 3);
         if (o.pressedImage != null) {
             float sx = o.pressedImage.getWidth() / o.width;
-            float sy = o.pressedImage.getHeight() / o.height;
+            float sy = o.pressedImage.getHeight() / o.fullHeight();
             source.set((int) (armSource.left * sx), (int) (armSource.top * sy),
                     (int) Math.ceil(armSource.right * sx), (int) Math.ceil(armSource.bottom * sy));
             imagePaint.setAlpha(Math.round(255 * amount));

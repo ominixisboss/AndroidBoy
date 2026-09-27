@@ -124,6 +124,34 @@ public class AchievementsTest {
     }
 
     @Test
+    public void detailsOpenFullScreen() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        Achievements.Achievement a = new Achievements.Achievement(false, 25, "Speedrunner", "Beat the game in an hour",
+                "", "12/60", 42, 0, 12.5f, 3f, Achievements.Achievement.TYPE_WIN, 20f, 0, "Locked", "");
+        AchievementDialogs.showDetails(activity, a, false);
+        android.app.Dialog dialog = org.robolectric.shadows.ShadowDialog.getLatestDialog();
+        assertTrue(dialog.isShowing());
+        android.view.Window window = dialog.getWindow();
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, window.getAttributes().width);
+        assertEquals(ViewGroup.LayoutParams.MATCH_PARENT, window.getAttributes().height);
+        List<String> texts = new ArrayList<>();
+        collectText(window.getDecorView(), texts);
+        assertTrue(texts.toString(), texts.contains("Achievement"));
+        assertTrue(texts.contains("Speedrunner"));
+        assertTrue(texts.contains("25 points"));
+        assertTrue(texts.contains("Progress: 12/60 (20%)"));
+        assertTrue(texts.contains("View on RetroAchievements"));
+    }
+
+    private static void collectText(View view, List<String> texts) {
+        if (view instanceof TextView) texts.add(((TextView) view).getText().toString());
+        if (view instanceof ViewGroup) {
+            ViewGroup group = (ViewGroup) view;
+            for (int i = 0; i < group.getChildCount(); i++) collectText(group.getChildAt(i), texts);
+        }
+    }
+
+    @Test
     public void combinesProgressFromBothConsoles() {
         // id, total, unlocked, unlocked hardcore
         List<int[]> progress = new ArrayList<>();

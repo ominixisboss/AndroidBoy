@@ -265,6 +265,11 @@ final class ThemeSkin extends Skin {
         boolean portrait;
     }
 
+    @Override
+    void offsetExtras(Object extras, float dy) {
+        if (extras instanceof Geometry) ((Geometry) extras).bezel.offset(0, dy);
+    }
+
     private final String id;
     private final String category;
     private final String name;

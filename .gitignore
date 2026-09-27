@@ -12,3 +12,4 @@ captures/
 !app/debug.keystore
 node_modules/
 shader-previews/
+__pycache__/
