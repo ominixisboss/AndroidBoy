@@ -66,11 +66,12 @@ Control names:
 | `dpad` | 8-way d-pad. Diagonals are the corners between directions, and a finger can slide around it. |
 | `up`, `down`, `left`, `right` | Single directions, if you'd rather draw separate buttons. |
 | `a`, `b` | The A and B buttons. |
-| `ab` | Presses A and B together. Put a small one between the two buttons. |
+| `ab` | Presses A and B together. Put a small one between the two buttons. It's touch-only: when the player moves A and B, it follows them to halfway between. |
 | `start`, `select` | Start and Select. |
 | `menu` | Opens the in-game menu (save states, settings, and so on). |
 | `fastForward` | Fast-forwards while held. |
 | `rewind` | Rewinds while held. |
+| `speaker` | The speaker grille. Touching it does nothing, but the player can move and resize it with the buttons (it needs `bareImage`, like them). |
 
 All coordinates are in the skin's own space: the image's pixels, or `size` if set. The skin is
 scaled to fit the display, keeping its shape, and centred. So design for a common phone shape,

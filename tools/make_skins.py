@@ -687,12 +687,15 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
     style.decorate(image, controls, s, portrait)
     if portrait:
         style.draw_top(image, big[0], s)
-        style.draw_grille(image, s, scaled(GRILLE, s))
     style.draw_bezel(image, screen, s, portrait)
     # The picture without its controls, for filling in where the player moves them from.
     bare = image.copy()
     x, y, w, h = screen
     ImageDraw.Draw(bare).rectangle([x, y, x + w, y + h], fill=(0, 0, 0, 255))
+    if "speaker" in controls:
+        # The grille is a control too, so it can be moved: not in the bare picture.
+        x, y, w, h = controls["speaker"]
+        style.draw_grille(image, s, [x, y, x + w, y + h])
     style.draw_wells(image, controls, s)
     style.draw_labels(image, controls, s)
 
@@ -737,17 +740,27 @@ def render(style, out, name, size, layout, portrait, quantize=False, mask_presse
         picture.save(path, optimize=True)
 
 
+def portrait_layout(style):
+    """The portrait layout, with the speaker grille as a control when the style has one."""
+    layout = {"screen": PORTRAIT["screen"], "controls": dict(PORTRAIT["controls"])}
+    if style.grille:
+        x0, y0, x1, y1 = GRILLE
+        layout["controls"]["speaker"] = [x0, y0, x1 - x0, y1 - y0]
+    return layout
+
+
 def write_skin(style, out, display_name, quantize=False, mask_pressed=False, extension="png"):
     os.makedirs(out, exist_ok=True)
     for old in os.listdir(out):
         if old.endswith((".png", ".webp")):
             os.remove(os.path.join(out, old))
     e = extension
+    layout = portrait_layout(style)
     portrait = dict(image="portrait." + e, pressedImage="portrait_pressed." + e, bareImage="portrait_bare." + e,
-                    camera=CAMERA, extendsBelow=BELOW, **PORTRAIT)
+                    camera=CAMERA, extendsBelow=BELOW, **layout)
     landscape = dict(image="landscape." + e, pressedImage="landscape_pressed." + e, bareImage="landscape_bare." + e,
                      **LANDSCAPE)
-    render(style, out, "portrait", (1080, 1920 + BELOW), PORTRAIT, True, quantize, mask_pressed, e)
+    render(style, out, "portrait", (1080, 1920 + BELOW), layout, True, quantize, mask_pressed, e)
     render(style, out, "landscape", (1920, 1080), LANDSCAPE, False, quantize, mask_pressed, e)
     skin = {
         "name": display_name,

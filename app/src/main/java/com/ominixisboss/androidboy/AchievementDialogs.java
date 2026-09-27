@@ -479,7 +479,11 @@ final class AchievementDialogs {
         pill.setCornerRadius(dp(activity, 16));
         pill.setColor(0x1FFFFFFF);
         points.setBackground(pill);
-        content.addView(points);
+        // Only as wide as its text, in the middle (a vertical LinearLayout's default is full width).
+        LinearLayout.LayoutParams pillParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT);
+        pillParams.gravity = Gravity.CENTER_HORIZONTAL;
+        content.addView(points, pillParams);
 
         TextView description = text(activity, achievement.description, 18);
         description.setTextColor(GameMenuView.TITLE);

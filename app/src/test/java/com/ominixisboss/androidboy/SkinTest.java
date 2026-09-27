@@ -105,6 +105,38 @@ public class SkinTest {
         assertTrue(colorDistance(after.getPixel(oldX - 400, oldY + 250), button) < 24);
     }
 
+    @Test
+    public void imageSkinsABSpotHasNoArtwork() throws IOException {
+        // The spot between A and B is touch-only: the editor doesn't offer it, and when it follows
+        // A and B it mustn't cut its patch out of them or draw copies of their edges.
+        ImageSkin skin = ImageSkin.load(exampleSkinDir());
+        Skin.Layout layout = new Skin.Layout();
+        skin.layout(layout, 1080, 1920, 160, 144, true, false);
+        Skin.Control ab = find(layout, Emulator.KEY_A | Emulator.KEY_B);
+        assertFalse(ab.visible);
+        Skin.Control a = find(layout, Emulator.KEY_A);
+        Skin.Control b = find(layout, Emulator.KEY_B);
+        Bitmap before = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(before), layout);
+        ab.bounds.offset(-500, -300);
+        Bitmap after = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(after), layout);
+        for (Skin.Control button : new Skin.Control[] {a, b}) {
+            RectF r = button.bounds;
+            for (float fx = 0.1f; fx < 1; fx += 0.2f) {
+                for (float fy = 0.1f; fy < 1; fy += 0.2f) {
+                    int x = (int) (r.left + r.width() * fx);
+                    int y = (int) (r.top + r.height() * fy);
+                    assertEquals("button intact at " + x + "," + y, before.getPixel(x, y), after.getPixel(x, y));
+                }
+            }
+        }
+        // Nothing drawn where the spot went.
+        int x = (int) ab.bounds.centerX();
+        int y = (int) ab.bounds.centerY();
+        assertEquals(before.getPixel(x, y), after.getPixel(x, y));
+    }
+
     private static int colorDistance(int a, int b) {
         return Math.max(Math.abs(Color.red(a) - Color.red(b)),
                 Math.max(Math.abs(Color.green(a) - Color.green(b)), Math.abs(Color.blue(a) - Color.blue(b))));
@@ -293,6 +325,7 @@ public class SkinTest {
                 for (Skin.Control control : layout.controls) {
                     float x = control.bounds.centerX();
                     float y = control.bounds.centerY();
+                    if (control.shape == Skin.Control.SPEAKER) continue; // Nothing to press (speakersMoveButDoNothing).
                     if (control.shape == Skin.Control.DPAD) {
                         float r = control.bounds.width() / 2;
                         checkTouch(view, listener, x, y - r * 0.7f, Emulator.KEY_UP, what + " up");
@@ -323,6 +356,34 @@ public class SkinTest {
                 checkTouch(view, listener, 2, 2, 0, what + " corner");
             }
         }
+    }
+
+    @Test
+    public void speakersMoveButDoNothing() throws IOException {
+        // The classic theme, a Clear skin and the example image skin all have a speaker grille control.
+        for (Skin skin : new Skin[] {ThemeSkin.find("classic"), ClearSkin.ALL[0], ImageSkin.load(exampleSkinDir())}) {
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            Skin.Control speaker = find(layout, Skin.KEY_SPEAKER);
+            assertEquals(skin.id(), Skin.Control.SPEAKER, speaker.shape);
+            assertTrue(skin.id(), speaker.visible); // So the layout editor offers it.
+        }
+
+        // Touching it presses nothing, and it doesn't block the buttons around it.
+        Application app = RuntimeEnvironment.getApplication();
+        Skin skin = ThemeSkin.find("classic");
+        RecordingListener listener = new RecordingListener();
+        SkinView view = new SkinView(app, skin, listener);
+        view.setHaptics(false);
+        view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
+        Skin.Layout layout = new Skin.Layout();
+        skin.layout(layout, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+        RectF speaker = find(layout, Skin.KEY_SPEAKER).bounds;
+        touch(view, MotionEvent.ACTION_DOWN, speaker.centerX(), speaker.centerY());
+        assertEquals(0, listener.keys);
+        assertFalse(listener.fastForward);
+        assertFalse(listener.rewind);
+        touch(view, MotionEvent.ACTION_UP, speaker.centerX(), speaker.centerY());
     }
 
     @Test

@@ -16,6 +16,8 @@ abstract class Skin {
     static final int KEY_MENU = 1 << 16;
     static final int KEY_FAST_FORWARD = 1 << 17;
     static final int KEY_REWIND = 1 << 18;
+    /** Names the speaker grille for the layout editor; it's never pressed. */
+    static final int KEY_SPEAKER = 1 << 19;
     /** Keys that go to the game: the Game Boy's eight, plus L and R for Game Boy Advance games. */
     static final int GAME_KEYS = 0x3FF;
 
@@ -27,6 +29,11 @@ abstract class Skin {
         static final int RECT = 3;
         /** A Game Boy Advance shoulder button (L or R), added by {@link #addShoulderButtons}. */
         static final int SHOULDER = 4;
+        /**
+         * A speaker grille: nothing happens when it's touched, but it can be moved and resized
+         * with the buttons. Its keys are {@link #KEY_SPEAKER}, which is never pressed.
+         */
+        static final int SPEAKER = 5;
 
         final int keys;
         final int shape;

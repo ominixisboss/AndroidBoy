@@ -350,6 +350,7 @@ final class ThemeSkin extends Skin {
         if (controlsVisible) {
             if (g.portrait) {
                 layoutPortraitControls(out, g, width, height);
+                if (palette.speaker) addSpeaker(out, width, height);
             } else {
                 layoutLandscapeControls(out, g, width, height);
             }
@@ -460,7 +461,6 @@ final class ThemeSkin extends Skin {
         fill.setShader(null);
 
         drawBezel(canvas, g, layout.screen);
-        if (palette.speaker && g.portrait && layout.controlsVisible) drawSpeaker(canvas, layout, g);
     }
 
     private void drawBezel(Canvas canvas, Geometry g, Rect screen) {
@@ -510,25 +510,33 @@ final class ThemeSkin extends Skin {
         }
     }
 
-    private void drawSpeaker(Canvas canvas, Layout layout, Geometry g) {
-        // Six diagonal slots in the bottom-right corner, if they fit below the controls.
+    /** The speaker's slots in the bottom-right corner, if they fit below the controls; as a control, so it can be moved. */
+    private static void addSpeaker(Layout out, int width, int height) {
         float lowest = 0;
-        for (Control control : layout.controls) {
-            if (control.visible && control.bounds.right > layout.width * 0.55f) {
+        for (Control control : out.controls) {
+            if (control.visible && control.bounds.right > width * 0.55f) {
                 lowest = Math.max(lowest, control.bounds.bottom);
             }
         }
-        float slot = layout.width * 0.11f;
-        float centerX = layout.width * 0.8f;
-        float centerY = layout.height - slot * 0.9f;
+        float slot = width * 0.11f;
+        float centerX = width * 0.8f;
+        float centerY = height - slot * 0.9f;
         if (centerY - slot * 0.6f < lowest) return;
+        out.controls.add(new Control(KEY_SPEAKER, Control.SPEAKER,
+                new RectF(centerX - width * 0.1f, centerY - slot * 0.62f, centerX + width * 0.1f, centerY + slot * 0.62f), true));
+    }
+
+    /** Six diagonal slots filling {@code b}. */
+    private void drawSpeaker(Canvas canvas, RectF b) {
+        float unit = b.width() / 0.2f; // The width it was laid out for, so it scales when resized.
+        float slot = unit * 0.11f;
         stroke.setColor(shade(palette.body, 0.62f));
-        stroke.setStrokeWidth(layout.width * 0.012f);
+        stroke.setStrokeWidth(unit * 0.012f);
         canvas.save();
-        canvas.rotate(-30, centerX, centerY);
+        canvas.rotate(-30, b.centerX(), b.centerY());
         for (int i = -3; i < 3; i++) {
-            float x = centerX + (i + 0.5f) * layout.width * 0.028f;
-            canvas.drawLine(x, centerY - slot / 2, x, centerY + slot / 2, stroke);
+            float x = b.centerX() + (i + 0.5f) * unit * 0.028f;
+            canvas.drawLine(x, b.centerY() - slot / 2, x, b.centerY() + slot / 2, stroke);
         }
         canvas.restore();
     }
@@ -593,6 +601,9 @@ final class ThemeSkin extends Skin {
                     break;
                 case Control.SHOULDER:
                     drawShoulderButton(canvas, control, press);
+                    break;
+                case Control.SPEAKER:
+                    drawSpeaker(canvas, control.bounds);
                     break;
                 default:
                     if (control.keys == KEY_MENU || control.keys == KEY_REWIND || control.keys == KEY_FAST_FORWARD) {
