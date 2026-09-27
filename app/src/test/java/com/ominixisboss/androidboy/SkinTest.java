@@ -399,6 +399,61 @@ public class SkinTest {
     }
 
     @Test
+    public void clearSkinsDrawInEveryLayout() {
+        // Portrait and landscape, Game Boy and GBA (with shoulder buttons), controls shown and
+        // hidden, buttons enlarged in the layout editor, at rest and all held with the d-pad rocked.
+        int[][] sizes = {{PHONE_SHORT, PHONE_LONG}, {PHONE_LONG, PHONE_SHORT}, {270, 585}};
+        for (ClearSkin skin : ClearSkin.ALL) {
+            for (int[] size : sizes) {
+                for (boolean gba : new boolean[] {false, true}) {
+                    for (boolean visible : new boolean[] {true, false}) {
+                        Skin.Layout layout = new Skin.Layout();
+                        skin.layout(layout, size[0], size[1], gba ? 240 : 160, gba ? 160 : 144, visible, false);
+                        if (gba) Skin.addShoulderButtons(layout);
+                        for (Skin.Control control : layout.controls) {
+                            ControlLayout.Adjustment bigger = new ControlLayout.Adjustment();
+                            bigger.scale = ControlLayout.MAX_SCALE;
+                            ControlLayout.transform(new RectF(control.bounds), bigger, size[0], size[1], control.bounds);
+                        }
+                        Bitmap bitmap = Bitmap.createBitmap(size[0], size[1], Bitmap.Config.ARGB_8888);
+                        Canvas canvas = new Canvas(bitmap);
+                        skin.drawBackground(canvas, layout);
+                        for (int pressed : new int[] {0, -1}) {
+                            Skin.Motion motion = new Skin.Motion();
+                            motion.snap(layout, pressed);
+                            motion.tiltX = pressed != 0 ? 0.7f : 0;
+                            motion.tiltY = pressed != 0 ? -0.7f : 0;
+                            skin.drawControls(canvas, layout, pressed, motion);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    public void aSkinThatFailsToDrawDoesNotCrashTheGame() {
+        Skin broken = new Skin() {
+            @Override String id() { return "test:broken"; }
+            @Override String name() { return "Broken"; }
+            @Override int backgroundColor() { return Color.DKGRAY; }
+            @Override void layout(Layout out, int width, int height, int frameWidth, int frameHeight,
+                                  boolean controlsVisible, boolean integerScaling) {
+                ThemeSkin.find("classic").layout(out, width, height, frameWidth, frameHeight, controlsVisible, integerScaling);
+            }
+            @Override void drawBackground(Canvas canvas, Layout layout) {
+                throw new IllegalArgumentException("ending radius must be > 0");
+            }
+            @Override void drawControls(Canvas canvas, Layout layout, int pressed, Motion motion) {}
+        };
+        SkinView view = new SkinView(RuntimeEnvironment.getApplication(), broken, new RecordingListener());
+        view.layout(0, 0, PHONE_SHORT, PHONE_LONG);
+        Bitmap bitmap = Bitmap.createBitmap(PHONE_SHORT, PHONE_LONG, Bitmap.Config.ARGB_8888);
+        view.draw(new Canvas(bitmap)); // Must not throw.
+        assertEquals(Color.DKGRAY, bitmap.getPixel(2, 2)); // A plain body instead.
+    }
+
+    @Test
     public void speakersMoveButDoNothing() throws IOException {
         // The classic theme, a Clear skin and the example image skin all have a speaker grille control.
         for (Skin skin : new Skin[] {ThemeSkin.find("classic"), ClearSkin.ALL[0], ImageSkin.load(exampleSkinDir())}) {

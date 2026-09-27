@@ -71,6 +71,7 @@ final class Button3D {
      * {@code press} (0 to 1). {@code surround} is the shell's colour around it (0 if unknown).
      */
     void drawRound(Canvas canvas, float cx, float cy, float radius, float press, int surround) {
+        if (!(radius > 0)) return; // Nothing to draw, and gradients need a size.
         float down = clamp01(press);
         float r = radius;
         float capY = capY(cy, r, press);
@@ -201,6 +202,7 @@ final class Button3D {
         float capY = cy - h * 0.16f * (1 - p) + h * 0.07f * p;
         float footY = cy + h * 0.22f;
         float halfWidth = bounds.width() / 2;
+        if (!(h > 0) || !(halfWidth > 0)) return cy;
 
         // The socket.
         int hole = surround != 0 ? ThemeSkin.shade(surround, 0.42f) : 0xFF141418;

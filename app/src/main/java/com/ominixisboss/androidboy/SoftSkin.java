@@ -71,7 +71,7 @@ final class SoftSkin extends Skin {
     private static Bitmap grain;
 
     /** A small tile of speckles, repeated over the background for a matte, slightly rough look. */
-    private static synchronized Bitmap grain() {
+    static synchronized Bitmap grain() {
         if (grain == null) {
             int size = 96;
             int[] pixels = new int[size * size];

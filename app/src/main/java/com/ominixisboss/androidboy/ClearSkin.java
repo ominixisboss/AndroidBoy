@@ -1,6 +1,7 @@
 package com.ominixisboss.androidboy;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapShader;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
@@ -14,6 +15,7 @@ import android.graphics.Shader;
 import android.graphics.Typeface;
 import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
+import android.util.Log;
 
 import java.util.Random;
 
@@ -23,8 +25,10 @@ import static com.ominixisboss.androidboy.ThemeSkin.shade;
 
 /**
  * Clear skins: a see-through handheld shell, like the clear editions of the colour Game Boy.
- * The circuit board, chips, screws, rubber membranes and speaker show through tinted plastic,
- * and the screen sits in a glossy black lens. The d-pad is a glossy cross sunk in a rimmed,
+ * The circuit board shows through the tinted, frosted plastic: copper traces, a processor, memory,
+ * capacitors and gold button contacts, placed in the gaps between the controls, plus the screen's
+ * ribbon cable, screw posts, rubber membranes and the speaker with its wires. The screen sits in a
+ * glossy black lens. The d-pad is a glossy cross sunk in a rimmed,
  * cross-shaped well, with outlined arrows and a dimple in the middle; it rocks in 3D towards the
  * held direction. Uses the toolbars for the menu, like the Soft and Glass skins.
  */
@@ -160,15 +164,19 @@ final class ClearSkin extends Skin {
     private final Path wellPath = cross(1.13f, ARM + 0.09f, 0.16f);
     private final Path padPath = cross(1f, ARM, 0.13f);
     private final Path arrowPath = arrow();
-    private Bitmap body;
-    private int bodyKey;
+    /** The shell, drawn once (see {@link #body}); shared by every Clear skin. */
+    private static Bitmap body;
+    private static int bodyKey;
+    /** Bigger screens get a smaller picture of the shell, scaled up (about 11 MB at most). */
+    private static final double MAX_BODY_PIXELS = 2_800_000;
+    private final Paint bodyPaint = new Paint(Paint.FILTER_BITMAP_FLAG);
 
     private ClearSkin(Variant variant) {
         this.variant = variant;
         plastic = variant.shell | 0xFF000000;
         backingTop = lighten(plastic, 0.72f);
         backingBottom = lighten(plastic, 0.52f);
-        board = mix(0xFF2E6B4F, plastic, 0.3f);
+        board = mix(0xFF1C5C3A, plastic, 0.2f);
         trace = lighten(board, 0.4f);
         membrane = mix(0xFFB5E8D6, plastic, 0.35f);
         rim = lighten(plastic, 0.72f);
@@ -281,15 +289,49 @@ final class ClearSkin extends Skin {
             g.speakerY = control.bounds.centerY();
             g.speakerRadius = control.bounds.width() / 2;
         }
-        int key = bodyKey(layout);
-        if (body == null || body.getWidth() != layout.width || body.getHeight() != layout.height || bodyKey != key) {
-            body = Bitmap.createBitmap(Math.max(1, layout.width), Math.max(1, layout.height), Bitmap.Config.ARGB_8888);
-            drawBody(new Canvas(body), layout, g);
-            bodyKey = key;
-        }
         Drawable picture = backdrop;
         if (picture != null) drawBackdrop(canvas, picture, layout.width, layout.height);
-        canvas.drawBitmap(body, 0, 0, null);
+        synchronized (ClearSkin.class) {
+            Bitmap cached = body(layout, g);
+            if (cached != null) {
+                rect.set(0, 0, layout.width, layout.height);
+                canvas.drawBitmap(cached, null, rect, bodyPaint);
+            } else {
+                drawBody(canvas, layout, g); // No memory for the picture: draw it straight onto the screen.
+            }
+        }
+    }
+
+    /**
+     * The shell and everything in it, drawn once into a picture that's kept until the layout or the
+     * settings change. One picture is shared by every Clear skin, so switching between them doesn't
+     * pile up full-screen pictures; a very big screen gets one at a lower resolution. Null if
+     * there's no memory for it.
+     */
+    private Bitmap body(Layout layout, Geometry g) {
+        int key = 31 * bodyKey(layout) + variant.id.hashCode();
+        if (body != null && bodyKey == key) return body;
+        float scale = (float) Math.min(1, Math.sqrt(MAX_BODY_PIXELS / Math.max(1.0, (double) layout.width * layout.height)));
+        int width = Math.max(1, Math.round(layout.width * scale));
+        int height = Math.max(1, Math.round(layout.height * scale));
+        try {
+            if (body == null || body.getWidth() != width || body.getHeight() != height) {
+                body = null; // Let the old one go before making the new one.
+                body = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            } else {
+                body.eraseColor(Color.TRANSPARENT);
+            }
+            Canvas canvas = new Canvas(body);
+            canvas.scale(scale, scale);
+            drawBody(canvas, layout, g);
+            bodyKey = key;
+            return body;
+        } catch (OutOfMemoryError | RuntimeException e) {
+            Log.w("ClearSkin", "Could not draw the shell into a picture", e);
+            body = null;
+            bodyKey = 0;
+            return null;
+        }
     }
 
     /** The backdrop filling the view, cropped to fit, like a picture behind the plastic. */
@@ -338,70 +380,336 @@ final class ClearSkin extends Skin {
         drawPrinting(canvas, layout);
     }
 
-    /** The circuit board: traces, small parts and chips. */
+    /**
+     * The circuit board: a shaped green board with copper traces running between its parts,
+     * solder pads and white silkscreen labels. The parts are placed in the gaps between the
+     * controls (wherever the player has moved them), so none hides under a button.
+     */
     private void drawBoard(Canvas canvas, Layout layout, Geometry g) {
         int w = layout.width;
         int h = layout.height;
         float u = Math.min(w, h);
-        // The same board every time.
-        Random random = new Random(0x6B0BL);
-        RectF boardRect = new RectF(u * 0.04f, u * 0.04f, w - u * 0.04f, h - u * 0.04f);
-        fill.setColor(withAlpha(board, 0xA8));
-        canvas.drawRoundRect(boardRect, u * 0.03f, u * 0.03f, fill);
-        // A few wide ground and power tracks, then lots of thin signal traces ending in vias.
-        stroke.setColor(withAlpha(trace, 0x70));
-        stroke.setStrokeWidth(u * 0.014f);
-        for (int i = 0; i < 6; i++) drawTrace(canvas, random, boardRect, u, 3);
-        stroke.setStrokeWidth(u * 0.0045f);
-        stroke.setColor(withAlpha(trace, 0xB0));
-        for (int i = 0; i < 110; i++) {
-            float[] end = drawTrace(canvas, random, boardRect, u, 2 + random.nextInt(3));
-            fill.setColor(withAlpha(trace, 0xD0));
-            canvas.drawCircle(end[0], end[1], u * 0.0075f, fill);
-            fill.setColor(withAlpha(board, 0xFF));
-            canvas.drawCircle(end[0], end[1], u * 0.0032f, fill);
-        }
-        // Small parts: resistors and capacitors.
-        for (int i = 0; i < 40; i++) {
-            float x = boardRect.left + random.nextFloat() * boardRect.width();
-            float y = boardRect.top + random.nextFloat() * boardRect.height();
-            float length = u * (0.016f + random.nextFloat() * 0.01f);
-            boolean across = random.nextBoolean();
-            rect.set(x, y, x + (across ? length : length * 0.5f), y + (across ? length * 0.5f : length));
-            fill.setColor(random.nextInt(3) == 0 ? 0xE08C6E4A : 0xE0303034);
-            canvas.drawRect(rect, fill);
-            fill.setColor(0xE0C8CCD2);
-            if (across) {
-                canvas.drawRect(rect.left, rect.top, rect.left + length * 0.2f, rect.bottom, fill);
-                canvas.drawRect(rect.right - length * 0.2f, rect.top, rect.right, rect.bottom, fill);
-            } else {
-                canvas.drawRect(rect.left, rect.top, rect.right, rect.top + length * 0.2f, fill);
-                canvas.drawRect(rect.left, rect.bottom - length * 0.2f, rect.right, rect.bottom, fill);
-            }
-        }
-        // The chips: a big one with a grid of solder balls, and one with legs.
-        RectF dpad = null;
-        RectF pills = null;
+        Random random = new Random(0x6B0BL); // The same board every time.
+        RectF boardRect = new RectF(u * 0.045f, u * 0.045f, w - u * 0.045f, h - u * 0.045f);
+        if (g.portrait) boardRect.top = Math.max(boardRect.top, g.lens.top + u * 0.02f);
+        // The board, with its corners rounded.
+        float corner = u * 0.04f;
+        path.reset();
+        path.addRoundRect(boardRect, corner, corner, Path.Direction.CW);
+        useShader(new LinearGradient(0, boardRect.top, 0, boardRect.bottom, withAlpha(lighten(board, 0.08f), 0xC8),
+                withAlpha(shade(board, 0.85f), 0xC8), Shader.TileMode.CLAMP));
+        canvas.drawPath(path, fill);
+        fill.setShader(null);
+        stroke.setStrokeWidth(u * 0.004f);
+        stroke.setColor(withAlpha(lighten(board, 0.3f), 0x90));
+        canvas.drawPath(path, stroke);
+        canvas.save();
+        canvas.clipPath(path);
+
+        // Where parts may go: not under the controls or the lens, and not on each other.
+        java.util.List<RectF> taken = new java.util.ArrayList<>();
         for (Control control : layout.controls) {
-            if (control.shape == Control.DPAD) dpad = control.bounds;
-            if (control.shape == Control.PILL) {
-                if (pills == null) pills = new RectF(control.bounds); else pills.union(control.bounds);
+            if (!control.visible && control.shape != Control.SPEAKER) continue;
+            RectF b = new RectF(control.bounds);
+            float grow = Math.max(b.width(), b.height()) * (control.shape == Control.PILL ? 0.5f : 0.12f);
+            b.inset(-grow, -grow);
+            if (control.shape == Control.PILL) b.bottom += control.bounds.height() * 2.4f; // Its label.
+            taken.add(b);
+        }
+        if (g.hasLens) taken.add(new RectF(g.lens.left, g.lens.top, g.lens.right, g.lens.bottom + u * 0.09f));
+        RectF inner = new RectF(boardRect);
+        inner.inset(u * 0.03f, u * 0.03f);
+
+        // The parts, biggest first: the processor, memory, a crystal, capacitors and a row of resistors.
+        java.util.List<RectF> parts = new java.util.ArrayList<>();
+        RectF cpu = place(random, inner, taken, u * 0.15f, u * 0.15f);
+        RectF ram = place(random, inner, taken, u * 0.14f, u * 0.065f);
+        RectF crystal = place(random, inner, taken, u * 0.075f, u * 0.035f);
+        if (cpu != null) parts.add(cpu);
+        if (ram != null) parts.add(ram);
+        if (crystal != null) parts.add(crystal);
+        java.util.List<RectF> caps = new java.util.ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            RectF cap = place(random, inner, taken, u * 0.06f, u * 0.06f);
+            if (cap != null) caps.add(cap);
+        }
+        java.util.List<RectF> smalls = new java.util.ArrayList<>();
+        for (int i = 0; i < 14; i++) {
+            boolean across = random.nextBoolean();
+            RectF small = place(random, inner, taken, u * (across ? 0.03f : 0.016f), u * (across ? 0.016f : 0.03f));
+            if (small != null) smalls.add(small);
+        }
+
+        // Copper: wide power tracks along the edges, then signal traces fanning out of the chips.
+        int copper = mix(0xFFC8923E, board, 0.25f);
+        stroke.setStrokeWidth(u * 0.012f);
+        stroke.setColor(withAlpha(copper, 0x60));
+        rect.set(inner);
+        rect.inset(-u * 0.012f, -u * 0.012f);
+        canvas.drawRoundRect(rect, corner * 0.7f, corner * 0.7f, stroke);
+        stroke.setStrokeWidth(u * 0.0042f);
+        stroke.setColor(withAlpha(copper, 0xA8));
+        for (RectF part : parts) {
+            int count = part == cpu ? 18 : 8;
+            for (int i = 0; i < count; i++) {
+                float[] start = edgePoint(random, part);
+                float[] end = drawTraceFrom(canvas, random, inner, u, start[0], start[1], (int) start[2], 2 + random.nextInt(2));
+                drawVia(canvas, end[0], end[1], u, copper);
             }
         }
-        if (g.portrait && dpad != null) {
-            // Low down, clear of the Start and Select labels.
-            float size = u * 0.17f;
-            float lowest = pills != null ? pills.bottom + pills.height() * 2.4f : dpad.bottom;
-            float chipY = Math.max(lowest + size * 0.6f, h - u * 0.2f);
-            if (chipY + size / 2 < h - u * 0.03f) drawGridChip(canvas, u * 0.24f, chipY, size);
-            float legsY = Math.max(lowest + u * 0.06f, h - u * 0.2f);
-            if (legsY + u * 0.05f < h - u * 0.1f) drawLeggedChip(canvas, w * 0.5f, legsY, u * 0.11f, u * 0.07f);
-        } else {
-            float side = layout.screen.left;
-            if (side > u * 0.2f) {
-                drawGridChip(canvas, side / 2, h * 0.17f, Math.min(side * 0.4f, u * 0.17f));
-                drawLeggedChip(canvas, w - side / 2, h * 0.17f, Math.min(side * 0.4f, u * 0.14f), Math.min(side * 0.25f, u * 0.09f));
+        for (int i = 0; i < 40; i++) {
+            float x = inner.left + random.nextFloat() * inner.width();
+            float y = inner.top + random.nextFloat() * inner.height();
+            float[] end = drawTraceFrom(canvas, random, inner, u, x, y, random.nextInt(4) * 2, 2 + random.nextInt(2));
+            drawVia(canvas, x, y, u, copper);
+            drawVia(canvas, end[0], end[1], u, copper);
+        }
+        // Gold contacts under each button: the rubber's carbon pill closes these rings.
+        for (Control control : layout.controls) {
+            if (!control.visible || control.shape == Control.SPEAKER) continue;
+            RectF b = control.bounds;
+            if (control.shape == Control.DPAD) {
+                for (int d = 0; d < 4; d++) {
+                    double angle = Math.PI / 2 * d;
+                    drawContact(canvas, b.centerX() + (float) Math.cos(angle) * b.width() * 0.3f,
+                            b.centerY() + (float) Math.sin(angle) * b.width() * 0.3f, b.width() * 0.1f, copper);
+                }
+            } else if (control.shape != Control.PILL) {
+                drawContact(canvas, b.centerX(), b.centerY(), b.width() * 0.3f, copper);
             }
+        }
+
+        // The parts themselves.
+        text.setTypeface(Typeface.MONOSPACE);
+        if (cpu != null) drawQuadChip(canvas, cpu, "AB-CPU", "CGB 2026", u);
+        if (ram != null) drawRamChip(canvas, ram, u);
+        if (crystal != null) drawCrystal(canvas, crystal, u);
+        for (RectF cap : caps) drawCapacitor(canvas, cap, u);
+        for (int i = 0; i < smalls.size(); i++) drawSmallPart(canvas, smalls.get(i), random.nextInt(3) == 0, u);
+        // Silkscreen: part names, and the board's own name along the bottom.
+        text.setTextSize(u * 0.018f);
+        text.setColor(0xB0F2F2EE);
+        if (cpu != null) canvas.drawText("U1", cpu.left + u * 0.02f, cpu.top - u * 0.018f, text);
+        if (ram != null) canvas.drawText("U2", ram.left + u * 0.02f, ram.top - u * 0.02f, text);
+        if (crystal != null) canvas.drawText("X1", crystal.centerX(), crystal.top - u * 0.01f, text);
+        for (int i = 0; i < caps.size(); i++) {
+            RectF cap = caps.get(i);
+            canvas.drawText("C" + (i + 3), cap.centerX(), cap.bottom + u * 0.022f, text);
+        }
+        text.setTextSize(u * 0.02f);
+        text.setColor(0x90F2F2EE);
+        RectF free = place(random, inner, taken, u * 0.42f, u * 0.03f);
+        if (free != null) canvas.drawText("ANDROIDBOY MAIN BOARD  REV 2", free.centerX(), free.bottom, text);
+        text.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD));
+        canvas.restore(); // The board's clip.
+
+        // The screen's ribbon cable, from under the lens down to its connector.
+        if (g.portrait && g.hasLens) {
+            float ribbonWidth = u * 0.11f;
+            float x = g.lens.left + u * 0.1f;
+            float top = g.lens.bottom - u * 0.02f;
+            float bottom = g.lens.bottom + u * 0.12f;
+            rect.set(x, top, x + ribbonWidth, bottom);
+            fill.setColor(0xB8C98A2A);
+            canvas.drawRect(rect, fill);
+            stroke.setStrokeWidth(u * 0.0025f);
+            stroke.setColor(0x80FFD890);
+            for (int i = 1; i < 10; i++) {
+                float lx = x + ribbonWidth * i / 10f;
+                canvas.drawLine(lx, top, lx, bottom - u * 0.012f, stroke);
+            }
+            fill.setColor(0xE8E8E4DA);
+            canvas.drawRect(x - u * 0.008f, bottom - u * 0.014f, x + ribbonWidth + u * 0.008f, bottom + u * 0.01f, fill);
+        }
+    }
+
+    /**
+     * A free spot for a part {@code width}×{@code height} inside {@code area}, clear of everything in
+     * {@code taken} (which it's then added to), or null if there's no room.
+     */
+    private static RectF place(Random random, RectF area, java.util.List<RectF> taken, float width, float height) {
+        if (area.width() < width || area.height() < height) return null;
+        for (int attempt = 0; attempt < 60; attempt++) {
+            float x = area.left + random.nextFloat() * (area.width() - width);
+            float y = area.top + random.nextFloat() * (area.height() - height);
+            RectF spot = new RectF(x, y, x + width, y + height);
+            RectF padded = new RectF(spot);
+            padded.inset(-width * 0.25f - area.width() * 0.01f, -height * 0.25f - area.width() * 0.01f);
+            boolean clear = true;
+            for (RectF other : taken) {
+                if (RectF.intersects(padded, other)) {
+                    clear = false;
+                    break;
+                }
+            }
+            if (clear) {
+                taken.add(padded);
+                return spot;
+            }
+        }
+        return null;
+    }
+
+    /** A random point on the edge of {@code part}, and the direction (0 right, 2 down, 4 left, 6 up) out of it. */
+    private static float[] edgePoint(Random random, RectF part) {
+        int side = random.nextInt(4);
+        float t = 0.1f + random.nextFloat() * 0.8f;
+        switch (side) {
+            case 0: return new float[] {part.right, part.top + part.height() * t, 0};
+            case 1: return new float[] {part.left + part.width() * t, part.bottom, 2};
+            case 2: return new float[] {part.left, part.top + part.height() * t, 4};
+            default: return new float[] {part.left + part.width() * t, part.top, 6};
+        }
+    }
+
+    /** A trace: straight and 45° runs from ({@code x}, {@code y}), starting out {@code direction}. Returns where it ends. */
+    private float[] drawTraceFrom(Canvas canvas, Random random, RectF area, float unit, float x, float y, int direction,
+                                  int segments) {
+        path.reset();
+        path.moveTo(x, y);
+        for (int i = 0; i < segments; i++) {
+            float length = unit * (0.03f + random.nextFloat() * (i == 0 ? 0.06f : 0.14f));
+            double angle = Math.toRadians(direction * 45);
+            x = clampTo(x + (float) Math.cos(angle) * length, area.left, area.right);
+            y = clampTo(y + (float) Math.sin(angle) * length, area.top, area.bottom);
+            path.lineTo(x, y);
+            direction = (direction + (random.nextBoolean() ? 1 : 7)) % 8;
+            if (i + 1 < segments) {
+                // Back to straight after a diagonal, as boards are routed.
+                length = unit * (0.02f + random.nextFloat() * 0.05f);
+                angle = Math.toRadians(direction * 45);
+                x = clampTo(x + (float) Math.cos(angle) * length, area.left, area.right);
+                y = clampTo(y + (float) Math.sin(angle) * length, area.top, area.bottom);
+                path.lineTo(x, y);
+                direction = (direction + (random.nextBoolean() ? 1 : 7)) % 8;
+            }
+        }
+        canvas.drawPath(path, stroke);
+        return new float[] {x, y};
+    }
+
+    private void drawVia(Canvas canvas, float x, float y, float unit, int copper) {
+        fill.setColor(withAlpha(lighten(copper, 0.2f), 0xE0));
+        canvas.drawCircle(x, y, unit * 0.0075f, fill);
+        fill.setColor(0xFF0C1A12);
+        canvas.drawCircle(x, y, unit * 0.003f, fill);
+    }
+
+    /** Interleaved gold rings, which a button's carbon pill bridges when it's pressed. */
+    private void drawContact(Canvas canvas, float cx, float cy, float radius, int copper) {
+        if (radius <= 0) return;
+        fill.setColor(withAlpha(lighten(copper, 0.25f), 0xD0));
+        canvas.drawCircle(cx, cy, radius, fill);
+        stroke.setStrokeWidth(radius * 0.12f);
+        stroke.setColor(withAlpha(shade(board, 0.6f), 0xE0));
+        canvas.drawCircle(cx, cy, radius * 0.72f, stroke);
+        canvas.drawCircle(cx, cy, radius * 0.4f, stroke);
+        canvas.drawLine(cx - radius, cy, cx + radius, cy, stroke);
+    }
+
+    /** The processor: a square chip with legs on all four sides and its name printed on it. */
+    private void drawQuadChip(Canvas canvas, RectF chip, String name, String line, float u) {
+        fill.setColor(0xF0D8DCE2);
+        int legs = 12;
+        float pitch = chip.width() * 0.8f / legs;
+        float leg = chip.width() * 0.07f;
+        for (int i = 0; i < legs; i++) {
+            float along = chip.left + chip.width() * 0.1f + (i + 0.5f) * pitch;
+            float down = chip.top + chip.height() * 0.1f + (i + 0.5f) * pitch;
+            canvas.drawRect(along - pitch * 0.2f, chip.top - leg, along + pitch * 0.2f, chip.top + leg, fill);
+            canvas.drawRect(along - pitch * 0.2f, chip.bottom - leg, along + pitch * 0.2f, chip.bottom + leg, fill);
+            canvas.drawRect(chip.left - leg, down - pitch * 0.2f, chip.left + leg, down + pitch * 0.2f, fill);
+            canvas.drawRect(chip.right - leg, down - pitch * 0.2f, chip.right + leg, down + pitch * 0.2f, fill);
+        }
+        rect.set(chip);
+        rect.inset(leg * 0.6f, leg * 0.6f);
+        useShader(new LinearGradient(rect.left, rect.top, rect.right, rect.bottom, 0xFF34363C, 0xFF16171A,
+                Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(rect, u * 0.006f, u * 0.006f, fill);
+        fill.setShader(null);
+        fill.setColor(0x50FFFFFF);
+        canvas.drawCircle(rect.left + rect.width() * 0.12f, rect.top + rect.height() * 0.12f, rect.width() * 0.035f, fill);
+        text.setTextSize(rect.width() * 0.13f);
+        text.setColor(0xB0E8E8E8);
+        canvas.drawText(name, rect.centerX(), rect.centerY(), text);
+        text.setTextSize(rect.width() * 0.09f);
+        text.setColor(0x80E8E8E8);
+        canvas.drawText(line, rect.centerX(), rect.centerY() + rect.height() * 0.18f, text);
+    }
+
+    /** A memory chip: legs along its long sides. */
+    private void drawRamChip(Canvas canvas, RectF chip, float u) {
+        fill.setColor(0xF0D0D4DA);
+        int legs = 10;
+        float pitch = chip.width() / legs;
+        for (int i = 0; i < legs; i++) {
+            float x = chip.left + (i + 0.5f) * pitch;
+            canvas.drawRect(x - pitch * 0.2f, chip.top - chip.height() * 0.14f, x + pitch * 0.2f,
+                    chip.bottom + chip.height() * 0.14f, fill);
+        }
+        rect.set(chip);
+        fill.setColor(0xF01C1D21);
+        canvas.drawRect(rect, fill);
+        fill.setColor(0x30FFFFFF);
+        rect.set(chip.left, chip.top, chip.right, chip.top + chip.height() * 0.2f);
+        canvas.drawRect(rect, fill);
+        text.setTextSize(chip.height() * 0.3f);
+        text.setColor(0x90E8E8E8);
+        canvas.drawText("SRAM 64K", chip.centerX(), chip.centerY() + chip.height() * 0.12f, text);
+    }
+
+    /** A crystal: a rounded silver can. */
+    private void drawCrystal(Canvas canvas, RectF can, float u) {
+        useShader(new LinearGradient(0, can.top, 0, can.bottom, 0xFFF2F3F5, 0xFF8C9098, Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(can, can.height() / 2, can.height() / 2, fill);
+        fill.setShader(null);
+        stroke.setStrokeWidth(u * 0.002f);
+        stroke.setColor(0x80505458);
+        rect.set(can);
+        rect.inset(can.height() * 0.15f, can.height() * 0.15f);
+        canvas.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, stroke);
+    }
+
+    /** An electrolytic capacitor from above: a can with a cross stamped in its top and a stripe down one side. */
+    private void drawCapacitor(Canvas canvas, RectF cap, float u) {
+        float cx = cap.centerX();
+        float cy = cap.centerY();
+        float r = cap.width() / 2;
+        fill.setColor(0x60000000);
+        canvas.drawCircle(cx + r * 0.1f, cy + r * 0.14f, r, fill);
+        fill.setShader(new RadialGradient(cx - r * 0.3f, cy - r * 0.3f, r * 1.4f, 0xFF3C5FA8, 0xFF16264A,
+                Shader.TileMode.CLAMP));
+        fill.setColor(Color.BLACK);
+        canvas.drawCircle(cx, cy, r, fill);
+        fill.setShader(null);
+        // The polarity stripe.
+        fill.setColor(0xB0D8DCE6);
+        rect.set(cx - r, cy - r, cx + r, cy + r);
+        canvas.drawArc(rect, 120, 60, true, fill);
+        // The top: a silver disc with its vent cross.
+        fill.setShader(new RadialGradient(cx - r * 0.2f, cy - r * 0.2f, r, 0xFFEEF0F4, 0xFF8E939C, Shader.TileMode.CLAMP));
+        fill.setColor(Color.BLACK);
+        canvas.drawCircle(cx, cy, r * 0.72f, fill);
+        fill.setShader(null);
+        stroke.setStrokeWidth(r * 0.08f);
+        stroke.setColor(0x90505460);
+        canvas.drawLine(cx - r * 0.5f, cy, cx + r * 0.5f, cy, stroke);
+        canvas.drawLine(cx, cy - r * 0.5f, cx, cy + r * 0.5f, stroke);
+    }
+
+    /** A resistor or capacitor the size of a grain of rice, with its metal ends. */
+    private void drawSmallPart(Canvas canvas, RectF part, boolean resistor, float u) {
+        fill.setColor(resistor ? 0xF0202226 : 0xF0A07850);
+        canvas.drawRect(part, fill);
+        fill.setColor(0xF0D6D9DE);
+        boolean across = part.width() > part.height();
+        float end = (across ? part.width() : part.height()) * 0.22f;
+        if (across) {
+            canvas.drawRect(part.left, part.top, part.left + end, part.bottom, fill);
+            canvas.drawRect(part.right - end, part.top, part.right, part.bottom, fill);
+        } else {
+            canvas.drawRect(part.left, part.top, part.right, part.top + end, fill);
+            canvas.drawRect(part.left, part.bottom - end, part.right, part.bottom, fill);
         }
     }
 
@@ -410,7 +718,7 @@ final class ClearSkin extends Skin {
         int w = layout.width;
         int h = layout.height;
         float u = Math.min(w, h);
-        // Rubber membranes under the keys, their mint green showing through.
+        // Rubber membranes under the keys, see-through, with the dark carbon pill under each key.
         for (Control control : layout.controls) {
             if (!control.visible || control.shape == Control.SPEAKER) continue;
             RectF b = control.bounds;
@@ -419,97 +727,64 @@ final class ClearSkin extends Skin {
             } else if (control.shape == Control.PILL) {
                 float grow = b.height() * 0.7f;
                 rect.set(b.left - grow, b.top - grow, b.right + grow, b.bottom + grow);
-                fill.setColor(withAlpha(membrane, 0xC8));
+                fill.setColor(withAlpha(membrane, 0x90));
                 canvas.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, fill);
                 stroke.setStrokeWidth(u * 0.004f);
-                stroke.setColor(withAlpha(shade(membrane, 0.8f), 0xA0));
+                stroke.setColor(withAlpha(lighten(membrane, 0.4f), 0xA0));
                 canvas.drawRoundRect(rect, rect.height() / 2, rect.height() / 2, stroke);
             } else {
                 drawMembraneCircle(canvas, b.centerX(), b.centerY(), b.width() * 0.66f, u);
             }
         }
-        // Screw posts.
+        // Screw posts, moulded into the back of the shell.
         float[][] screws = g.portrait
                 ? new float[][] {{u * 0.1f, g.lens.bottom + u * 0.07f}, {w - u * 0.1f, g.lens.bottom + u * 0.07f},
                         {u * 0.09f, h - u * 0.09f}, {w * 0.5f, h - u * 0.07f}}
                 : new float[][] {{u * 0.08f, u * 0.08f}, {w - u * 0.08f, u * 0.08f}, {u * 0.08f, h - u * 0.08f},
                         {w - u * 0.08f, h - u * 0.08f}};
         for (float[] screw : screws) drawScrew(canvas, screw[0], screw[1], u);
-        // The speaker behind its grille.
+        // The speaker behind its grille: its cone, the magnet in the middle, and two wires to the board.
         if (g.speakerRadius > 0) {
             float r = g.speakerRadius;
+            stroke.setStrokeWidth(u * 0.006f);
+            stroke.setColor(0xE0C8302C);
+            canvas.drawLine(g.speakerX - r * 0.2f, g.speakerY - r * 0.9f, g.speakerX - r * 1.1f, g.speakerY - r * 1.5f, stroke);
+            stroke.setColor(0xE0202224);
+            canvas.drawLine(g.speakerX + r * 0.2f, g.speakerY - r * 0.9f, g.speakerX - r * 0.8f, g.speakerY - r * 1.65f, stroke);
             fill.setShader(new RadialGradient(g.speakerX, g.speakerY, r,
-                    new int[] {0xFFD2A574, 0xFFA07A58, 0xFF6E6A66, 0xFF4A4846}, new float[] {0f, 0.3f, 0.75f, 1f},
+                    new int[] {0xFF9EA2AA, 0xFF55585E, 0xFFB08A60, 0xFF7A5E40, 0xFF3A3836}, new float[] {0f, 0.28f, 0.34f, 0.85f, 1f},
                     Shader.TileMode.CLAMP));
             fill.setColor(Color.BLACK);
             canvas.drawCircle(g.speakerX, g.speakerY, r, fill);
             fill.setShader(null);
-            stroke.setStrokeWidth(u * 0.004f);
-            stroke.setColor(0x60000000);
-            for (int i = 1; i <= 3; i++) canvas.drawCircle(g.speakerX, g.speakerY, r * i / 3.4f, stroke);
+            stroke.setStrokeWidth(u * 0.003f);
+            stroke.setColor(0x50000000);
+            for (int i = 2; i <= 5; i++) canvas.drawCircle(g.speakerX, g.speakerY, r * i / 5.6f, stroke);
+            fill.setColor(0x60FFFFFF);
+            canvas.drawCircle(g.speakerX - r * 0.08f, g.speakerY - r * 0.1f, r * 0.08f, fill);
         }
-    }
-
-    /** A trace from a random point on the board: straight and 45° runs. Returns where it ends. */
-    private float[] drawTrace(Canvas canvas, Random random, RectF area, float unit, int segments) {
-        float x = area.left + random.nextFloat() * area.width();
-        float y = area.top + random.nextFloat() * area.height();
-        path.reset();
-        path.moveTo(x, y);
-        int direction = random.nextInt(4) * 2; // Start straight: 0 right, 2 down, 4 left, 6 up.
-        for (int i = 0; i < segments; i++) {
-            float length = unit * (0.04f + random.nextFloat() * 0.16f);
-            double angle = Math.toRadians(direction * 45);
-            x = clampTo(x + (float) Math.cos(angle) * length, area.left + unit * 0.01f, area.right - unit * 0.01f);
-            y = clampTo(y + (float) Math.sin(angle) * length, area.top + unit * 0.01f, area.bottom - unit * 0.01f);
-            path.lineTo(x, y);
-            direction = (direction + (random.nextBoolean() ? 1 : 7)) % 8;
-        }
-        canvas.drawPath(path, stroke);
-        return new float[] {x, y};
-    }
-
-    private void drawGridChip(Canvas canvas, float cx, float cy, float size) {
-        rect.set(cx - size / 2, cy - size / 2, cx + size / 2, cy + size / 2);
-        fill.setColor(0xD8222226);
-        canvas.drawRoundRect(rect, size * 0.04f, size * 0.04f, fill);
-        int count = 8;
-        float step = size / (count + 1);
-        fill.setColor(0xE8B8BCC4);
-        for (int i = 1; i <= count; i++) {
-            for (int j = 1; j <= count; j++) {
-                canvas.drawCircle(rect.left + i * step, rect.top + j * step, step * 0.28f, fill);
-            }
-        }
-    }
-
-    private void drawLeggedChip(Canvas canvas, float cx, float cy, float width, float height) {
-        fill.setColor(0xE0C0C4CA);
-        int legs = 8;
-        float pitch = width / legs;
-        for (int i = 0; i < legs; i++) {
-            float x = cx - width / 2 + (i + 0.5f) * pitch;
-            canvas.drawRect(x - pitch * 0.22f, cy - height / 2 - height * 0.18f, x + pitch * 0.22f, cy + height / 2 + height * 0.18f, fill);
-        }
-        rect.set(cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2);
-        fill.setColor(0xE01C1C20);
-        canvas.drawRect(rect, fill);
-        fill.setColor(0x40FFFFFF);
-        canvas.drawCircle(rect.left + height * 0.2f, rect.top + height * 0.2f, height * 0.08f, fill);
     }
 
     private void drawMembraneCircle(Canvas canvas, float cx, float cy, float radius, float unit) {
-        fill.setColor(withAlpha(membrane, 0xC8));
+        if (radius <= 0) return;
+        fill.setColor(withAlpha(membrane, 0x90));
         canvas.drawCircle(cx, cy, radius, fill);
         stroke.setStrokeWidth(unit * 0.004f);
-        stroke.setColor(withAlpha(shade(membrane, 0.8f), 0xA0));
+        stroke.setColor(withAlpha(lighten(membrane, 0.4f), 0xA0));
         canvas.drawCircle(cx, cy, radius, stroke);
-        canvas.drawCircle(cx, cy, radius * 0.9f, stroke);
+        stroke.setColor(withAlpha(shade(membrane, 0.7f), 0x80));
+        canvas.drawCircle(cx, cy, radius * 0.88f, stroke);
     }
 
+    /** A screw in its post: the post is clear plastic, a ring of light around the metal head. */
     private void drawScrew(Canvas canvas, float x, float y, float unit) {
-        fill.setColor(withAlpha(lighten(plastic, 0.5f), 0x90));
-        canvas.drawCircle(x, y, unit * 0.03f, fill);
+        float post = unit * 0.032f;
+        fill.setColor(withAlpha(shade(plastic, 0.7f), 0x70));
+        canvas.drawCircle(x, y + post * 0.12f, post, fill);
+        stroke.setStrokeWidth(post * 0.14f);
+        stroke.setColor(withAlpha(lighten(plastic, 0.7f), 0x90));
+        rect.set(x - post, y - post, x + post, y + post);
+        canvas.drawArc(rect, 180, 110, false, stroke);
         float r = unit * 0.017f;
         fill.setShader(new RadialGradient(x - r * 0.3f, y - r * 0.3f, r * 1.4f, 0xFFE4E6EA, 0xFF7C8088, Shader.TileMode.CLAMP));
         fill.setColor(Color.BLACK);
@@ -531,6 +806,23 @@ final class ClearSkin extends Skin {
         fill.setColor(Color.BLACK);
         canvas.drawRect(0, 0, w, h, fill);
         fill.setShader(null);
+        // The plastic is thicker towards the edges, so its colour gathers there.
+        float edge = u * 0.09f;
+        int thick = withAlpha(plastic, Math.min(255, Math.round(0x70 * Math.max(0.3f, tintScale))));
+        useShader(new LinearGradient(0, 0, edge, 0, thick, withAlpha(plastic, 0), Shader.TileMode.CLAMP));
+        canvas.drawRect(0, 0, edge, h, fill);
+        useShader(new LinearGradient(w, 0, w - edge, 0, thick, withAlpha(plastic, 0), Shader.TileMode.CLAMP));
+        canvas.drawRect(w - edge, 0, w, h, fill);
+        useShader(new LinearGradient(0, 0, 0, edge, thick, withAlpha(plastic, 0), Shader.TileMode.CLAMP));
+        canvas.drawRect(0, 0, w, edge, fill);
+        useShader(new LinearGradient(0, h, 0, h - edge, thick, withAlpha(plastic, 0), Shader.TileMode.CLAMP));
+        canvas.drawRect(0, h - edge, w, h, fill);
+        fill.setShader(null);
+        // A faint frosting on the inside of the plastic.
+        Paint frost = new Paint();
+        frost.setShader(new BitmapShader(SoftSkin.grain(), Shader.TileMode.REPEAT, Shader.TileMode.REPEAT));
+        frost.setAlpha(0x90);
+        canvas.drawRect(0, 0, w, h, frost);
         // The shell's side walls, seen edge on through the clear plastic.
         float wall = u * 0.022f;
         stroke.setStrokeWidth(wall);

@@ -9,6 +9,7 @@ import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.SystemClock;
+import android.util.Log;
 import android.util.SparseIntArray;
 import android.view.HapticFeedbackConstants;
 import android.view.MotionEvent;
@@ -60,6 +61,8 @@ final class SkinView extends View {
     private ControlLayout controlLayout;
     private final List<RectF> baseBounds = new ArrayList<>();
     private boolean editing;
+    /** Whether the skin has thrown while drawing; that is logged once, then it is drawn plainly. */
+    private boolean drawFailed;
     private int editIndex = -1;
     private final ControlLayout.Adjustment editStart = new ControlLayout.Adjustment();
     private float editTouchX;
@@ -120,6 +123,7 @@ final class SkinView extends View {
 
     void setSkin(Skin newSkin) {
         skin = newSkin;
+        drawFailed = false;
         relayout();
     }
 
@@ -238,6 +242,42 @@ final class SkinView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         if (layout.width == 0) return;
+        int saved = canvas.save();
+        try {
+            drawSkin(canvas);
+        } catch (RuntimeException | OutOfMemoryError e) {
+            // A skin that can't draw mustn't take the game down: show a plain body instead.
+            canvas.restoreToCount(saved);
+            if (!drawFailed) Log.e("SkinView", "The skin " + skin.id() + " failed to draw", e);
+            drawFailed = true;
+            canvas.save();
+            canvas.clipOutRect(layout.screen);
+            canvas.drawColor(skin.backgroundColor());
+            canvas.restore();
+            if (controlsVisible) drawPlainControls(canvas);
+            return;
+        }
+        canvas.restoreToCount(saved);
+    }
+
+    /** Plain outlines of the controls, so the game stays playable when the skin can't draw them. */
+    private void drawPlainControls(Canvas canvas) {
+        float density = getResources().getDisplayMetrics().density;
+        editPaint.setPathEffect(null);
+        for (Skin.Control control : layout.controls) {
+            if (!control.visible || control.shape == Skin.Control.SPEAKER) continue;
+            float corner = Math.min(control.bounds.width(), control.bounds.height()) / 2;
+            editPaint.setStyle(Paint.Style.FILL);
+            editPaint.setColor(0x40FFFFFF);
+            canvas.drawRoundRect(control.bounds, corner, corner, editPaint);
+            editPaint.setStyle(Paint.Style.STROKE);
+            editPaint.setStrokeWidth(2 * density);
+            editPaint.setColor(0xA0FFFFFF);
+            canvas.drawRoundRect(control.bounds, corner, corner, editPaint);
+        }
+    }
+
+    private void drawSkin(Canvas canvas) {
         // Leave a hole where the game screen (a view underneath) shows through.
         canvas.save();
         canvas.clipOutRect(layout.screen);
