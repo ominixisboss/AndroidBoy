@@ -127,6 +127,14 @@ final class ClearSkin extends Skin {
         float speakerRadius;
     }
 
+    @Override
+    void offsetExtras(Object extras, float dy) {
+        if (!(extras instanceof Geometry)) return;
+        Geometry g = (Geometry) extras;
+        g.lens.offset(0, dy);
+        g.speakerY += dy;
+    }
+
     private final Variant variant;
     /** The plastic, opaque. */
     private final int plastic;
