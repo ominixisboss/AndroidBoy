@@ -2,9 +2,15 @@
   "name": "Woodgrain",
   "author": "AndroidBoy",
   "backgroundColor": "#54321A",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#3E2C20",
+    "arrows": "#221812"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -76,6 +82,7 @@
   "landscape": {
     "image": "landscape.webp",
     "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

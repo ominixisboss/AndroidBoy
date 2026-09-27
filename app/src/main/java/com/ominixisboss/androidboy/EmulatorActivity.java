@@ -1482,8 +1482,8 @@ public final class EmulatorActivity extends Activity
 
     private void startEditingControls() {
         if (!skinView.getSkin().movableControls()) {
-            Toast.makeText(this, "This skin's buttons are part of its picture. Pick a built-in skin to move them.",
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "This skin's buttons are part of its picture, and it has no picture without them "
+                    + "(\"bareImage\"), so they can't be moved.", Toast.LENGTH_LONG).show();
             return;
         }
         dialogOpened(); // Paused while editing.

@@ -2,9 +2,16 @@
   "name": "Arcade",
   "author": "AndroidBoy",
   "backgroundColor": "#0C0C10",
+  "dpadStyle": {
+    "style": "joystick",
+    "color": "#B0B2BC",
+    "ball": "#E82838",
+    "size": 0.92
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -76,6 +83,7 @@
   "landscape": {
     "image": "landscape.webp",
     "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

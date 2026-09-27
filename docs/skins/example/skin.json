@@ -2,9 +2,15 @@
   "name": "Midnight (example)",
   "author": "AndroidBoy",
   "backgroundColor": "#161934",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#1E2242",
+    "arrows": "#101324"
+  },
   "portrait": {
-    "image": "portrait.png",
-    "pressedImage": "portrait_pressed.png",
+    "image": "portrait.webp",
+    "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -74,8 +80,9 @@
     }
   },
   "landscape": {
-    "image": "landscape.png",
-    "pressedImage": "landscape_pressed.png",
+    "image": "landscape.webp",
+    "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

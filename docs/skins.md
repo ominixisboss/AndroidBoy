@@ -16,8 +16,9 @@ folder's contents and import the zip.
   "author": "AndroidBoy",
   "backgroundColor": "#161934",
   "portrait": {
-    "image": "portrait.png",
-    "pressedImage": "portrait_pressed.png",
+    "image": "portrait.webp",
+    "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [540, 48],
     "extendsBelow": 480,
     "screen": [90, 140, 900, 810],
@@ -42,6 +43,7 @@ folder's contents and import the zip.
 | `name` | no | Shown in the skin list. Defaults to the folder name. |
 | `author` | no | For your own records. |
 | `backgroundColor` | no | Fills the space around the skin when the screen's shape differs from the image's. Also used behind display cutouts. Defaults to black. |
+| `dpadStyle` | no | Draws the d-pad live, in 3D, instead of taking it from the pictures (which then only show what's under it: a well, or a joystick's base plate). `{"style": "cross", "color": "#2A2A30", "arrows": "#101014"}` is a solid cross that rocks towards the held direction, its sides showing; add `"outline"` for an outline and `"flat": true` for flat colours (pixel art). `{"style": "joystick", "color": "#B0B2BC", "ball": "#E82838"}` is an arcade stick whose ball leans the way it's pushed. `"size"` is how much of the d-pad's square it fills (0.86 for a cross, 1 for a joystick by default). |
 | `portrait`, `landscape` | at least one | The layout for each orientation. If one is missing, the app uses the built-in *Minimal* look for that orientation, on your background colour. |
 
 Each layout has:
@@ -50,6 +52,7 @@ Each layout has:
 | --- | --- | --- |
 | `image` | yes | The skin artwork: everything except the game screen. |
 | `pressedImage` | no | The same artwork with every control drawn pressed. While a control is held, its rectangle is copied from this image, fading in and out as it's pressed and released. Without it, held controls get a light highlight. |
+| `bareImage` | no | The same picture with the controls left out (and their wells and labels): just the body and screen. With it, the player can move and resize the buttons (Game Menu → Touch controls): where a button was is filled in from this picture, and its artwork (whatever differs from this picture around it) goes where it's moved. Without it, the buttons stay where the picture has them. |
 | `camera` | no | `[x, y]`: where a hole-punch camera at the top of the display should sit in the picture, for portrait artwork. With it, AndroidBoy lines this point up with the phone's camera and lets the picture reach up behind it (the screen always stays below the cutout); on phones taller than the picture, its top and bottom rows are stretched to the edges, so keep those rows plain. Without it, the skin sits below the cutout. |
 | `extendsBelow` | no | How much of the picture, at its bottom, is extra body below the controls (in the same units as the coordinates). It's shown on screens taller than the rest of the picture and cut off on others, so a 1080×2400 picture with `"extendsBelow": 480` lays out like a 1080×1920 one but fills a 20:9 phone. |
 | `size` | no | `[width, height]` of the coordinate space used below. Defaults to `image`'s size in pixels. Set it if you want to use smaller or higher-resolution images without changing the coordinates. |

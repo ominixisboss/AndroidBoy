@@ -2,9 +2,15 @@
   "name": "Lava",
   "author": "AndroidBoy",
   "backgroundColor": "#161212",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#1E1818",
+    "arrows": "#FF6E28"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -76,6 +82,7 @@
   "landscape": {
     "image": "landscape.webp",
     "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

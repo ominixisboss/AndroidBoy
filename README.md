@@ -44,9 +44,9 @@ It doesn't need RetroArch or any other frontend: you install one APK, add your R
   sliding between A and B presses both. Buttons spring down and bounce back when released, and the
   d-pad rocks towards the direction you hold (turn off under Settings → Controls → Button
   animations; they also follow the system's animation setting). Physical gamepads and keyboards
-  work too, and the touch controls hide while one is in use. **Move on-screen buttons** (in-game
+  work too, and the touch controls hide while one is in use. **Touch controls** (in-game
   menu) lets you drag the buttons anywhere and pinch to resize them, for each skin in portrait and
-  landscape. **Controller buttons…** lets you choose which button does what.
+  landscape, artwork skins included. **Controller buttons…** lets you choose which button does what.
 - **Turbo.** The in-game menu's **Turbo buttons…** makes on-screen A and/or B fire repeatedly
   while held; on a controller, Y is turbo A and X is turbo B. The speed is a setting.
 - **Slow motion** at 75%, 50% or 25% speed, from the in-game menu.

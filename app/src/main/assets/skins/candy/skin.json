@@ -2,9 +2,15 @@
   "name": "Candy",
   "author": "AndroidBoy",
   "backgroundColor": "#FFA8CC",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#9C74EC",
+    "arrows": "#ECE2FF"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -76,6 +82,7 @@
   "landscape": {
     "image": "landscape.webp",
     "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

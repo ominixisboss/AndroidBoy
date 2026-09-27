@@ -2,9 +2,15 @@
   "name": "Marble",
   "author": "AndroidBoy",
   "backgroundColor": "#E2DED8",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#1E1C1A",
+    "arrows": "#C8A050"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",
+    "bareImage": "portrait_bare.webp",
     "camera": [
       540,
       48
@@ -76,6 +82,7 @@
   "landscape": {
     "image": "landscape.webp",
     "pressedImage": "landscape_pressed.webp",
+    "bareImage": "landscape_bare.webp",
     "screen": [
       540,
       90,

@@ -9,6 +9,7 @@ import static org.junit.Assert.fail;
 import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -77,6 +78,71 @@ public class SkinTest {
         skin.layout(notch, 1080, 2000, 160, 144, true, false);
         assertTrue(notch.screen.top >= 220);
         for (Skin.Control control : notch.controls) assertTrue(control.bounds.bottom <= 2000.5f);
+    }
+
+    @Test
+    public void imageSkinButtonsMove() throws IOException {
+        // The example has a picture without its buttons, so they can be moved.
+        ImageSkin skin = ImageSkin.load(exampleSkinDir());
+        assertTrue(skin.movableControls());
+        Skin.Layout layout = new Skin.Layout();
+        skin.layout(layout, 1080, 1920, 160, 144, true, false);
+        Skin.Control a = null;
+        for (Skin.Control control : layout.controls) if (control.keys == Emulator.KEY_A) a = control;
+        int oldX = (int) a.bounds.centerX();
+        int oldY = (int) a.bounds.centerY();
+        Bitmap before = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(before), layout);
+        int button = before.getPixel(oldX, oldY);
+
+        a.bounds.offset(-400, 250);
+        Bitmap after = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
+        skin.drawBackground(new Canvas(after), layout);
+        // Where A was is filled in from the bare picture; A's artwork is where it went.
+        Bitmap bare = android.graphics.BitmapFactory.decodeFile(new File(exampleSkinDir(), "portrait_bare.webp").getPath());
+        assertTrue(colorDistance(after.getPixel(oldX, oldY), bare.getPixel(oldX, oldY)) < 16);
+        assertTrue(colorDistance(after.getPixel(oldX, oldY), button) > 40);
+        assertTrue(colorDistance(after.getPixel(oldX - 400, oldY + 250), button) < 24);
+    }
+
+    private static int colorDistance(int a, int b) {
+        return Math.max(Math.abs(Color.red(a) - Color.red(b)),
+                Math.max(Math.abs(Color.green(a) - Color.green(b)), Math.abs(Color.blue(a) - Color.blue(b))));
+    }
+
+    @Test
+    public void liveDpads() throws Exception {
+        // The joystick's ball goes the way it's pushed, no further on a diagonal than straight.
+        float[] rest = Dpad3D.ballCenter(0, 0);
+        assertEquals(0, rest[0], 1e-4f);
+        assertEquals(Dpad3D.REST_Y, rest[1], 1e-4f);
+        assertTrue(Dpad3D.ballCenter(1, 0)[0] > 0.2f);
+        assertTrue(Dpad3D.ballCenter(0, -1)[1] < rest[1]);
+        float[] diagonal = Dpad3D.ballCenter(1, 1);
+        assertEquals(Dpad3D.STICK_TRAVEL, (float) Math.hypot(diagonal[0], (diagonal[1] - rest[1]) / 0.85f), 0.02f);
+
+        Dpad3D joystick = Dpad3D.parse(new org.json.JSONObject("{\"style\": \"joystick\", \"ball\": \"#E82838\"}"));
+        assertEquals(Dpad3D.JOYSTICK, joystick.style);
+        assertEquals(0xFFE82838, joystick.ball);
+        Dpad3D cross = Dpad3D.parse(new org.json.JSONObject("{\"color\": \"#202030\", \"flat\": true, \"outline\": \"#101020\"}"));
+        assertEquals(Dpad3D.CROSS, cross.style);
+        assertTrue(cross.flat);
+        assertEquals(0xFF101020, cross.outline);
+        try {
+            Dpad3D.parse(new org.json.JSONObject("{\"style\": \"wheel\"}"));
+            fail("unknown style accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("cross"));
+        }
+
+        // Both draw at rest and pushed.
+        Bitmap bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        for (Dpad3D pad : new Dpad3D[] {joystick, cross}) {
+            pad.draw(canvas, new RectF(0, 0, 200, 200), 0, 0);
+            pad.draw(canvas, new RectF(0, 0, 200, 200), 0.7f, -0.7f);
+        }
+        assertTrue(Color.alpha(bitmap.getPixel(100, 100)) > 0);
     }
 
     @Test
@@ -645,7 +711,7 @@ public class SkinTest {
     private void assertRejected(String json, String expected) throws IOException {
         File dir = temp.newFolder();
         for (File file : exampleSkinDir().listFiles()) {
-            if (file.getName().endsWith(".png")) Files.copy(file.toPath(), new File(dir, file.getName()).toPath());
+            if (!file.getName().equals("skin.json")) Files.copy(file.toPath(), new File(dir, file.getName()).toPath());
         }
         Files.write(new File(dir, "skin.json").toPath(), json.getBytes(StandardCharsets.UTF_8));
         try {
