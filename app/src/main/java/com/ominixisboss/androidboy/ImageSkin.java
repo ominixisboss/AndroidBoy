@@ -83,6 +83,87 @@ final class ImageSkin extends Skin {
     private final Orientation landscape;
     /** The d-pad drawn live over the picture, in 3D; null when the picture's own d-pad is used. */
     private final Dpad3D dpad;
+    /** The buttons drawn live over the picture, in 3D; null when the picture's own buttons are used. */
+    private final Buttons buttons;
+
+    /**
+     * {@code "buttonStyle"}: A, B, Start, Select and the menu and speed buttons drawn live as 3D
+     * buttons (see {@link Button3D}); the picture then only shows what's under them.
+     */
+    static final class Buttons {
+        final Button3D a;
+        final Button3D b;
+        final Button3D pills;
+        final Button3D utility;
+        final int letters;
+        final int icons;
+        final int surround;
+        private final Paint iconPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private Buttons(Button3D a, Button3D b, Button3D pills, Button3D utility, int letters, int icons, int surround) {
+            this.a = a;
+            this.b = b;
+            this.pills = pills;
+            this.utility = utility;
+            this.letters = letters;
+            this.icons = icons;
+            this.surround = surround;
+        }
+
+        static Buttons parse(JSONObject json, int background) throws IOException {
+            String material = json.optString("material", "plastic");
+            if (!material.equals("plastic") && !material.equals("rubber")) {
+                throw new IOException("buttonStyle: \"material\" must be \"plastic\" or \"rubber\"");
+            }
+            int m = material.equals("rubber") ? Button3D.RUBBER : Button3D.PLASTIC;
+            int a = color(json, "a", 0xFFC0304A);
+            int pills = color(json, "pills", 0xFF505058);
+            return new Buttons(new Button3D(a, m), new Button3D(color(json, "b", a), m),
+                    new Button3D(pills, Button3D.RUBBER), new Button3D(color(json, "utility", pills), Button3D.RUBBER),
+                    color(json, "letters", 0xFFFFFFFF), color(json, "icons", 0xFFFFFFFF),
+                    json.has("surround") ? color(json, "surround", background) : background);
+        }
+
+        private static int color(JSONObject json, String key, int fallback) throws IOException {
+            if (!json.has(key)) return fallback;
+            try {
+                return Color.parseColor(json.optString(key)) | 0xFF000000;
+            } catch (IllegalArgumentException e) {
+                throw new IOException("buttonStyle: \"" + key + "\" isn't a colour like #102030");
+            }
+        }
+
+        /** Draws {@code control} if it's one of the buttons this style draws; false if it isn't. */
+        boolean draw(Canvas canvas, Control control, float press) {
+            RectF r = control.bounds;
+            int keys = control.keys;
+            if (keys == Emulator.KEY_A || keys == Emulator.KEY_B) {
+                Button3D button = keys == Emulator.KEY_A ? a : b;
+                float radius = Math.min(r.width(), r.height()) / 2 * 0.9f;
+                button.drawRound(canvas, r.centerX(), r.centerY(), radius, press, surround);
+                button.drawLetter(canvas, keys == Emulator.KEY_A ? "A" : "B", r.centerX(), r.centerY(), radius, press, letters);
+                return true;
+            }
+            if (keys == Emulator.KEY_START || keys == Emulator.KEY_SELECT) {
+                RectF pill = scaled(r, 0.78f, 0.5f);
+                pills.drawPill(canvas, pill, press, surround);
+                return true;
+            }
+            if (keys == KEY_MENU || keys == KEY_FAST_FORWARD || keys == KEY_REWIND) {
+                RectF pill = scaled(r, 0.9f, 0.72f);
+                float capY = utility.drawPill(canvas, pill, press, surround);
+                Button3D.drawIcon(canvas, iconPaint, keys, pill.centerX(), capY, pill.height() * 0.55f, icons);
+                return true;
+            }
+            return false;
+        }
+
+        private static RectF scaled(RectF r, float sx, float sy) {
+            float hw = r.width() * sx / 2;
+            float hh = r.height() * sy / 2;
+            return new RectF(r.centerX() - hw, r.centerY() - hh, r.centerX() + hw, r.centerY() + hh);
+        }
+    }
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final android.graphics.Matrix tiltMatrix = new android.graphics.Matrix();
     private final RectF edge = new RectF();
@@ -91,9 +172,11 @@ final class ImageSkin extends Skin {
     private final Rect source = new Rect();
     private final RectF destination = new RectF();
 
-    private ImageSkin(String id, String name, int background, Orientation portrait, Orientation landscape, Dpad3D dpad) {
+    private ImageSkin(String id, String name, int background, Orientation portrait, Orientation landscape, Dpad3D dpad,
+                      Buttons buttons) {
         this.id = id;
         this.dpad = dpad;
+        this.buttons = buttons;
         this.name = name;
         this.background = background;
         this.portrait = portrait;
@@ -119,7 +202,9 @@ final class ImageSkin extends Skin {
             }
             JSONObject dpadStyle = root.optJSONObject("dpadStyle");
             Dpad3D dpad = dpadStyle != null ? Dpad3D.parse(dpadStyle) : null;
-            return new ImageSkin(id, name, background, portrait, landscape, dpad);
+            JSONObject buttonStyle = root.optJSONObject("buttonStyle");
+            Buttons buttons = buttonStyle != null ? Buttons.parse(buttonStyle, background) : null;
+            return new ImageSkin(id, name, background, portrait, landscape, dpad, buttons);
         } catch (JSONException e) {
             throw new IOException("skin.json is invalid: " + e.getMessage(), e);
         }
@@ -461,6 +546,7 @@ final class ImageSkin extends Skin {
             int index = i++;
             Control control = layout.controls.get(index);
             if (control.shape == Control.SPEAKER) continue; // Painted in the picture; moved like the others.
+            if (buttons != null && control.visible && buttons.draw(canvas, control, motion.press(index))) continue;
             if (!control.visible) continue; // The A+B spot: A and B show themselves pressed.
             if (control.shape == Control.DPAD && dpad != null) {
                 // Drawn live: a solid cross that rocks, or a joystick that leans.

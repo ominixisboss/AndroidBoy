@@ -87,22 +87,30 @@ public class SkinTest {
         assertTrue(skin.movableControls());
         Skin.Layout layout = new Skin.Layout();
         skin.layout(layout, 1080, 1920, 160, 144, true, false);
-        Skin.Control a = null;
-        for (Skin.Control control : layout.controls) if (control.keys == Emulator.KEY_A) a = control;
-        int oldX = (int) a.bounds.centerX();
+        Skin.Control a = find(layout, Emulator.KEY_A);
+        // On the cap beside the letter.
+        int oldX = (int) (a.bounds.centerX() + a.bounds.width() * 0.3f);
         int oldY = (int) a.bounds.centerY();
-        Bitmap before = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
-        skin.drawBackground(new Canvas(before), layout);
-        int button = before.getPixel(oldX, oldY);
+        int button = drawn(skin, layout).getPixel(oldX, oldY);
 
         a.bounds.offset(-400, 250);
-        Bitmap after = Bitmap.createBitmap(1080, 1920, Bitmap.Config.ARGB_8888);
-        skin.drawBackground(new Canvas(after), layout);
-        // Where A was is filled in from the bare picture; A's artwork is where it went.
+        Bitmap after = drawn(skin, layout);
+        // Where A was shows the bare picture; A (drawn live) is where it went.
         Bitmap bare = android.graphics.BitmapFactory.decodeFile(new File(exampleSkinDir(), "portrait_bare.webp").getPath());
         assertTrue(colorDistance(after.getPixel(oldX, oldY), bare.getPixel(oldX, oldY)) < 16);
         assertTrue(colorDistance(after.getPixel(oldX, oldY), button) > 40);
         assertTrue(colorDistance(after.getPixel(oldX - 400, oldY + 250), button) < 24);
+    }
+
+    /** The skin's picture with its controls drawn over it, at rest. */
+    private static Bitmap drawn(Skin skin, Skin.Layout layout) {
+        Bitmap bitmap = Bitmap.createBitmap(layout.width, layout.height, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        skin.drawBackground(canvas, layout);
+        Skin.Motion motion = new Skin.Motion();
+        motion.snap(layout, 0);
+        skin.drawControls(canvas, layout, 0, motion);
+        return bitmap;
     }
 
     @Test
@@ -140,6 +148,38 @@ public class SkinTest {
     private static int colorDistance(int a, int b) {
         return Math.max(Math.abs(Color.red(a) - Color.red(b)),
                 Math.max(Math.abs(Color.green(a) - Color.green(b)), Math.abs(Color.blue(a) - Color.blue(b))));
+    }
+
+    @Test
+    public void buttonsSinkWhenPressed() throws Exception {
+        // The cap stands above its socket at rest and sits below it held.
+        float rest = Button3D.capY(100, 50, 0);
+        float held = Button3D.capY(100, 50, 1);
+        assertTrue(rest < 100);
+        assertTrue(held > 100);
+
+        // Drawn, the cap's middle is lower when pressed, and the glint dims.
+        Button3D button = new Button3D(0xFFC0304A, Button3D.PLASTIC);
+        Bitmap up = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+        button.drawRound(new Canvas(up), 100, 100, 70, 0, 0xFFB0B0B0);
+        Bitmap down = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+        button.drawRound(new Canvas(down), 100, 100, 70, 1, 0xFFB0B0B0);
+        int glintUp = up.getPixel(100 - 24, (int) Button3D.capY(100, 70, 0) - 37);
+        int glintDown = down.getPixel(100 - 24, (int) Button3D.capY(100, 70, 1) - 37);
+        assertTrue(Color.red(glintUp) + Color.green(glintUp) > Color.red(glintDown) + Color.green(glintDown));
+
+        // Image skins can ask for them with "buttonStyle".
+        ImageSkin.Buttons buttons = ImageSkin.Buttons.parse(new org.json.JSONObject(
+                "{\"a\": \"#E82838\", \"letters\": \"#FFFFFF\", \"material\": \"rubber\"}"), 0xFF202020);
+        assertEquals(0xFFE82838, buttons.a.color);
+        assertEquals(0xFFE82838, buttons.b.color); // B defaults to A's colour.
+        assertEquals(Button3D.RUBBER, buttons.a.material);
+        try {
+            ImageSkin.Buttons.parse(new org.json.JSONObject("{\"material\": \"wood\"}"), 0);
+            fail("unknown material accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("plastic"));
+        }
     }
 
     @Test

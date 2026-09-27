@@ -855,37 +855,30 @@ final class ThemeSkin extends Skin {
             drawCentered(canvas, label, b.centerX(), b.centerY());
             return;
         }
-        enterUnit(canvas, b.centerX(), b.centerY(), radius);
-        useShader(wellShader);
-        canvas.drawCircle(0, 0.04f, 1.1f, fill);
-        fill.setShader(null);
-        // The drop shadow shortens as the button sinks.
-        fill.setColor(0x60000000);
-        canvas.drawCircle(0, 0.11f * (1 - clamp(press)), 1f, fill);
-        canvas.translate(0, 0.08f * press);
-        float scale = 1 - 0.04f * press;
-        canvas.scale(scale, scale);
-        useShader(buttonShader);
-        canvas.drawCircle(0, 0, 1f, fill);
-        fill.setShader(null);
-        if (down > 0) {
-            fill.setColor(Color.argb((int) (70 * down), 0, 0, 0));
-            canvas.drawCircle(0, 0, 1f, fill);
-        }
-        stroke.setColor(shade(palette.buttons, 0.55f));
-        stroke.setStrokeWidth(0.05f);
-        canvas.drawCircle(0, 0, 0.975f, stroke);
-        // Glint on the curve, dimming as the button goes down.
-        fill.setColor(Color.argb((int) (80 * (1 - 0.6f * down)), 255, 255, 255));
-        rect.set(-0.62f, -0.72f, -0.08f, -0.36f);
-        canvas.save();
-        canvas.rotate(-28, -0.35f, -0.54f);
-        canvas.drawOval(rect, fill);
-        canvas.restore();
-        canvas.restore();
+        // A moulded plastic button standing in its socket (see Button3D).
+        solidButton().drawRound(canvas, b.centerX(), b.centerY(), radius * 0.94f, press, palette.body);
         text.setColor(palette.label);
         text.setTextSize(g.labelSize);
         drawCentered(canvas, label, b.centerX() + radius * 0.35f, b.bottom + g.labelSize * 1.1f);
+    }
+
+    private Button3D solidButton;
+    private Button3D solidPill;
+    private Button3D solidUtility;
+
+    private Button3D solidButton() {
+        if (solidButton == null) solidButton = new Button3D(palette.buttons, Button3D.PLASTIC);
+        return solidButton;
+    }
+
+    private Button3D solidPill() {
+        if (solidPill == null) solidPill = new Button3D(palette.startSelect, Button3D.RUBBER);
+        return solidPill;
+    }
+
+    private Button3D solidUtility() {
+        if (solidUtility == null) solidUtility = new Button3D(shade(palette.body, 0.8f), Button3D.RUBBER);
+        return solidUtility;
     }
 
     // ---- Start and Select ----
@@ -924,29 +917,13 @@ final class ThemeSkin extends Skin {
             drawCentered(canvas, label, b.centerX(), b.centerY());
             return;
         }
-        pillHalfLength = PILL_LENGTH;
-        float h = pillHalfHeight;
+        // A slanted rubber button in its socket (see Button3D).
         canvas.save();
         canvas.rotate(PILL_ANGLE, b.centerX(), b.centerY());
-        enterUnit(canvas, b.centerX(), b.centerY(), halfWidth);
-        useShader(wellShader);
-        rect.set(-PILL_LENGTH - 0.07f, -h - 0.07f, PILL_LENGTH + 0.07f, h + 0.07f);
-        canvas.drawRoundRect(rect, h + 0.07f, h + 0.07f, fill);
-        fill.setShader(null);
-        fill.setColor(0x60000000);
-        rect.set(-PILL_LENGTH, -h, PILL_LENGTH, h);
-        rect.offset(0, 0.1f * (1 - clamp(press)));
-        canvas.drawRoundRect(rect, h, h, fill);
-        canvas.translate(0, 0.07f * press);
-        useShader(pillShader);
-        rect.set(-PILL_LENGTH, -h, PILL_LENGTH, h);
-        canvas.drawRoundRect(rect, h, h, fill);
-        fill.setShader(null);
-        if (down > 0) {
-            fill.setColor(Color.argb((int) (70 * down), 0, 0, 0));
-            canvas.drawRoundRect(rect, h, h, fill);
-        }
-        canvas.restore();
+        float length = halfWidth * PILL_LENGTH;
+        float height = Math.min(b.height() / 2, halfWidth * 0.4f);
+        rect.set(b.centerX() - length, b.centerY() - height, b.centerX() + length, b.centerY() + height);
+        solidPill().drawPill(canvas, rect, press, palette.body);
         text.setColor(palette.label);
         text.setTextSize(Math.min(g.labelSize * 0.7f, b.height() * 0.6f));
         drawCentered(canvas, label, b.centerX(), b.bottom + text.getTextSize() * 1.2f);
@@ -961,17 +938,9 @@ final class ThemeSkin extends Skin {
         float down = clamp01(press);
         int ink;
         if (palette.style == SOLID) {
-            enterUnit(canvas, b.centerX(), b.centerY(), radius);
-            fill.setColor(0x50000000);
-            canvas.drawCircle(0, 0.1f * (1 - clamp(press)), 1f, fill);
-            canvas.translate(0, 0.07f * press);
-            useShader(utilityShader);
-            canvas.drawCircle(0, 0, 1f, fill);
-            fill.setShader(null);
-            if (down > 0) {
-                fill.setColor(Color.argb((int) (60 * down), 0, 0, 0));
-                canvas.drawCircle(0, 0, 1f, fill);
-            }
+            // A small rubber button in its socket, its symbol riding on the cap.
+            solidUtility().drawRound(canvas, b.centerX(), b.centerY(), radius * 0.92f, press, palette.body);
+            enterUnit(canvas, b.centerX(), Button3D.capY(b.centerY(), radius * 0.92f, press), radius);
             ink = palette.label;
         } else {
             float scale = 1 - 0.08f * press;

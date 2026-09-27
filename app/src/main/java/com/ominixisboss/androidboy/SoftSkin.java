@@ -375,21 +375,27 @@ final class SoftSkin extends Skin {
         canvas.drawPath(path, fill);
     }
 
+    private Button3D button3d;
+    private Button3D pill3d;
+
+    /** The soft plastic of the buttons, in 3D, still outlined in ink. */
+    private Button3D button3d(float density) {
+        if (button3d == null) button3d = new Button3D(variant.button, Button3D.RUBBER).outlined(variant.ink, 2.2f * density);
+        return button3d;
+    }
+
+    private Button3D pill3d(float density) {
+        if (pill3d == null) pill3d = new Button3D(variant.button, Button3D.RUBBER).outlined(variant.ink, 2f * density);
+        return pill3d;
+    }
+
     private void drawButton(Canvas canvas, Control control, float press, float density) {
         RectF b = control.bounds;
-        float radius = b.width() / 2 * (1 - 0.04f * press);
+        float radius = b.width() / 2 * 0.95f;
         float cx = b.centerX();
-        float cy = b.centerY() + 2 * density * press;
-        fill.setShader(null);
-        fill.setColor(0x33000000);
-        canvas.drawCircle(b.centerX(), b.centerY() + 3 * density, radius, fill);
-        rect.set(cx - radius, cy - radius, cx + radius, cy + radius);
-        useShader(plastic(rect, Math.min(1, press)));
-        canvas.drawCircle(cx, cy, radius, fill);
-        fill.setShader(null);
-        stroke.setColor(variant.ink);
-        stroke.setStrokeWidth(2.2f * density);
-        canvas.drawCircle(cx, cy, radius, stroke);
+        Button3D button = button3d(density);
+        button.drawRound(canvas, cx, b.centerY(), radius, press, variant.background);
+        float cy = Button3D.capY(b.centerY(), radius, press);
         if (control.keys == KEY_MENU) {
             drawMenuGlyph(canvas, stroke, cx, cy, radius, variant.label);
             return;
@@ -403,20 +409,12 @@ final class SoftSkin extends Skin {
 
     private void drawPill(Canvas canvas, Control control, float press, float density) {
         RectF b = control.bounds;
-        float lift = 1.5f * density * press;
-        rect.set(b.left, b.top + lift, b.right, b.bottom + lift);
-        float corner = b.height() / 2;
-        useShader(plastic(rect, Math.min(1, press)));
-        canvas.drawRoundRect(rect, corner, corner, fill);
-        fill.setShader(null);
-        stroke.setColor(variant.ink);
-        stroke.setStrokeWidth(2f * density);
-        canvas.drawRoundRect(rect, corner, corner, stroke);
+        pill3d(density).drawPill(canvas, b, press, variant.background);
         text.setColor(blend(variant.background, Color.WHITE, 0.55f));
         text.setTextSize(b.height() * 0.62f);
         text.setTextScaleX(1f);
         canvas.drawText(control.keys == Emulator.KEY_START ? "START" : "SELECT", b.centerX(),
-                b.bottom + b.height() * 1.05f, text);
+                b.bottom + b.height() * 1.25f, text);
     }
 
     static int blend(int from, int to, float amount) {
