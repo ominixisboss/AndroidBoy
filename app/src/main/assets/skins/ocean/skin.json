@@ -2,6 +2,11 @@
   "name": "Ocean",
   "author": "AndroidBoy",
   "backgroundColor": "#083254",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#0A405C",
+    "arrows": "#78DCEC"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

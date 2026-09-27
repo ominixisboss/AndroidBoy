@@ -2,6 +2,11 @@
   "name": "Midnight",
   "author": "AndroidBoy",
   "backgroundColor": "#161934",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#1E2242",
+    "arrows": "#101324"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

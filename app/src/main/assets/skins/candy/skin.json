@@ -2,6 +2,11 @@
   "name": "Candy",
   "author": "AndroidBoy",
   "backgroundColor": "#FFA8CC",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#9C74EC",
+    "arrows": "#ECE2FF"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

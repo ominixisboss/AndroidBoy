@@ -75,6 +75,8 @@ final class ImageSkin extends Skin {
     private final int background;
     private final Orientation portrait;
     private final Orientation landscape;
+    /** The d-pad drawn live over the picture, in 3D; null when the picture's own d-pad is used. */
+    private final Dpad3D dpad;
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG);
     private final android.graphics.Matrix tiltMatrix = new android.graphics.Matrix();
     private final RectF edge = new RectF();
@@ -83,8 +85,9 @@ final class ImageSkin extends Skin {
     private final Rect source = new Rect();
     private final RectF destination = new RectF();
 
-    private ImageSkin(String id, String name, int background, Orientation portrait, Orientation landscape) {
+    private ImageSkin(String id, String name, int background, Orientation portrait, Orientation landscape, Dpad3D dpad) {
         this.id = id;
+        this.dpad = dpad;
         this.name = name;
         this.background = background;
         this.portrait = portrait;
@@ -108,7 +111,9 @@ final class ImageSkin extends Skin {
             if (portrait == null && landscape == null) {
                 throw new IOException("skin.json needs a \"portrait\" or \"landscape\" layout");
             }
-            return new ImageSkin(id, name, background, portrait, landscape);
+            JSONObject dpadStyle = root.optJSONObject("dpadStyle");
+            Dpad3D dpad = dpadStyle != null ? Dpad3D.parse(dpadStyle) : null;
+            return new ImageSkin(id, name, background, portrait, landscape, dpad);
         } catch (JSONException e) {
             throw new IOException("skin.json is invalid: " + e.getMessage(), e);
         }
@@ -345,6 +350,11 @@ final class ImageSkin extends Skin {
         for (Map.Entry<String, RectF> entry : o.controls.entrySet()) {
             int index = i++;
             Control control = layout.controls.get(index);
+            if (control.shape == Control.DPAD && dpad != null) {
+                // Drawn live: a solid cross that rocks, or a joystick that leans.
+                dpad.draw(canvas, control.bounds, motion.tiltX, motion.tiltY);
+                continue;
+            }
             if (control.shape == Control.DPAD) {
                 canvas.save();
                 if (Math.abs(motion.tiltX) > 0.01f || Math.abs(motion.tiltY) > 0.01f) {

@@ -2,6 +2,11 @@
   "name": "Carbon",
   "author": "AndroidBoy",
   "backgroundColor": "#141416",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#1A1A1E",
+    "arrows": "#5A5A62"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

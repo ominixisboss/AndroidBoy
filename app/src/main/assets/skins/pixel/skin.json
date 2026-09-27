@@ -2,6 +2,14 @@
   "name": "Pixel",
   "author": "AndroidBoy",
   "backgroundColor": "#2B2D5C",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#4E4E76",
+    "arrows": "#101020",
+    "outline": "#101020",
+    "flat": true,
+    "size": 0.9
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

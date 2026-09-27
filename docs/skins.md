@@ -42,6 +42,7 @@ folder's contents and import the zip.
 | `name` | no | Shown in the skin list. Defaults to the folder name. |
 | `author` | no | For your own records. |
 | `backgroundColor` | no | Fills the space around the skin when the screen's shape differs from the image's. Also used behind display cutouts. Defaults to black. |
+| `dpadStyle` | no | Draws the d-pad live, in 3D, instead of taking it from the pictures (which then only show what's under it: a well, or a joystick's base plate). `{"style": "cross", "color": "#2A2A30", "arrows": "#101014"}` is a solid cross that rocks towards the held direction, its sides showing; add `"outline"` for an outline and `"flat": true` for flat colours (pixel art). `{"style": "joystick", "color": "#B0B2BC", "ball": "#E82838"}` is an arcade stick whose ball leans the way it's pushed. `"size"` is how much of the d-pad's square it fills (0.86 for a cross, 1 for a joystick by default). |
 | `portrait`, `landscape` | at least one | The layout for each orientation. If one is missing, the app uses the built-in *Minimal* look for that orientation, on your background colour. |
 
 Each layout has:

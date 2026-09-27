@@ -9,6 +9,7 @@ import static org.junit.Assert.fail;
 import android.app.Application;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
@@ -77,6 +78,41 @@ public class SkinTest {
         skin.layout(notch, 1080, 2000, 160, 144, true, false);
         assertTrue(notch.screen.top >= 220);
         for (Skin.Control control : notch.controls) assertTrue(control.bounds.bottom <= 2000.5f);
+    }
+
+    @Test
+    public void liveDpads() throws Exception {
+        // The joystick's ball goes the way it's pushed, no further on a diagonal than straight.
+        float[] rest = Dpad3D.ballCenter(0, 0);
+        assertEquals(0, rest[0], 1e-4f);
+        assertEquals(Dpad3D.REST_Y, rest[1], 1e-4f);
+        assertTrue(Dpad3D.ballCenter(1, 0)[0] > 0.2f);
+        assertTrue(Dpad3D.ballCenter(0, -1)[1] < rest[1]);
+        float[] diagonal = Dpad3D.ballCenter(1, 1);
+        assertEquals(Dpad3D.STICK_TRAVEL, (float) Math.hypot(diagonal[0], (diagonal[1] - rest[1]) / 0.85f), 0.02f);
+
+        Dpad3D joystick = Dpad3D.parse(new org.json.JSONObject("{\"style\": \"joystick\", \"ball\": \"#E82838\"}"));
+        assertEquals(Dpad3D.JOYSTICK, joystick.style);
+        assertEquals(0xFFE82838, joystick.ball);
+        Dpad3D cross = Dpad3D.parse(new org.json.JSONObject("{\"color\": \"#202030\", \"flat\": true, \"outline\": \"#101020\"}"));
+        assertEquals(Dpad3D.CROSS, cross.style);
+        assertTrue(cross.flat);
+        assertEquals(0xFF101020, cross.outline);
+        try {
+            Dpad3D.parse(new org.json.JSONObject("{\"style\": \"wheel\"}"));
+            fail("unknown style accepted");
+        } catch (IOException expected) {
+            assertTrue(expected.getMessage().contains("cross"));
+        }
+
+        // Both draw at rest and pushed.
+        Bitmap bitmap = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+        Canvas canvas = new Canvas(bitmap);
+        for (Dpad3D pad : new Dpad3D[] {joystick, cross}) {
+            pad.draw(canvas, new RectF(0, 0, 200, 200), 0, 0);
+            pad.draw(canvas, new RectF(0, 0, 200, 200), 0.7f, -0.7f);
+        }
+        assertTrue(Color.alpha(bitmap.getPixel(100, 100)) > 0);
     }
 
     @Test

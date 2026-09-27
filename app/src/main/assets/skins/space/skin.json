@@ -2,6 +2,11 @@
   "name": "Space",
   "author": "AndroidBoy",
   "backgroundColor": "#04040C",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#222640",
+    "arrows": "#50E6FF"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

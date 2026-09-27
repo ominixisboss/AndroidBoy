@@ -2,6 +2,11 @@
   "name": "Camo",
   "author": "AndroidBoy",
   "backgroundColor": "#505A36",
+  "dpadStyle": {
+    "style": "cross",
+    "color": "#3A4028",
+    "arrows": "#969068"
+  },
   "portrait": {
     "image": "portrait.webp",
     "pressedImage": "portrait_pressed.webp",

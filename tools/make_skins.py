@@ -613,20 +613,12 @@ class Style:
             x, y, w, h = controls[name]
             hollow(image, ellipse(box_of(x, y, w, h, 1.08)), darken(self.body_bottom, 0.15), depth=4 * s, opacity=0.45)
 
+    def dpad_style(self):
+        """The d-pad the app draws live, in 3D, over the picture (see "dpadStyle" in docs/skins.md)."""
+        return {"style": "cross", "color": hexify(self.dpad), "arrows": hexify(self.arrows or darken(self.dpad, 0.45))}
+
     def draw_dpad(self, image, box, pressed, s):
-        x, y, w, h = box
-        shape = cross(box_of(x, y, w, h, 0.86), arm=0.34, radius=w * 0.05)
-        color = darken(self.dpad, 0.12) if pressed else self.dpad
-        lift = 2 * s if pressed else 8 * s
-        paint(image, shape.moved(0, 3 * s if pressed else 0), color, lift=lift, shadow=0.55, light=0.22, dark=0.25,
-              bevel_size=4 * s, bevel_light=0.3, bevel_dark=0.45)
-        cx, cy = x + w / 2, y + h / 2 + (3 * s if pressed else 0)
-        arrow = self.arrows or darken(self.dpad, 0.45)
-        for direction, dx, dy in ((270, 0, -1), (90, 0, 1), (180, -1, 0), (0, 1, 0)):
-            ax, ay = cx + dx * w * 0.31, cy + dy * h * 0.31
-            stamp(image, poly(triangle(ax, ay, w * 0.035, direction)), arrow, 0.9)
-        dimple = ellipse(box_of(x, y + (3 * s if pressed else 0), w, h, 0.17))
-        hollow(image, dimple, None, depth=3 * s, opacity=0.4, lip=0.15)
+        """What's painted under the live d-pad: nothing; the well is drawn with the others."""
 
     def draw_button(self, image, name, box, pressed, s):
         x, y, w, h = box
@@ -755,6 +747,7 @@ def write_skin(style, out, display_name, quantize=False, mask_pressed=False, ext
         "name": display_name,
         "author": "AndroidBoy",
         "backgroundColor": style.background,
+        "dpadStyle": style.dpad_style(),
         "portrait": portrait,
         "landscape": landscape,
     }
@@ -838,6 +831,12 @@ def speckles(image, count, colors, radius, seed, area=None, glow_radius=0, alpha
     image.alpha_composite(layer)
 
 
+def thin(mask, s):
+    """Keeps only the edges of wide patches, so a flat stretch of the field makes a vein, not a blot."""
+    core = mask.filter(ImageFilter.MinFilter(int(4 * s) * 2 + 1))
+    return ImageChops.subtract(mask, core)
+
+
 def threshold(n, low, high=256):
     return n.point(lambda v: 255 if low <= v < high else 0)
 
@@ -884,7 +883,7 @@ class Arcade(Style):
         pass
 
     def draw_dpad(self, image, box, pressed, s):
-        # A joystick: a round base plate with a gate, the shaft's collar and a ball top.
+        # A joystick's base plate, with a gate around the shaft.
         x, y, w, h = box
         cx, cy = x + w / 2, y + h / 2
         plate = ellipse(box_of(x, y, w, h, 0.96))
@@ -895,13 +894,10 @@ class Arcade(Style):
         hollow(image, gate, (12, 12, 14), depth=4 * s, opacity=0.6)
         for direction, dx, dy in ((270, 0, -1), (90, 0, 1), (180, -1, 0), (0, 1, 0)):
             stamp(image, poly(triangle(cx + dx * w * 0.38, cy + dy * h * 0.38, w * 0.035, direction)), (150, 150, 165))
-        drop = 5 * s if pressed else 0
-        shaft = rect([cx - w * 0.035, cy - h * 0.02, cx + w * 0.035, cy + h * 0.12], w * 0.03)
-        paint(image, shaft, (170, 170, 180), lift=0, shadow=0, light=0.4, dark=0.4)
-        r = w * 0.19
-        ball = ellipse([cx - r, cy - r * 1.05 + drop, cx + r, cy + r * 0.95 + drop])
-        paint(image, ball, darken(self.a, 0.1) if pressed else self.a, lift=(4 if pressed else 12) * s, shadow=0.55,
-              light=0.45, dark=0.45, shading="radial", shine=0.5, bevel_size=2 * s, bevel_light=0.1, bevel_dark=0.2)
+        # The stick itself is drawn live by the app, leaning the way it's pushed.
+
+    def dpad_style(self):
+        return {"style": "joystick", "color": hexify((176, 178, 188)), "ball": hexify(self.a), "size": 0.92}
 
     def draw_button(self, image, name, box, pressed, s):
         # Concave caps in a white bezel ring.
@@ -1377,19 +1373,9 @@ class Pixel(Style):
             x, y, w, h = controls[name]
             text(image, (x + w / 2, y + h + 18 * s), value, 18 * s, self.YELLOW, "mono")
 
-    def draw_dpad(self, image, box, pressed, s):
-        px = 8 * s
-        x, y, w, h = box
-        arm = w / 3
-        drop = px if pressed else 0
-        color = (96, 96, 140) if pressed else (70, 70, 104)
-        self.block_rect(image, [x + arm, y + drop, x + 2 * arm, y + h + drop], color, px, border=self.INK)
-        self.block_rect(image, [x, y + arm + drop, x + w, y + 2 * arm + drop], color, px, border=self.INK)
-        ImageDraw.Draw(image).rectangle([x + arm + px, y + arm + px * 2 + drop, x + 2 * arm - px, y + 2 * arm - px * 2 + drop],
-                                        fill=color)
-        cx, cy = x + w / 2, y + h / 2 + drop
-        for direction, dx, dy in ((270, 0, -1), (90, 0, 1), (180, -1, 0), (0, 1, 0)):
-            stamp(image, poly(triangle(cx + dx * w * 0.33, cy + dy * h * 0.33, w * 0.045, direction)), self.INK)
+    def dpad_style(self):
+        return {"style": "cross", "color": hexify((78, 78, 118)), "arrows": hexify(self.INK), "outline": hexify(self.INK),
+                "flat": True, "size": 0.9}
 
     def draw_button(self, image, name, box, pressed, s):
         x, y, w, h = box
@@ -1439,12 +1425,12 @@ class Marble(Style):
         n = noise((w // 3, h // 3), 110 * s // 3, 71, octaves=5).resize(size, Image.BICUBIC)
         diagonal = Image.linear_gradient("L").rotate(35, expand=True).resize(size)
         field = ImageChops.add(diagonal.point(lambda v: v // 2), n.point(lambda v: v // 2))
-        veins = field.point(lambda v: 255 if abs(math.sin(v * 0.16)) < 0.05 else 0)
+        veins = thin(field.point(lambda v: 255 if abs(math.sin(v * 0.16)) < 0.05 else 0), s)
         image.alpha_composite(tint(blur(veins, 3 * s), (120, 120, 128), 0.5))
         image.alpha_composite(tint(blur(veins, 0.8 * s), (110, 110, 118), 0.6))
-        faint = field.point(lambda v: 255 if abs(math.sin(v * 0.43 + 1)) < 0.04 else 0)
+        faint = thin(field.point(lambda v: 255 if abs(math.sin(v * 0.43 + 1)) < 0.04 else 0), s)
         image.alpha_composite(tint(blur(faint, 1 * s), (170, 170, 176), 0.35))
-        gold = field.point(lambda v: 255 if abs(math.sin(v * 0.07 + 2)) < 0.012 else 0)
+        gold = thin(field.point(lambda v: 255 if abs(math.sin(v * 0.07 + 2)) < 0.012 else 0), s)
         image.alpha_composite(tint(blur(gold, 1 * s), (200, 160, 70), 0.5))
         return image
 
