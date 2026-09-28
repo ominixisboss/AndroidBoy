@@ -16,8 +16,8 @@ android {
         applicationId 'com.ominixisboss.androidboy'
         minSdk 26
         targetSdk 35
-        versionCode 22
-        versionName "1.21 (SameBoy ${sameboyVersion})"
+        versionCode 23
+        versionName "1.22 (SameBoy ${sameboyVersion})"
         buildConfigField 'String', 'SAMEBOY_VERSION', "\"${sameboyVersion}\""
 
         externalNativeBuild {
