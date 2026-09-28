@@ -42,6 +42,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_BACKUP_WITH_GAMES = 7;
     private static final int REQUEST_RESTORE = 8;
     private static final int REQUEST_PATCH_BASE = 9;
+    private static final int REQUEST_FIND_PATCH = 10;
     private static final String STATE_PENDING_ROM = "pending_rom";
     private static final String TAG = "AndroidBoy";
     /** Home-screen shortcuts open a game through here (the game screen itself isn't exported). */
@@ -172,6 +173,7 @@ public final class MainActivity extends Activity {
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, R.string.add_game);
         menu.add(0, 8, 0, "Apply a ROM hack patch…");
+        menu.add(0, 9, 0, "Find ROM hack patches online…");
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
         menu.add(0, 6, 1, R.string.homebrew_hub);
@@ -189,6 +191,9 @@ public final class MainActivity extends Activity {
                 return true;
             case 8:
                 explainPatches();
+                return true;
+            case 9:
+                findPatches(null);
                 return true;
             case 2:
                 new Settings(this).showDialog(this, choice -> {}, () -> {});
@@ -518,8 +523,14 @@ public final class MainActivity extends Activity {
                         + "copy of the original game.\n\nChoose the patch next, then the game to apply it to. The "
                         + "patched game is added to your library as a new game; the original stays as it is.")
                 .setPositiveButton("Choose a patch", (d, which) -> pickRom())
+                .setNeutralButton("Search online", (d, which) -> findPatches(null))
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();
+    }
+
+    /** Searches the web for patches, for {@code query} if given; a downloaded patch comes back here. */
+    private void findPatches(String query) {
+        startActivityForResult(PatchSearchActivity.intent(this, query), REQUEST_FIND_PATCH);
     }
 
     /**
@@ -622,6 +633,8 @@ public final class MainActivity extends Activity {
             store.setFavourite(rom, !favourite);
             refresh();
         });
+        labels.add("Find patches for this game…");
+        actions.add(() -> findPatches(PatchSearchActivity.queryFor(rom.getName())));
         labels.add("Add to home screen");
         actions.add(() -> addToHomeScreen(rom));
         labels.add("Box art…");
@@ -730,6 +743,22 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == REQUEST_RESTORE) {
             if (data.getData() != null) confirmRestore(data.getData());
+            return;
+        }
+
+        if (requestCode == REQUEST_FIND_PATCH) {
+            String path = data.getStringExtra(PatchSearchActivity.EXTRA_FILE);
+            String name = data.getStringExtra(PatchSearchActivity.EXTRA_NAME);
+            if (path == null) return;
+            io.execute(() -> {
+                try {
+                    byte[] bytes = RomLibrary.readFile(new File(path));
+                    Patcher.Patch patch = Patcher.fromDownload(name, bytes);
+                    mainHandler.post(() -> choosePatchBase(patch));
+                } catch (IOException e) {
+                    mainHandler.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
+                }
+            });
             return;
         }
 

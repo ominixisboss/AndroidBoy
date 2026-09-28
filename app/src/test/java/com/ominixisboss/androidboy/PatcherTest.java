@@ -165,6 +165,40 @@ public class PatcherTest {
         assertNull(Patcher.find("game.gb", source));
     }
 
+    @Test
+    public void onlyPatchesAreTakenFromTheWeb() throws IOException {
+        byte[] source = game(0x1000, 7);
+        byte[] target = source.clone();
+        target[2] ^= 9;
+        byte[] patch = ups(source, target);
+        assertArrayEquals(patch, Patcher.fromDownload("hack.ups", patch).data);
+
+        // A game, a zip holding a game, and a web page are all refused.
+        ByteArrayOutputStream zipped = new ByteArrayOutputStream();
+        try (ZipOutputStream zip = new ZipOutputStream(zipped)) {
+            zip.putNextEntry(new ZipEntry("Game (USA).gba"));
+            zip.write(source);
+        }
+        byte[][] refused = {source, zipped.toByteArray(), "<html>Download</html>".getBytes(StandardCharsets.UTF_8)};
+        for (byte[] download : refused) {
+            try {
+                Patcher.fromDownload("download.bin", download);
+                fail("Took something that isn't a patch");
+            } catch (Patcher.PatchException e) {
+                assertTrue(e.getMessage(), e.getMessage().contains("isn't a ROM hack patch"));
+            }
+        }
+    }
+
+    @Test
+    public void patchSearches() {
+        assertEquals("Pokemon - Crystal Version", PatchSearchActivity.queryFor("Pokemon - Crystal Version (USA, Europe) (Rev 1) [!].gbc"));
+        assertEquals("Super Mario Land 2", PatchSearchActivity.queryFor("Super_Mario_Land_2.gb"));
+        String url = PatchSearchActivity.searchUrl("Pokémon Red", 0);
+        assertTrue(url, url.startsWith("https://duckduckgo.com/html/?q="));
+        assertTrue(url, url.contains("Pok%C3%A9mon+Red+site%3Aromhacking.net%2Fhacks"));
+    }
+
     // ---- Building patches ----
 
     private static void assertRefused(byte[] rom, byte[] patch, String reason) {

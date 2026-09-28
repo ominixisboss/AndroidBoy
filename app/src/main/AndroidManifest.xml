@@ -58,6 +58,11 @@
             android:exported="false"
             android:label="Homebrew Hub" />
         <activity
+            android:name=".PatchSearchActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboardHidden"
+            android:exported="false"
+            android:label="Find ROM hack patches" />
+        <activity
             android:name=".AchievementsActivity"
             android:exported="false"
             android:label="@string/retroachievements" />

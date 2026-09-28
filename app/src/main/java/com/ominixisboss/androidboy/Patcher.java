@@ -98,6 +98,17 @@ final class Patcher {
         return null;
     }
 
+    /**
+     * The patch in a file downloaded from the web, or a {@link PatchException} saying why it
+     * isn't one. Only patches are taken this way, never games.
+     */
+    static Patch fromDownload(String name, byte[] data) throws IOException {
+        Patch patch = find(name, data);
+        if (patch != null) return patch;
+        throw new PatchException("That download isn't a ROM hack patch (.ips, .ups or .bps, or a .zip with one in it). "
+                + "Only patches can be downloaded here; look for the hack's patch download.");
+    }
+
     static long crc32(byte[] data, int length) {
         CRC32 crc = new CRC32();
         crc.update(data, 0, length);
