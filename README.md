@@ -131,6 +131,12 @@ animation in the screen, not photos of a phone.</sub>
   Chips filter by favourites or system and sort by recently played or name, and the search button
   finds games by any words of their name. Games without box art get a cover in their system's colour. Long-press a game to
   favourite it or add it to your home screen; long-pressing the app icon offers the last few games.
+- **ROM hack patches.** Hacks and fan translations come as `.ips`, `.ups` or `.bps` patches (or a
+  `.zip` holding one). Add one like a game, or use "Apply a ROM hack patch…" in the main menu or
+  "Open with" from a file manager, then pick your own copy of the original game. The patched game
+  is added to the library as a new game, named after the patch. UPS and BPS patches carry the
+  checksum of the game they were made for: matching games are marked, and a patch for a different
+  version of the game is refused before anything is saved.
 - **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
   (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
   cartridges, which gives the exact name its picture is filed under; failing that, by its file
@@ -398,6 +404,7 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   AchievementsActivity    Your RetroAchievements points and progress in each game
   Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
   GameStore, BoxArt       Favourites and recently played; box art matching and downloads
+  Patcher                 Applying IPS, UPS and BPS ROM hack patches
   Backup                  Backup and restore
   ControllerMapping,      Controller buttons; where the on-screen buttons are
     ControlLayout

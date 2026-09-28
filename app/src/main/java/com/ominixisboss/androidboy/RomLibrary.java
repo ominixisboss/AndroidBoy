@@ -89,26 +89,38 @@ final class RomLibrary {
         }
     }
 
+    /** A file the player picked: its name and contents. */
+    static final class Picked {
+        final String name;
+        final byte[] data;
+
+        Picked(String name, byte[] data) {
+            this.name = name;
+            this.data = data;
+        }
+    }
+
+    /** Reads a picked file (a ROM, a .zip, a patch…) from a content URI. Call off the main thread. */
+    Picked read(Context context, Uri uri) throws IOException {
+        ContentResolver resolver = context.getContentResolver();
+        String name = displayName(resolver, uri);
+        try (InputStream in = resolver.openInputStream(uri)) {
+            if (in == null) throw new IOException("Could not open the file");
+            return new Picked(name, readFully(in, MAX_ROM_SIZE * 4));
+        }
+    }
+
     /**
      * Copies a ROM (or the first ROM inside a .zip) from a content URI into the library.
      * Call off the main thread. Returns the imported file.
      */
     File importRom(Context context, Uri uri) throws IOException {
-        ContentResolver resolver = context.getContentResolver();
-        String name = displayName(resolver, uri);
-        byte[] data;
-        try (InputStream in = resolver.openInputStream(uri)) {
-            if (in == null) throw new IOException("Could not open the file");
-            data = readFully(in, MAX_ROM_SIZE * 4);
-        }
-        return addRom(name, data);
+        Picked picked = read(context, uri);
+        return addRom(picked.name, picked.data);
     }
 
-    /**
-     * Adds a ROM (or the first ROM inside a .zip) to the library, named after {@code name}.
-     * Returns the new file. Call off the main thread.
-     */
-    File addRom(String name, byte[] data) throws IOException {
+    /** The game in a picked file: the file itself, or the first ROM inside a .zip. */
+    static Picked romIn(String name, byte[] data) throws IOException {
         if (data.length > MAX_ROM_SIZE * 4) throw new IOException("This file is too large to be a game");
         if (isZip(data)) {
             try (ZipInputStream zip = new ZipInputStream(new java.io.ByteArrayInputStream(data))) {
@@ -124,12 +136,28 @@ final class RomLibrary {
             }
             if (data == null) throw new IOException("The zip file doesn't contain a Game Boy or Game Boy Advance game");
         }
-
         if (data.length < 0x150) throw new IOException("This file is too small to be a game");
+        return new Picked(name, data);
+    }
+
+    /** The extension a game's file gets, from its header: ".gba", ".gbc" or ".gb". */
+    static String extensionFor(byte[] data) {
+        return isGbaRom(data) ? ".gba" : data.length > 0x143 && (data[0x143] & 0x80) != 0 ? ".gbc" : ".gb";
+    }
+
+    /**
+     * Adds a ROM (or the first ROM inside a .zip) to the library, named after {@code name}.
+     * Returns the new file. Call off the main thread.
+     */
+    File addRom(String name, byte[] data) throws IOException {
+        Picked rom = romIn(name, data);
+        name = rom.name;
+        data = rom.data;
+
         if (name == null || name.isEmpty()) name = "Game.gb";
         name = name.replaceAll("[/\\\\:*?\"<>|\\p{Cntrl}]", "_");
         if (!hasRomExtension(name)) {
-            name += isGbaRom(data) ? ".gba" : (data[0x143] & 0x80) != 0 ? ".gbc" : ".gb";
+            name += extensionFor(data);
         }
 
         File target = new File(romsDir, name);

@@ -41,6 +41,7 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_BACKUP = 6;
     private static final int REQUEST_BACKUP_WITH_GAMES = 7;
     private static final int REQUEST_RESTORE = 8;
+    private static final int REQUEST_PATCH_BASE = 9;
     private static final String STATE_PENDING_ROM = "pending_rom";
     private static final String TAG = "AndroidBoy";
     /** Home-screen shortcuts open a game through here (the game screen itself isn't exported). */
@@ -62,6 +63,8 @@ public final class MainActivity extends Activity {
     private LibraryScreen screen;
     /** The game whose save file is being imported or exported. */
     private String pendingRom;
+    /** A ROM hack patch waiting for the player to pick the game it goes on. */
+    private Patcher.Patch pendingPatch;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -168,6 +171,7 @@ public final class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, R.string.add_game);
+        menu.add(0, 8, 0, "Apply a ROM hack patch…");
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
         menu.add(0, 6, 1, R.string.homebrew_hub);
@@ -182,6 +186,9 @@ public final class MainActivity extends Activity {
         switch (item.getItemId()) {
             case 1:
                 pickRom();
+                return true;
+            case 8:
+                explainPatches();
                 return true;
             case 2:
                 new Settings(this).showDialog(this, choice -> {}, () -> {});
@@ -482,7 +489,14 @@ public final class MainActivity extends Activity {
     private void importRom(Uri uri, boolean launchAfterImport) {
         io.execute(() -> {
             try {
-                File rom = library.importRom(this, uri);
+                RomLibrary.Picked picked = library.read(this, uri);
+                // A ROM hack patch goes on a game the player already has.
+                Patcher.Patch patch = Patcher.find(picked.name, picked.data);
+                if (patch != null) {
+                    mainHandler.post(() -> choosePatchBase(patch));
+                    return;
+                }
+                File rom = library.addRom(picked.name, picked.data);
                 mainHandler.post(() -> {
                     EmulatorActivity.forgetLoadedRom(rom);
                     refresh();
@@ -491,6 +505,108 @@ public final class MainActivity extends Activity {
             } catch (IOException | SecurityException e) {
                 mainHandler.post(() -> Toast.makeText(this,
                         getString(R.string.import_failed, e.getMessage()), Toast.LENGTH_LONG).show());
+            }
+        });
+    }
+
+    /** What patches are and how applying one works, then the file picker. */
+    private void explainPatches() {
+        new AlertDialog.Builder(this)
+                .setTitle("Apply a ROM hack patch")
+                .setMessage("ROM hacks and fan translations are shared as patch files (.ips, .ups or .bps, "
+                        + "sometimes inside a .zip). A patch only holds the hack's changes, so it goes on your own "
+                        + "copy of the original game.\n\nChoose the patch next, then the game to apply it to. The "
+                        + "patched game is added to your library as a new game; the original stays as it is.")
+                .setPositiveButton("Choose a patch", (d, which) -> pickRom())
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    /**
+     * Asks which game {@code patch} goes on. Games that match the checksum the patch carries
+     * (UPS and BPS) are marked and listed first.
+     */
+    private void choosePatchBase(Patcher.Patch patch) {
+        List<File> games = library.list();
+        long wanted = patch.sourceCrc();
+        io.execute(() -> {
+            List<File> matching = new ArrayList<>();
+            if (wanted >= 0) {
+                for (File game : games) {
+                    try {
+                        byte[] data = RomLibrary.readFile(game);
+                        if (Patcher.crc32(data, data.length) == wanted) matching.add(game);
+                    } catch (IOException | OutOfMemoryError ignored) {
+                        // Not readable: just not marked.
+                    }
+                }
+            }
+            mainHandler.post(() -> {
+                if (isFinishing()) return;
+                List<File> ordered = new ArrayList<>(matching);
+                for (File game : games) if (!matching.contains(game)) ordered.add(game);
+                List<String> labels = new ArrayList<>();
+                for (File game : ordered) {
+                    String name = RomLibrary.baseName(game);
+                    labels.add(matching.contains(game) ? "\u2713 " + name + "  (matches)" : name);
+                }
+                labels.add("Another file…");
+                String title = "Apply " + patch.gameName() + " (" + patch.format() + ") to…";
+                if (wanted >= 0 && matching.isEmpty()) {
+                    Toast.makeText(this, String.format(java.util.Locale.ROOT,
+                            "None of your games is the version this patch was made for (CRC32 %08X)", wanted),
+                            Toast.LENGTH_LONG).show();
+                }
+                new AlertDialog.Builder(this)
+                        .setTitle(title)
+                        .setItems(labels.toArray(new String[0]), (d, which) -> {
+                            if (which < ordered.size()) {
+                                File base = ordered.get(which);
+                                applyPatch(patch, () -> new RomLibrary.Picked(base.getName(), RomLibrary.readFile(base)));
+                            } else {
+                                pendingPatch = patch;
+                                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                                intent.setType("*/*");
+                                startActivityForResult(intent, REQUEST_PATCH_BASE);
+                            }
+                        })
+                        .setNegativeButton(android.R.string.cancel, null)
+                        .show();
+            });
+        });
+    }
+
+    private interface Source {
+        RomLibrary.Picked get() throws IOException;
+    }
+
+    /** Applies {@code patch} to the game from {@code base} and adds the result to the library as a new game. */
+    private void applyPatch(Patcher.Patch patch, Source base) {
+        Toast.makeText(this, "Applying the patch…", Toast.LENGTH_SHORT).show();
+        io.execute(() -> {
+            try {
+                RomLibrary.Picked picked = base.get();
+                RomLibrary.Picked rom = RomLibrary.romIn(picked.name, picked.data);
+                byte[] patched = Patcher.apply(rom.data, patch.data);
+                // Named after the patch, never replacing a game already there.
+                String extension = RomLibrary.extensionFor(patched);
+                String name = patch.gameName().replaceAll("[/\\\\:*?\"<>|\\p{Cntrl}]", "_");
+                String candidate = name + extension;
+                for (int i = 2; library.romFile(candidate).exists(); i++) candidate = name + " (" + i + ")" + extension;
+                File game = library.addRom(candidate, patched);
+                mainHandler.post(() -> {
+                    refresh();
+                    Toast.makeText(this, "Added " + RomLibrary.baseName(game), Toast.LENGTH_LONG).show();
+                    launch(game);
+                });
+            } catch (IOException | SecurityException | OutOfMemoryError e) {
+                String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+                mainHandler.post(() -> new AlertDialog.Builder(this)
+                        .setTitle("Couldn't apply the patch")
+                        .setMessage(message)
+                        .setPositiveButton(android.R.string.ok, null)
+                        .show());
             }
         });
     }
@@ -614,6 +730,14 @@ public final class MainActivity extends Activity {
         }
         if (requestCode == REQUEST_RESTORE) {
             if (data.getData() != null) confirmRestore(data.getData());
+            return;
+        }
+
+        if (requestCode == REQUEST_PATCH_BASE) {
+            Patcher.Patch patch = pendingPatch;
+            pendingPatch = null;
+            Uri uri = data.getData();
+            if (patch != null && uri != null) applyPatch(patch, () -> library.read(this, uri));
             return;
         }
 
