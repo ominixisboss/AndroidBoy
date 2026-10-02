@@ -6,21 +6,24 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
-import com.sun.net.httpserver.HttpExchange;
-import com.sun.net.httpserver.HttpServer;
-
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
+import java.io.Closeable;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.CookieHandler;
-import java.net.InetSocketAddress;
+import java.net.InetAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -29,7 +32,7 @@ import java.util.zip.ZipOutputStream;
 public class PatchDownloaderTest {
     private static final byte[] PATCH = ("PATCH" + "\0\0\u0010\0\u0001B" + "EOF").getBytes(StandardCharsets.ISO_8859_1);
 
-    private HttpServer server;
+    private TinyServer server;
     private CookieHandler previousCookies;
     private String base;
     private final Map<String, String> seen = new HashMap<>();
@@ -40,40 +43,43 @@ public class PatchDownloaderTest {
         // headers; the app installs none.
         previousCookies = CookieHandler.getDefault();
         CookieHandler.setDefault(null);
-        server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-        // A download link that redirects twice (once to a relative address) before the file.
-        server.createContext("/download/hack", exchange -> redirect(exchange, base + "/mirror/hack"));
-        server.createContext("/mirror/hack", exchange -> redirect(exchange, "../files/hack.bin"));
-        server.createContext("/files/hack.bin", exchange -> {
-            seen.put("cookie", exchange.getRequestHeaders().getFirst("Cookie"));
-            seen.put("referer", exchange.getRequestHeaders().getFirst("Referer"));
-            exchange.getResponseHeaders().add("Content-Disposition", "attachment; filename=\"My Hack v1.1.ips\"");
-            exchange.getResponseHeaders().add("Set-Cookie", "downloaded=1");
-            send(exchange, 200, PATCH);
-        });
-        // A file host's "can't scan this file" page, then the file once confirmed.
-        server.createContext("/drive", exchange -> {
-            String query = exchange.getRequestURI().getQuery();
-            if (query != null && query.contains("confirm=t") && query.contains("uuid=abc")) {
-                send(exchange, 200, PATCH);
-            } else {
-                send(exchange, 200, ("<!DOCTYPE html><html><body>Google Drive can't scan this file for viruses."
-                        + "<form id=\"download-form\" action=\"" + base + "/drive\" method=\"get\">"
-                        + "<input type=\"submit\" value=\"Download anyway\"/>"
-                        + "<input type=\"hidden\" name=\"id\" value=\"xyz\">"
-                        + "<input type=\"hidden\" name=\"confirm\" value=\"t\">"
-                        + "<input type=\"hidden\" name=\"uuid\" value=\"abc\"></form></body></html>")
-                        .getBytes(StandardCharsets.UTF_8));
+        server = new TinyServer(request -> {
+            switch (request.path) {
+                // A download link that redirects twice (once to a relative address) before the file.
+                case "/download/hack":
+                    return Response.redirect(base + "/mirror/hack");
+                case "/mirror/hack":
+                    return Response.redirect("../files/hack.bin");
+                case "/files/hack.bin":
+                    seen.put("cookie", request.headers.get("cookie"));
+                    seen.put("referer", request.headers.get("referer"));
+                    return new Response(200, PATCH)
+                            .header("Content-Disposition", "attachment; filename=\"My Hack v1.1.ips\"")
+                            .header("set-cookie", "downloaded=1"); // Spelt as some servers do.
+                // A file host's "can't scan this file" page, then the file once confirmed.
+                case "/drive":
+                    if (request.query != null && request.query.contains("confirm=t") && request.query.contains("uuid=abc")) {
+                        return new Response(200, PATCH);
+                    }
+                    return new Response(200, ("<!DOCTYPE html><html><body>Google Drive can't scan this file for viruses."
+                            + "<form id=\"download-form\" action=\"" + base + "/drive\" method=\"get\">"
+                            + "<input type=\"submit\" value=\"Download anyway\"/>"
+                            + "<input type=\"hidden\" name=\"id\" value=\"xyz\">"
+                            + "<input type=\"hidden\" name=\"confirm\" value=\"t\">"
+                            + "<input type=\"hidden\" name=\"uuid\" value=\"abc\"></form></body></html>")
+                            .getBytes(StandardCharsets.UTF_8));
+                case "/members-only":
+                    return new Response(403, new byte[0]);
+                default:
+                    return new Response(404, new byte[0]);
             }
         });
-        server.createContext("/members-only", exchange -> send(exchange, 403, new byte[0]));
-        server.start();
-        base = "http://127.0.0.1:" + server.getAddress().getPort();
+        base = "http://127.0.0.1:" + server.port();
     }
 
     @After
-    public void stop() {
-        server.stop(0);
+    public void stop() throws IOException {
+        server.close();
         CookieHandler.setDefault(previousCookies);
     }
 
@@ -159,18 +165,83 @@ public class PatchDownloaderTest {
         assertEquals("Hack (Blue).ips", patches.get(1).name);
     }
 
-    private static void redirect(HttpExchange exchange, String location) throws IOException {
-        exchange.getResponseHeaders().add("Location", location);
-        send(exchange, 302, new byte[0]);
+    // ---- A tiny HTTP server: one request per connection ----
+
+    private static final class Request {
+        String path;
+        String query;
+        final Map<String, String> headers = new HashMap<>();
     }
 
-    private static void send(HttpExchange exchange, int status, byte[] body) throws IOException {
-        exchange.sendResponseHeaders(status, body.length == 0 ? -1 : body.length);
-        if (body.length > 0) {
-            try (OutputStream out = exchange.getResponseBody()) {
-                out.write(body);
-            }
+    private static final class Response {
+        final int status;
+        final byte[] body;
+        final StringBuilder headers = new StringBuilder();
+
+        Response(int status, byte[] body) {
+            this.status = status;
+            this.body = body;
         }
-        exchange.close();
+
+        Response header(String name, String value) {
+            headers.append(name).append(": ").append(value).append("\r\n");
+            return this;
+        }
+
+        static Response redirect(String location) {
+            return new Response(302, new byte[0]).header("Location", location);
+        }
+    }
+
+    private interface Handler {
+        Response handle(Request request) throws IOException;
+    }
+
+    private static final class TinyServer implements Closeable {
+        private final ServerSocket socket = new ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"));
+
+        TinyServer(Handler handler) throws IOException {
+            Thread thread = new Thread(() -> {
+                while (!socket.isClosed()) {
+                    try (Socket client = socket.accept()) {
+                        BufferedReader in = new BufferedReader(new InputStreamReader(client.getInputStream(),
+                                StandardCharsets.ISO_8859_1));
+                        String line = in.readLine();
+                        if (line == null) continue;
+                        Request request = new Request();
+                        String target = line.split(" ")[1];
+                        int question = target.indexOf('?');
+                        request.path = question >= 0 ? target.substring(0, question) : target;
+                        request.query = question >= 0 ? target.substring(question + 1) : null;
+                        while ((line = in.readLine()) != null && !line.isEmpty()) {
+                            int colon = line.indexOf(':');
+                            if (colon > 0) {
+                                request.headers.put(line.substring(0, colon).trim().toLowerCase(Locale.ROOT),
+                                        line.substring(colon + 1).trim());
+                            }
+                        }
+                        Response response = handler.handle(request);
+                        OutputStream out = client.getOutputStream();
+                        out.write(("HTTP/1.1 " + response.status + " X\r\nContent-Length: " + response.body.length
+                                + "\r\nConnection: close\r\n" + response.headers + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
+                        out.write(response.body);
+                        out.flush();
+                    } catch (IOException e) {
+                        // Closed, or a client gave up.
+                    }
+                }
+            }, "tiny-server");
+            thread.setDaemon(true);
+            thread.start();
+        }
+
+        int port() {
+            return socket.getLocalPort();
+        }
+
+        @Override
+        public void close() throws IOException {
+            socket.close();
+        }
     }
 }
