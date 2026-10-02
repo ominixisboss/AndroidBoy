@@ -496,9 +496,9 @@ public final class MainActivity extends Activity {
             try {
                 RomLibrary.Picked picked = library.read(this, uri);
                 // A ROM hack patch goes on a game the player already has.
-                Patcher.Patch patch = Patcher.find(picked.name, picked.data);
-                if (patch != null) {
-                    mainHandler.post(() -> choosePatchBase(patch));
+                List<Patcher.Patch> patches = Patcher.findAll(picked.name, picked.data);
+                if (!patches.isEmpty()) {
+                    mainHandler.post(() -> choosePatch(patches));
                     return;
                 }
                 File rom = library.addRom(picked.name, picked.data);
@@ -531,6 +531,24 @@ public final class MainActivity extends Activity {
     /** Searches the web for patches, for {@code query} if given; a downloaded patch comes back here. */
     private void findPatches(String query) {
         startActivityForResult(PatchSearchActivity.intent(this, query), REQUEST_FIND_PATCH);
+    }
+
+    /** With several patches (a zip of versions or languages), asks which one; then which game it goes on. */
+    private void choosePatch(List<Patcher.Patch> patches) {
+        if (patches.size() == 1) {
+            choosePatchBase(patches.get(0));
+            return;
+        }
+        String[] names = new String[patches.size()];
+        for (int i = 0; i < names.length; i++) {
+            Patcher.Patch patch = patches.get(i);
+            names[i] = patch.name + " (" + patch.format() + ")";
+        }
+        new AlertDialog.Builder(this)
+                .setTitle("This has " + patches.size() + " patches. Which one?")
+                .setItems(names, (d, which) -> choosePatchBase(patches.get(which)))
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     /**
@@ -753,8 +771,8 @@ public final class MainActivity extends Activity {
             io.execute(() -> {
                 try {
                     byte[] bytes = RomLibrary.readFile(new File(path));
-                    Patcher.Patch patch = Patcher.fromDownload(name, bytes);
-                    mainHandler.post(() -> choosePatchBase(patch));
+                    List<Patcher.Patch> patches = Patcher.fromDownload(name, bytes);
+                    mainHandler.post(() -> choosePatch(patches));
                 } catch (IOException e) {
                     mainHandler.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
                 }

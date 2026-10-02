@@ -171,7 +171,7 @@ public class PatcherTest {
         byte[] target = source.clone();
         target[2] ^= 9;
         byte[] patch = ups(source, target);
-        assertArrayEquals(patch, Patcher.fromDownload("hack.ups", patch).data);
+        assertArrayEquals(patch, Patcher.fromDownload("hack.ups", patch).get(0).data);
 
         // A game, a zip holding a game, and a web page are all refused.
         ByteArrayOutputStream zipped = new ByteArrayOutputStream();
@@ -185,7 +185,8 @@ public class PatcherTest {
                 Patcher.fromDownload("download.bin", download);
                 fail("Took something that isn't a patch");
             } catch (Patcher.PatchException e) {
-                assertTrue(e.getMessage(), e.getMessage().contains("isn't a ROM hack patch"));
+                assertTrue(e.getMessage(), e.getMessage().contains("isn't a ROM hack patch")
+                        || e.getMessage().contains("web page"));
             }
         }
     }

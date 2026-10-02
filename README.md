@@ -140,7 +140,10 @@ animation in the screen, not photos of a phone.</sub>
 - **Find ROM hack patches online** (main menu, or long-press a game → "Find patches for this game"):
   a web search on Romhacking.net, PokéCommunity or anywhere, in a browser inside the app.
   Downloading a patch from a hack's page applies it straight away, after you pick your copy of the
-  game. Only patches can be downloaded there; anything else is refused.
+  game. Downloads follow mirrors and file hosts' "download anyway" pages, a zip with several patches
+  (one per version or language) asks which to use, and anything that isn't a patch is refused with
+  the reason (a `.7z` or `.rar` to extract first, a web page, or a game), with a button to open
+  the link in your browser instead.
 - **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
   (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
   cartridges, which gives the exact name its picture is filed under; failing that, by its file
@@ -409,7 +412,8 @@ app/src/main/java/...     The Android app (framework APIs only, no AndroidX)
   Homebrew, HomebrewActivity  Homebrew Hub search, entry details and downloads
   GameStore, BoxArt       Favourites and recently played; box art matching and downloads
   Patcher                 Applying IPS, UPS and BPS ROM hack patches
-  PatchSearchActivity     Searching the web for patches and downloading them
+  PatchSearchActivity,    Searching the web for patches; downloading them like a browser
+    PatchDownloader
   Backup                  Backup and restore
   ControllerMapping,      Controller buttons; where the on-screen buttons are
     ControlLayout
