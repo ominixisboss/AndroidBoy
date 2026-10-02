@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Base64;
 import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MenuItem;
@@ -15,6 +16,7 @@ import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
@@ -26,16 +28,14 @@ import android.widget.ProgressBar;
 import android.widget.RadioButton;
 import android.widget.RadioGroup;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.UnsupportedEncodingException;
-import java.net.HttpURLConnection;
-import java.net.URL;
 import java.net.URLEncoder;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -58,7 +58,6 @@ public final class PatchSearchActivity extends Activity {
             {"PokéCommunity", "site:pokecommunity.com rom hack"},
             {"Anywhere", "rom hack patch (ips OR ups OR bps)"},
     };
-    private static final int MAX_DOWNLOAD = Patcher.MAX_OUTPUT;
 
     private final Handler main = new Handler(Looper.getMainLooper());
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -68,6 +67,10 @@ public final class PatchSearchActivity extends Activity {
     private TextView status;
     private int source;
     private boolean downloading;
+    /** The name of a blob download the page has been asked for, or null. */
+    private String awaitingBlob;
+    private static final String HINT =
+            "Open a hack's page and download its patch; it's applied to your own copy of the game.";
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
@@ -121,7 +124,7 @@ public final class PatchSearchActivity extends Activity {
         status = new TextView(this);
         status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         status.setPadding(pad, dp(2), pad, dp(4));
-        status.setText("Open a hack's page and download its patch; it's applied to your own copy of the game.");
+        status.setText(HINT);
         root.addView(status);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -149,6 +152,7 @@ public final class PatchSearchActivity extends Activity {
                 progress.setVisibility(newProgress >= 100 ? View.INVISIBLE : View.VISIBLE);
             }
         });
+        web.addJavascriptInterface(new BlobReceiver(), "AndroidBoyDownloads");
         web.setDownloadListener((url, userAgent, contentDisposition, mimeType, length) ->
                 download(url, userAgent, URLUtil.guessFileName(url, contentDisposition, mimeType)));
         root.addView(web, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1));
@@ -182,75 +186,169 @@ public final class PatchSearchActivity extends Activity {
         web.loadUrl(searchUrl(query, source));
     }
 
-    /** Fetches a download the page started; keeps it if it's a patch, refuses it otherwise. */
+    /** Fetches a download the page started; keeps it if it holds a patch, refuses it otherwise. */
     private void download(String url, String userAgent, String name) {
         if (downloading) return;
+        if (url.startsWith("blob:")) {
+            downloadBlob(url, name);
+            return;
+        }
+        if (url.startsWith("data:")) {
+            byte[] data;
+            try {
+                int comma = url.indexOf(',');
+                String header = comma > 0 ? url.substring(0, comma) : "";
+                String body = comma > 0 ? url.substring(comma + 1) : "";
+                data = header.endsWith(";base64") ? Base64.decode(body, Base64.DEFAULT)
+                        : java.net.URLDecoder.decode(body, "UTF-8").getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+            } catch (IllegalArgumentException | java.io.UnsupportedEncodingException e) {
+                showError("Couldn't download", "The page's download link is broken.", null);
+                return;
+            }
+            received(name, data, null);
+            return;
+        }
         if (!url.startsWith("https://") && !url.startsWith("http://")) {
-            showError("That download can't be opened here. Try the hack's direct patch download link.");
+            showError("Couldn't download", "That kind of download link can't be opened here.", null);
             return;
         }
         downloading = true;
         status.setText("Downloading " + name + "…");
-        String cookies = CookieManager.getInstance().getCookie(url);
+        String referer = web.getUrl();
+        CookieManager cookieManager = CookieManager.getInstance();
+        PatchDownloader.Cookies cookies = new PatchDownloader.Cookies() {
+            @Override
+            public String get(String address) {
+                return cookieManager.getCookie(address);
+            }
+
+            @Override
+            public void set(String address, String cookie) {
+                cookieManager.setCookie(address, cookie);
+            }
+        };
+        long[] lastUpdate = {0};
+        PatchDownloader.Progress progress = (received, total) -> {
+            long now = android.os.SystemClock.uptimeMillis();
+            if (now - lastUpdate[0] < 150) return;
+            lastUpdate[0] = now;
+            String amount = total > 0 ? (received * 100 / total) + "%" : (received / 1024) + " KB";
+            main.post(() -> status.setText("Downloading " + name + "… " + amount));
+        };
         io.execute(() -> {
             try {
-                byte[] data = fetch(url, userAgent, cookies);
-                Patcher.Patch patch = Patcher.fromDownload(name, data);
-                File file = new File(getCacheDir(), "patch-download");
-                try (FileOutputStream out = new FileOutputStream(file)) {
-                    out.write(patch.data);
-                }
-                main.post(() -> {
-                    Intent result = new Intent();
-                    result.putExtra(EXTRA_FILE, file.getPath());
-                    result.putExtra(EXTRA_NAME, patch.name);
-                    setResult(RESULT_OK, result);
-                    finish();
-                });
+                PatchDownloader.Result result = PatchDownloader.fetch(url, name, userAgent, referer, cookies, progress);
+                main.post(() -> received(result.name, result.data, url));
             } catch (IOException | OutOfMemoryError e) {
                 String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 main.post(() -> {
                     downloading = false;
-                    status.setText("Open a hack's page and download its patch; it's applied to your own copy of the game.");
-                    showError(message);
+                    status.setText(HINT);
+                    showError("Couldn't download", message, url);
                 });
             }
         });
     }
 
-    private static byte[] fetch(String url, String userAgent, String cookies) throws IOException {
-        HttpURLConnection connection = (HttpURLConnection) new URL(url).openConnection();
-        try {
-            connection.setConnectTimeout(15_000);
-            connection.setReadTimeout(60_000);
-            if (userAgent != null) connection.setRequestProperty("User-Agent", userAgent);
-            if (cookies != null) connection.setRequestProperty("Cookie", cookies);
-            int status = connection.getResponseCode();
-            if (status != HttpURLConnection.HTTP_OK) throw new IOException("The site answered " + status);
-            long length = connection.getContentLengthLong();
-            if (length > MAX_DOWNLOAD) throw new IOException("That download is too big to be a patch");
-            try (InputStream in = connection.getInputStream()) {
-                ByteArrayOutputStream out = new ByteArrayOutputStream();
-                byte[] buffer = new byte[64 * 1024];
-                int read;
-                while ((read = in.read(buffer)) != -1) {
-                    out.write(buffer, 0, read);
-                    if (out.size() > MAX_DOWNLOAD) throw new IOException("That download is too big to be a patch");
+    /**
+     * A download the page built itself (a "blob:" address, which only the page can read): the page
+     * is asked to hand it over.
+     */
+    private void downloadBlob(String url, String name) {
+        downloading = true;
+        awaitingBlob = name;
+        status.setText("Downloading " + name + "…");
+        String script = "(function(){var x=new XMLHttpRequest();x.open('GET'," + quote(url) + ",true);"
+                + "x.responseType='blob';x.onload=function(){var r=new FileReader();r.onloadend=function(){"
+                + "var s=String(r.result);AndroidBoyDownloads.receive(s.substring(s.indexOf(',')+1));};"
+                + "r.readAsDataURL(x.response);};x.onerror=function(){AndroidBoyDownloads.failed();};x.send();})();";
+        web.evaluateJavascript(script, null);
+    }
+
+    private static String quote(String text) {
+        return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'";
+    }
+
+    /** What pages can call: only the answer to a blob download this screen asked for. */
+    private final class BlobReceiver {
+        @JavascriptInterface
+        public void receive(String base64) {
+            main.post(() -> {
+                String name = awaitingBlob;
+                awaitingBlob = null;
+                if (name == null) return; // Not asked for.
+                byte[] data;
+                try {
+                    if (base64.length() > PatchDownloader.MAX_DOWNLOAD / 3 * 4 + 4) throw new IllegalArgumentException();
+                    data = Base64.decode(base64, Base64.DEFAULT);
+                } catch (IllegalArgumentException | OutOfMemoryError e) {
+                    downloading = false;
+                    status.setText(HINT);
+                    showError("Couldn't download", "That download is too big to be a patch.", null);
+                    return;
                 }
-                return out.toByteArray();
-            }
-        } finally {
-            connection.disconnect();
+                received(name, data, null);
+            });
+        }
+
+        @JavascriptInterface
+        public void failed() {
+            main.post(() -> {
+                if (awaitingBlob == null) return;
+                awaitingBlob = null;
+                downloading = false;
+                status.setText(HINT);
+                showError("Couldn't download", "The page didn't hand over its download.", null);
+            });
         }
     }
 
-    private void showError(String message) {
+    /** A finished download: back to the library if it holds a patch, or why not. */
+    private void received(String name, byte[] data, String url) {
+        io.execute(() -> {
+            try {
+                List<Patcher.Patch> patches = Patcher.fromDownload(name, data);
+                // The whole download goes back, so a zip of several patches can offer each one.
+                File file = new File(getCacheDir(), "patch-download");
+                try (FileOutputStream out = new FileOutputStream(file)) {
+                    out.write(data);
+                }
+                main.post(() -> {
+                    Intent result = new Intent();
+                    result.putExtra(EXTRA_FILE, file.getPath());
+                    result.putExtra(EXTRA_NAME, name);
+                    setResult(RESULT_OK, result);
+                    Toast.makeText(this, patches.size() == 1 ? "Got the patch " + patches.get(0).name
+                            : "Got " + patches.size() + " patches", Toast.LENGTH_SHORT).show();
+                    finish();
+                });
+            } catch (IOException e) {
+                main.post(() -> {
+                    downloading = false;
+                    status.setText(HINT);
+                    showError("Not a patch", e.getMessage(), url);
+                });
+            }
+        });
+    }
+
+    /** Explains a failed download; offers the phone's browser, which can save anything, when there's a link. */
+    private void showError(String title, String message, String url) {
         if (isFinishing()) return;
-        new AlertDialog.Builder(this)
-                .setTitle("Not a patch")
+        AlertDialog.Builder builder = new AlertDialog.Builder(this)
+                .setTitle(title)
                 .setMessage(message)
-                .setPositiveButton(android.R.string.ok, null)
-                .show();
+                .setPositiveButton(android.R.string.ok, null);
+        if (url != null) {
+            builder.setNeutralButton("Open in browser", (d, which) -> {
+                try {
+                    startActivity(new Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)));
+                } catch (android.content.ActivityNotFoundException e) {
+                    Toast.makeText(this, "No browser found", Toast.LENGTH_SHORT).show();
+                }
+            });
+        }
+        builder.show();
     }
 
     @Override

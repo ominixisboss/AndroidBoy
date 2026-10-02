@@ -27,10 +27,13 @@ jobs:
       - name: Compile and render every filter
         run: node tests/shader_test.js app/src/main/assets/shaders shader-previews
       - uses: actions/upload-artifact@v4
+        # An extra for looking at by hand: a full artifact store mustn't fail the build.
+        continue-on-error: true
         if: always()
         with:
           name: shader-previews
           path: shader-previews/
+          retention-days: 7
 
   apk:
     name: Android APK
@@ -62,29 +65,39 @@ jobs:
           done
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: AndroidBoy-debug
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: AndroidBoy-release
           path: app/build/outputs/apk/release/*.apk
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         if: always()
         with:
           name: skin-previews
           path: app/build/skin-previews/
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         if: always()
         with:
           name: unit-test-report
           path: app/build/reports/tests/
+          retention-days: 7
 
       - uses: actions/upload-artifact@v4
+        continue-on-error: true
         if: always()
         with:
           name: lint-report
           path: app/build/reports/lint-results-debug.html
+          retention-days: 7

@@ -5,7 +5,9 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.zip.CRC32;
 import java.util.zip.ZipEntry;
@@ -85,28 +87,40 @@ final class Patcher {
      * often zipped with a readme). Null if it isn't one.
      */
     static Patch find(String name, byte[] data) throws IOException {
-        if (format(data) != null) return new Patch(name, data);
-        if (data.length < 4 || data[0] != 'P' || data[1] != 'K' || data[2] != 3 || data[3] != 4) return null;
+        List<Patch> all = findAll(name, data);
+        return all.isEmpty() ? null : all.get(0);
+    }
+
+    /**
+     * Every patch in a picked file: the file itself, or each patch inside a .zip (hacks often come
+     * with several, such as one per version of the game or per language), in the zip's order.
+     */
+    static List<Patch> findAll(String name, byte[] data) throws IOException {
+        List<Patch> patches = new ArrayList<>();
+        if (format(data) != null) {
+            patches.add(new Patch(name, data));
+            return patches;
+        }
+        if (data.length < 4 || data[0] != 'P' || data[1] != 'K' || data[2] != 3 || data[3] != 4) return patches;
         try (ZipInputStream zip = new ZipInputStream(new ByteArrayInputStream(data))) {
             ZipEntry entry;
             while ((entry = zip.getNextEntry()) != null) {
                 if (entry.isDirectory() || !isPatchName(entry.getName())) continue;
                 byte[] patch = readFully(zip, MAX_OUTPUT);
-                if (format(patch) != null) return new Patch(new File(entry.getName()).getName(), patch);
+                if (format(patch) != null) patches.add(new Patch(new File(entry.getName()).getName(), patch));
             }
         }
-        return null;
+        return patches;
     }
 
     /**
-     * The patch in a file downloaded from the web, or a {@link PatchException} saying why it
-     * isn't one. Only patches are taken this way, never games.
+     * The patches in a file downloaded from the web, or a {@link PatchException} saying why there
+     * are none. Only patches are taken this way, never games.
      */
-    static Patch fromDownload(String name, byte[] data) throws IOException {
-        Patch patch = find(name, data);
-        if (patch != null) return patch;
-        throw new PatchException("That download isn't a ROM hack patch (.ips, .ups or .bps, or a .zip with one in it). "
-                + "Only patches can be downloaded here; look for the hack's patch download.");
+    static List<Patch> fromDownload(String name, byte[] data) throws IOException {
+        List<Patch> patches = findAll(name, data);
+        if (!patches.isEmpty()) return patches;
+        throw new PatchException(PatchDownloader.whyNotAPatch(name, data));
     }
 
     static long crc32(byte[] data, int length) {
