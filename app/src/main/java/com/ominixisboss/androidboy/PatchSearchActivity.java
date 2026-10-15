@@ -69,6 +69,8 @@ public final class PatchSearchActivity extends Activity {
     private boolean downloading;
     /** The name of a blob download the page has been asked for, or null. */
     private String awaitingBlob;
+    /** What to do if the page can't hand over the download it was asked for. */
+    private Runnable pageFallback;
     private static final String HINT =
             "Open a hack's page and download its patch; it's applied to your own copy of the game.";
 
@@ -212,6 +214,15 @@ public final class PatchSearchActivity extends Activity {
             showError("Couldn't download", "That kind of download link can't be opened here.", null);
             return;
         }
+        // Sites behind bot protection (Romhacking.net is behind Cloudflare) let the browser through
+        // but refuse a separate request from the app, even with the same cookies. So the page
+        // fetches the file itself first; the app's own request is only the fallback, for files
+        // on another site that the page isn't allowed to read.
+        fetchInPage(url, name, () -> fetchDirectly(url, userAgent, name));
+    }
+
+    /** Downloads {@code url} with the app's own request, as the browser would have. */
+    private void fetchDirectly(String url, String userAgent, String name) {
         downloading = true;
         status.setText("Downloading " + name + "…");
         String referer = web.getUrl();
@@ -250,19 +261,41 @@ public final class PatchSearchActivity extends Activity {
         });
     }
 
-    /**
-     * A download the page built itself (a "blob:" address, which only the page can read): the page
-     * is asked to hand it over.
-     */
+    /** A download the page built itself (a "blob:" address, which only the page can read). */
     private void downloadBlob(String url, String name) {
+        fetchInPage(url, name, () -> {
+            downloading = false;
+            status.setText(HINT);
+            showError("Couldn't download", "The page didn't hand over its download.", null);
+        });
+    }
+
+    /**
+     * Asks the page to fetch {@code url} and hand it over, as the browser itself (same cookies,
+     * same connection, past any bot check); runs {@code otherwise} if the page can't.
+     */
+    private void fetchInPage(String url, String name, Runnable otherwise) {
         downloading = true;
         awaitingBlob = name;
+        pageFallback = otherwise;
         status.setText("Downloading " + name + "…");
-        String script = "(function(){var x=new XMLHttpRequest();x.open('GET'," + quote(url) + ",true);"
-                + "x.responseType='blob';x.onload=function(){var r=new FileReader();r.onloadend=function(){"
-                + "var s=String(r.result);AndroidBoyDownloads.receive(s.substring(s.indexOf(',')+1));};"
-                + "r.readAsDataURL(x.response);};x.onerror=function(){AndroidBoyDownloads.failed();};x.send();})();";
+        String script = "(function(){try{var x=new XMLHttpRequest();x.open('GET'," + quote(url) + ",true);"
+                + "x.withCredentials=true;x.responseType='blob';"
+                + "x.onload=function(){if(x.status!==200&&x.status!==0){AndroidBoyDownloads.failed();return;}"
+                + "var d=x.getResponseHeader('Content-Disposition')||'';var r=new FileReader();"
+                + "r.onloadend=function(){var s=String(r.result);"
+                + "AndroidBoyDownloads.receive(s.substring(s.indexOf(',')+1),d);};"
+                + "r.onerror=function(){AndroidBoyDownloads.failed();};r.readAsDataURL(x.response);};"
+                + "x.onerror=function(){AndroidBoyDownloads.failed();};x.send();}"
+                + "catch(e){AndroidBoyDownloads.failed();}})();";
         web.evaluateJavascript(script, null);
+        // If the page never answers (it was left, or the request hangs), go on without it.
+        main.postDelayed(() -> {
+            if (pageFallback != otherwise) return;
+            awaitingBlob = null;
+            pageFallback = null;
+            otherwise.run();
+        }, 45_000);
     }
 
     private static String quote(String text) {
@@ -272,11 +305,14 @@ public final class PatchSearchActivity extends Activity {
     /** What pages can call: only the answer to a blob download this screen asked for. */
     private final class BlobReceiver {
         @JavascriptInterface
-        public void receive(String base64) {
+        public void receive(String base64, String disposition) {
             main.post(() -> {
-                String name = awaitingBlob;
+                String asked = awaitingBlob;
                 awaitingBlob = null;
-                if (name == null) return; // Not asked for.
+                pageFallback = null;
+                if (asked == null) return; // Not asked for.
+                String named = PatchDownloader.fileName(disposition);
+                String name = named != null ? named : asked;
                 byte[] data;
                 try {
                     if (base64.length() > PatchDownloader.MAX_DOWNLOAD / 3 * 4 + 4) throw new IllegalArgumentException();
@@ -296,9 +332,9 @@ public final class PatchSearchActivity extends Activity {
             main.post(() -> {
                 if (awaitingBlob == null) return;
                 awaitingBlob = null;
-                downloading = false;
-                status.setText(HINT);
-                showError("Couldn't download", "The page didn't hand over its download.", null);
+                Runnable otherwise = pageFallback;
+                pageFallback = null;
+                if (otherwise != null) otherwise.run();
             });
         }
     }
