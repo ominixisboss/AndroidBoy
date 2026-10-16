@@ -399,6 +399,38 @@ public class SkinTest {
     }
 
     @Test
+    public void themesHaveGbaShoulders() {
+        // With a GBA game, the themes put L and R on the body's edges just under the screen, and
+        // the game screen doesn't add its own.
+        for (ThemeSkin skin : ThemeSkin.ALL) {
+            if (skin.id().equals("theme:minimal")) continue; // No body to put them on.
+            Skin.Layout layout = new Skin.Layout();
+            skin.layout(layout, PHONE_SHORT, PHONE_LONG, 240, 160, true, false);
+            Skin.addShoulderButtons(layout);
+            int shoulders = 0;
+            for (Skin.Control control : layout.controls) {
+                if (control.shape != Skin.Control.SHOULDER) continue;
+                shoulders++;
+                assertTrue(skin.id(), control.bounds.top > layout.screen.bottom);
+                if (control.keys == Emulator.KEY_L) assertTrue(skin.id(), control.bounds.left <= 0);
+                if (control.keys == Emulator.KEY_R) assertTrue(skin.id(), control.bounds.right >= PHONE_SHORT);
+            }
+            assertEquals(skin.id(), 2, shoulders);
+            // Nothing overlaps the shoulders.
+            for (Skin.Control a : layout.controls) {
+                if (a.shape != Skin.Control.SHOULDER) continue;
+                for (Skin.Control b : layout.controls) {
+                    if (b != a && b.visible) assertFalse(skin.id(), RectF.intersects(a.bounds, b.bounds));
+                }
+            }
+            // A Game Boy game gets none from the theme.
+            Skin.Layout gb = new Skin.Layout();
+            skin.layout(gb, PHONE_SHORT, PHONE_LONG, 160, 144, true, false);
+            for (Skin.Control control : gb.controls) assertFalse(skin.id(), control.shape == Skin.Control.SHOULDER);
+        }
+    }
+
+    @Test
     public void clearSkinsDrawInEveryLayout() {
         // Portrait and landscape, Game Boy and GBA (with shoulder buttons), controls shown and
         // hidden, buttons enlarged in the layout editor, at rest and all held with the d-pad rocked.
@@ -701,8 +733,10 @@ public class SkinTest {
                 Skin.Layout layout = new Skin.Layout();
                 skin.layout(layout, width, height, 240, 160, true, false);
                 int before = layout.controls.size();
+                boolean own = false; // Themes place their own on the body's edges.
+                for (Skin.Control control : layout.controls) own |= control.keys == Emulator.KEY_L;
                 Skin.addShoulderButtons(layout);
-                assertEquals(what + ": L and R added", before + 2, layout.controls.size());
+                assertEquals(what + ": L and R added once", own ? before : before + 2, layout.controls.size());
                 Skin.Control l = find(layout, Emulator.KEY_L);
                 Skin.Control r = find(layout, Emulator.KEY_R);
                 assertEquals(Skin.Control.SHOULDER, l.shape);

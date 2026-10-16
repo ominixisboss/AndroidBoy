@@ -234,6 +234,9 @@ abstract class Skin {
      */
     static void addShoulderButtons(Layout out) {
         if (!out.controlsVisible) return;
+        for (Control control : out.controls) {
+            if (control.keys == Emulator.KEY_L) return; // The skin placed its own.
+        }
         RectF dpad = null;
         RectF buttons = null;
         for (Control control : out.controls) {
