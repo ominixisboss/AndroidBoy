@@ -54,6 +54,19 @@ public class SkinPickerTest {
     }
 
     @Test
+    public void searchingAndSurprises() {
+        Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
+        SkinLibrary library = new SkinLibrary(activity);
+        // Every word must match, in the name or the group, ignoring case.
+        List<SkinLibrary.Entry> found = SkinPicker.matching(library.list(), "POCKET red");
+        assertEquals(1, found.size());
+        assertEquals("theme:pocket-red", found.get(0).id);
+        assertTrue(SkinPicker.matching(library.list(), "clear").size() >= 12);
+        assertTrue(SkinPicker.matching(library.list(), "no such skin anywhere").isEmpty());
+        assertEquals(library.list().size(), SkinPicker.matching(library.list(), "  ").size());
+    }
+
+    @Test
     public void choosingASkinFromACategory() {
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         SkinLibrary library = new SkinLibrary(activity);
@@ -79,9 +92,12 @@ public class SkinPickerTest {
         // Categories, with a count; the one holding the current skin (Minimal) says so.
         AlertDialog top = latest();
         ListView categories = listIn(top);
-        assertEquals(shown.size(), categories.getAdapter().getCount());
-        int modern = shown.indexOf(ThemeSkin.MODERN);
-        int colours = shown.indexOf(ThemeSkin.COLOURS);
+        // Search and "Surprise me" come first, then the groups.
+        assertEquals(shown.size() + 2, categories.getAdapter().getCount());
+        assertRow(categories, 0, "Search skins…", "Find any skin by name, in every group");
+        assertRow(categories, 1, "Surprise me", "Switch to a random skin");
+        int modern = shown.indexOf(ThemeSkin.MODERN) + 2;
+        int colours = shown.indexOf(ThemeSkin.COLOURS) + 2;
         assertRow(categories, modern, ThemeSkin.MODERN,
                 library.list(ThemeSkin.MODERN).size() + " skins · using Minimal (translucent controls)");
         assertRow(categories, colours, ThemeSkin.COLOURS, library.list(ThemeSkin.COLOURS).size() + " skins");

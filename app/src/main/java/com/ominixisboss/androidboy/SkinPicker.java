@@ -52,9 +52,22 @@ final class SkinPicker {
             // Imported only appears once there's something in it.
             if (!library.list(category).isEmpty()) categories.add(category);
         }
-        Settings.TwoLineAdapter adapter = new Settings.TwoLineAdapter(activity, categories.size()) {
+        // Two shortcuts first: searching every skin by name, and a random one.
+        int shortcuts = 2;
+        Settings.TwoLineAdapter adapter = new Settings.TwoLineAdapter(activity, categories.size() + shortcuts) {
             @Override
             void bind(int position, TextView title, TextView detail) {
+                if (position == 0) {
+                    title.setText("Search skins…");
+                    detail.setText("Find any skin by name, in every group");
+                    return;
+                }
+                if (position == 1) {
+                    title.setText("Surprise me");
+                    detail.setText("Switch to a random skin");
+                    return;
+                }
+                position -= shortcuts;
                 List<SkinLibrary.Entry> entries = library.list(categories.get(position));
                 title.setText(categories.get(position));
                 String count = entries.size() == 1 ? "1 skin" : entries.size() + " skins";
@@ -67,8 +80,17 @@ final class SkinPicker {
         AlertDialog[] top = new AlertDialog[1];
         top[0] = new AlertDialog.Builder(activity)
                 .setTitle(R.string.skin)
-                .setView(Settings.listView(activity, adapter, position ->
-                        showCategory(activity, library, categories.get(position), callbacks, top[0], adapter)))
+                .setView(Settings.listView(activity, adapter, position -> {
+                    if (position == 0) {
+                        search(activity, library, callbacks, top[0], adapter);
+                    } else if (position == 1) {
+                        surprise(library, callbacks, top[0]);
+                    } else {
+                        String category = categories.get(position - shortcuts);
+                        showCategory(activity, library, category, new ArrayList<>(library.list(category)), callbacks,
+                                top[0], adapter);
+                    }
+                }))
                 .setNeutralButton(R.string.import_skin, (d, which) -> startImport(activity, importRequestCode))
                 .setNegativeButton(android.R.string.cancel, null)
                 .create();
@@ -77,12 +99,69 @@ final class SkinPicker {
     }
 
     /** Preview cards per row in a category. */
-    static final int COLUMNS = 3;
+    /** Two to a row, so the previews are big enough to see the details. */
+    static final int COLUMNS = 2;
 
     /** The skins in a category, as preview cards; tap one to use it, long-press an imported one to delete it. */
-    private static void showCategory(Activity activity, SkinLibrary library, String category, Callbacks callbacks,
+    /** Asks for a name, then shows every skin whose name or group has all its words. */
+    private static void search(Activity activity, SkinLibrary library, Callbacks callbacks, AlertDialog top,
+                               Settings.TwoLineAdapter categoryList) {
+        android.widget.EditText field = new android.widget.EditText(activity);
+        field.setHint("e.g. pocket, neon, clear, purple");
+        field.setSingleLine(true);
+        int pad = dp(activity, 20);
+        android.widget.FrameLayout box = new android.widget.FrameLayout(activity);
+        box.setPadding(pad, dp(activity, 8), pad, 0);
+        box.addView(field);
+        AlertDialog dialog = new AlertDialog.Builder(activity)
+                .setTitle("Search skins")
+                .setView(box)
+                .setPositiveButton("Search", (d, which) -> {
+                    List<SkinLibrary.Entry> found = matching(library.list(), field.getText().toString());
+                    if (found.isEmpty()) {
+                        android.widget.Toast.makeText(activity, "No skins match", android.widget.Toast.LENGTH_SHORT).show();
+                    } else {
+                        showCategory(activity, library, "\u201C" + field.getText().toString().trim() + "\u201D", found,
+                                callbacks, top, categoryList);
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        dialog.show();
+    }
+
+    /** The skins whose name or group contains every word of {@code query}, ignoring case. */
+    static List<SkinLibrary.Entry> matching(List<SkinLibrary.Entry> entries, String query) {
+        String[] words = query.toLowerCase(java.util.Locale.ROOT).trim().split("\\s+");
+        List<SkinLibrary.Entry> found = new ArrayList<>();
+        for (SkinLibrary.Entry entry : entries) {
+            String haystack = (entry.name + " " + entry.category).toLowerCase(java.util.Locale.ROOT);
+            boolean all = true;
+            for (String word : words) {
+                if (!word.isEmpty() && !haystack.contains(word)) {
+                    all = false;
+                    break;
+                }
+            }
+            if (all) found.add(entry);
+        }
+        return found;
+    }
+
+    /** Switches to a random skin other than the current one. */
+    private static void surprise(SkinLibrary library, Callbacks callbacks, AlertDialog top) {
+        List<SkinLibrary.Entry> all = new ArrayList<>(library.list());
+        all.removeIf(entry -> entry.id.equals(library.activeId()));
+        if (all.isEmpty()) return;
+        library.setActive(all.get(new java.util.Random().nextInt(all.size())).id);
+        callbacks.onSkinChanged();
+        top.dismiss();
+    }
+
+    private static void showCategory(Activity activity, SkinLibrary library, String category,
+                                     List<SkinLibrary.Entry> entries, Callbacks callbacks,
                                      AlertDialog top, Settings.TwoLineAdapter categoryList) {
-        List<SkinLibrary.Entry> entries = new ArrayList<>(library.list(category));
         GridView grid = new GridView(activity);
         grid.setNumColumns(COLUMNS);
         int gap = dp(activity, 10);

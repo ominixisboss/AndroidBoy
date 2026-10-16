@@ -10,6 +10,7 @@ import android.graphics.RadialGradient;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
+import android.graphics.Typeface;
 
 /**
  * Built-in skins, drawn in code: a minimal translucent overlay, plus themes styled after the
@@ -195,6 +196,32 @@ final class ThemeSkin extends Skin {
         return p;
     }
 
+    private static Palette retroRed() {
+        // Cream plastic, a dark red face plate and red buttons, after 1980s home consoles.
+        Palette p = palette(0xFFEDE4CF, 0xFF8E1B1B, 0xFF2A2A2D, 0xFFB3202C, 0xFF8E1B1B, 0xFF8E1B1B);
+        p.accent1 = 0xFFD9A441;
+        p.accent2 = 0xFFB3202C;
+        return p;
+    }
+
+    private static Palette electric() {
+        Palette p = palette(0xFFF7D02C, 0xFF2B2B30, 0xFF2B2B30, 0xFFE03A3A, 0xFF4A4A50, 0xFF2B2B30);
+        p.bodyShade = 0xFFE3A814;
+        p.accent1 = 0xFFE03A3A;
+        p.accent2 = 0xFF2B2B30;
+        return p;
+    }
+
+    private static Palette ultraviolet() {
+        Palette p = palette(0xFF1A0B2E, 0xFF0C0518, 0xFFB46CFF, 0xFFFF8A3D, 0xFF4DFFDB, 0xFFB46CFF);
+        p.bodyShade = 0xFF07020F;
+        p.bezelStroke = 0xFFB46CFF;
+        p.style = NEON;
+        p.led = 0xFFFF8A3D;
+        p.speaker = false;
+        return p;
+    }
+
     private static Palette amber() {
         Palette p = terminal();
         p.dpad = p.buttons = p.startSelect = p.label = 0xFFFFB000;
@@ -244,6 +271,15 @@ final class ThemeSkin extends Skin {
             new ThemeSkin("vaporwave", MODERN, "Vaporwave", vaporwave()),
             new ThemeSkin("terminal", MODERN, "Terminal green (outlines)", terminal()),
             new ThemeSkin("amber", MODERN, "Amber terminal (outlines)", amber()),
+            new ThemeSkin("platinum", CLASSICS, "Platinum", color(0xFFB9BCC4)),
+            new ThemeSkin("graphite", CLASSICS, "Graphite", color(0xFF3B3D42)),
+            new ThemeSkin("retro-red", CLASSICS, "Retro red & cream", retroRed()),
+            new ThemeSkin("cobalt", COLOURS, "Cobalt blue", color(0xFF2B4FA8)),
+            new ThemeSkin("arctic", COLOURS, "Arctic white", color(0xFFF1F3F5)),
+            new ThemeSkin("flame", COLOURS, "Flame", color(0xFFE5482B)),
+            new ThemeSkin("emerald", COLOURS, "Emerald", color(0xFF0FA36B)),
+            new ThemeSkin("electric", COLOURS, "Electric yellow", electric()),
+            new ThemeSkin("ultraviolet", MODERN, "Ultraviolet", ultraviolet()),
     };
 
     static ThemeSkin find(String id) {
@@ -263,6 +299,8 @@ final class ThemeSkin extends Skin {
         float pad;
         float labelSize;
         boolean portrait;
+        /** A Game Boy Advance game (a wide screen): the shell says ADVANCE and has L and R shoulders. */
+        boolean advance;
     }
 
     @Override
@@ -322,6 +360,7 @@ final class ThemeSkin extends Skin {
         Geometry g = new Geometry();
         out.extras = g;
         g.portrait = height > width;
+        g.advance = frameWidth > frameHeight * 1.2f;
         float unit = Math.min(width, height);
         // Bezel thickness and the body margin around it; none for the minimal theme.
         g.pad = palette.minimal ? 0 : unit * 0.04f;
@@ -336,8 +375,10 @@ final class ThemeSkin extends Skin {
             float frameAspect = (float) frameHeight / frameWidth;
             float screenWidth = width - 2 * (margin + g.pad);
             // Leave room for the controls, but never less than half the height for the game.
-            float gameHeight = Math.max(height / 2f,
-                    Math.min(height - width * 0.75f, screenWidth * frameAspect + 2 * margin + topPad + bottomPad));
+            float need = screenWidth * frameAspect + 2 * margin + topPad + bottomPad;
+            // A wide GBA screen needs less height: the controls (and the shoulders) get the rest.
+            float floor = g.advance ? height * 0.36f : height / 2f;
+            float gameHeight = Math.max(floor, Math.min(height - width * 0.75f, need));
             area.set(margin + g.pad, margin + topPad, width - margin - g.pad, gameHeight - margin - bottomPad);
         } else {
             area.set(margin + g.pad, margin + topPad, width - margin - g.pad, height - margin - bottomPad);
@@ -359,7 +400,18 @@ final class ThemeSkin extends Skin {
 
     private void layoutPortraitControls(Layout out, Geometry g, int width, int height) {
         float density = density();
-        float top = Math.max(g.bezel.bottom + g.pad, height / 2f);
+        float top = Math.max(g.bezel.bottom + g.pad, g.advance ? height * 0.36f : height / 2f);
+        if (g.advance && !palette.minimal) {
+            // L and R as shoulders on the body's edges, just under the screen, like the GBA's.
+            float shoulderHeight = Math.min(width * 0.1f, 44 * density);
+            float shoulderWidth = width * 0.3f;
+            float y = top + shoulderHeight * 0.2f;
+            out.controls.add(new Control(Emulator.KEY_L, Control.SHOULDER,
+                    new RectF(0, y, shoulderWidth, y + shoulderHeight), true));
+            out.controls.add(new Control(Emulator.KEY_R, Control.SHOULDER,
+                    new RectF(width - shoulderWidth, y, width, y + shoulderHeight), true));
+            top = y + shoulderHeight * 1.3f;
+        }
         float areaHeight = height - top;
         float dpadRadius = Math.min(width * 0.2f, Math.min(areaHeight * 0.3f, 90 * density));
         float buttonRadius = dpadRadius * 0.42f;
@@ -459,8 +511,80 @@ final class ThemeSkin extends Skin {
         useShader(bodyGradient);
         canvas.drawRect(0, 0, layout.width, layout.height, fill);
         fill.setShader(null);
+        if (palette.style == SOLID) drawPlastic(canvas, layout);
 
         drawBezel(canvas, g, layout.screen);
+        drawWordmark(canvas, g, layout.screen);
+    }
+
+    private Paint grainPaint;
+
+    /**
+     * The shell's plastic: a fine matte grain, light catching it from the top left, and moulded
+     * edges, lit along the top and left and shaded along the bottom and right.
+     */
+    private void drawPlastic(Canvas canvas, Layout layout) {
+        int w = layout.width;
+        int h = layout.height;
+        float u = Math.min(w, h);
+        if (grainPaint == null) {
+            grainPaint = new Paint();
+            grainPaint.setShader(new android.graphics.BitmapShader(SoftSkin.grain(), Shader.TileMode.REPEAT,
+                    Shader.TileMode.REPEAT));
+            grainPaint.setAlpha(luminance(palette.body) > 0.5f ? 0xA0 : 0x70);
+        }
+        canvas.drawRect(0, 0, w, h, grainPaint);
+        useShader(new LinearGradient(0, 0, w * 0.6f, h * 0.6f, new int[] {0x22FFFFFF, 0x00FFFFFF, 0x00000000, 0x14000000},
+                new float[] {0, 0.35f, 0.7f, 1}, Shader.TileMode.CLAMP));
+        canvas.drawRect(0, 0, w, h, fill);
+        fill.setShader(null);
+        // The moulded edge: a bevel just inside the shell's outline.
+        float inset = u * 0.012f;
+        rect.set(inset, inset, w - inset, h - inset);
+        float corner = u * 0.05f;
+        stroke.setStrokeWidth(u * 0.008f);
+        stroke.setShader(new LinearGradient(0, 0, w, h, new int[] {0x50FFFFFF, 0x10FFFFFF, 0x10000000, 0x40000000},
+                new float[] {0, 0.3f, 0.7f, 1}, Shader.TileMode.CLAMP));
+        canvas.drawRoundRect(rect, corner, corner, stroke);
+        stroke.setShader(null);
+    }
+
+    /**
+     * "ANDROIDBOY" under the screen, then COLOR (in its rainbow letters) for a Game Boy game or
+     * ADVANCE for a Game Boy Advance one, as the consoles had.
+     */
+    private void drawWordmark(Canvas canvas, Geometry g, Rect screen) {
+        if (palette.minimal || g.pad <= 0) return;
+        float room = g.bezel.bottom - screen.bottom;
+        float size = Math.min(room * 0.5f, g.pad * 0.85f);
+        if (size < 6) return;
+        float baseline = screen.bottom + room * 0.5f + size * 0.36f;
+        text.setTypeface(Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC));
+        text.setTextSize(size);
+        text.setTextAlign(Paint.Align.LEFT);
+        String first = "ANDROIDBOY ";
+        String second = g.advance ? "ADVANCE" : "COLOR";
+        float total = text.measureText(first) + text.measureText(second);
+        float x = g.bezel.centerX() - total / 2;
+        boolean glowing = palette.style == NEON || palette.style == OUTLINE;
+        int ink = glowing ? palette.label : luminance(palette.bezel) > 0.5f ? 0xFF2A2A30 : 0xFFE4E4EA;
+        text.setColor(ink);
+        canvas.drawText(first, x, baseline, text);
+        x += text.measureText(first);
+        if (g.advance || glowing) {
+            text.setColor(glowing ? palette.buttons : 0xFF6A8DFF);
+            canvas.drawText(second, x, baseline, text);
+        } else {
+            int[] rainbow = {0xFFE8354A, 0xFF8E5BD8, 0xFF3DBE5A, 0xFFF5C518, 0xFF2F8FE8};
+            for (int i = 0; i < second.length(); i++) {
+                String letter = second.substring(i, i + 1);
+                text.setColor(rainbow[i % rainbow.length]);
+                canvas.drawText(letter, x, baseline, text);
+                x += text.measureText(letter);
+            }
+        }
+        text.setTextAlign(Paint.Align.CENTER);
+        text.setTypeface(null);
     }
 
     private void drawBezel(Canvas canvas, Geometry g, Rect screen) {
@@ -887,10 +1011,21 @@ final class ThemeSkin extends Skin {
     private void drawShoulderButton(Canvas canvas, Control control, float press) {
         int color = palette.startSelect;
         switch (palette.style) {
-            case SOLID:
-                drawShoulder(canvas, control, press, lighten(color, 0.22f), shade(color, 0.75f), shade(color, 0.5f),
-                        luminance(color) > 0.5f ? 0xFF303030 : 0xFFF0F0F0);
+            case SOLID: {
+                // A 3D rubber shoulder button, with its letter riding on the cap.
+                float capY = solidPill().drawPill(canvas, control.bounds, press, palette.body);
+                text.setTextAlign(Paint.Align.CENTER);
+                text.setTypeface(null);
+                text.setTextSize(control.bounds.height() * 0.48f);
+                text.setColor(luminance(color) > 0.5f ? 0xFF303030 : 0xFFF0F0F0);
+                // Centred on the part that's on screen.
+                float left = Math.max(control.bounds.left, 0);
+                float right = control.bounds.right;
+                if (canvas.getWidth() > 0) right = Math.min(right, canvas.getWidth());
+                canvas.drawText(control.keys == Emulator.KEY_L ? "L" : "R", (left + right) / 2,
+                        capY - (text.descent() + text.ascent()) / 2, text);
                 break;
+            }
             case TRANSLUCENT:
                 drawShoulder(canvas, control, press, color, color, palette.rim, palette.label);
                 break;
