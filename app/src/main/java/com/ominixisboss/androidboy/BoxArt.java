@@ -85,6 +85,12 @@ final class BoxArt {
         RomLibrary.writeAtomically(missingFile(rom), new byte[0]);
     }
 
+    /** Keeps a renamed game's picture (or the note that it has none). */
+    void rename(File from, File to) {
+        if (artFile(from).exists()) artFile(from).renameTo(artFile(to));
+        if (missingFile(from).exists()) missingFile(from).renameTo(missingFile(to));
+    }
+
     void delete(File rom) {
         artFile(rom).delete();
         missingFile(rom).delete();

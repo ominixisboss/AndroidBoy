@@ -73,12 +73,61 @@ public final class PatchSearchActivity extends Activity {
     private Runnable pageFallback;
     private static final String HINT =
             "Open a hack's page and download its patch; it's applied to your own copy of the game.";
+    private String hint = HINT;
+
+    /** Set to "itch" to browse free homebrew on itch.io instead: downloads there are games, added to the library. */
+    static final String EXTRA_MODE = "mode";
+    /** itch.io's lists of free games made for these systems. */
+    static final String[][] ITCH_SOURCES = {
+            {"Game Boy", "https://itch.io/games/free/tag-gameboy-rom"},
+            {"Color", "https://itch.io/games/free/tag-gbc"},
+            {"Advance", "https://itch.io/games/free/tag-gameboy-advance"},
+            {"GB Studio", "https://itch.io/games/free/tag-gbstudio"},
+    };
+    private boolean itch;
+
+    static Intent itchIntent(android.content.Context from) {
+        return new Intent(from, PatchSearchActivity.class).putExtra(EXTRA_MODE, "itch");
+    }
+
+    /** Whether a page belongs to itch.io (the site, a creator's page on it, or its file servers). */
+    static boolean onItch(String url) {
+        String host = android.net.Uri.parse(url).getHost();
+        if (host == null) return false;
+        host = host.toLowerCase(java.util.Locale.ROOT);
+        return host.equals("itch.io") || host.endsWith(".itch.io") || host.equals("itch.zone") || host.endsWith(".itch.zone");
+    }
+
+    /**
+     * The Game Boy or GBA game in a download from itch.io (the file, or the first game in a zip),
+     * or an exception saying why there isn't one: many pages also offer Windows or web builds.
+     */
+    static RomLibrary.Picked gameFromDownload(String name, byte[] data) throws IOException {
+        if (PatchDownloader.isHtml(data)) {
+            throw new IOException("That link opened a web page, not a file. Only itch.io pages open here; "
+                    + "use the page's own download button.");
+        }
+        String lower = name == null ? "" : name.toLowerCase(java.util.Locale.ROOT);
+        if (lower.endsWith(".7z") || lower.endsWith(".rar")) {
+            throw new IOException("That download is a " + lower.substring(lower.lastIndexOf('.'))
+                    + " archive, which AndroidBoy can't open. Save it with your browser, extract it, then add the game.");
+        }
+        RomLibrary.Picked game = RomLibrary.romIn(name, data);
+        if (!RomLibrary.isGbaRom(game.data) && !PatchDownloader.hasGameBoyLogo(game.data)) {
+            throw new IOException("That download isn't a Game Boy or Game Boy Advance game. "
+                    + "Look for the .gb, .gbc or .gba download on the page.");
+        }
+        return game;
+    }
 
     @Override
     @SuppressLint("SetJavaScriptEnabled")
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setTitle("Find ROM hack patches");
+        itch = "itch".equals(getIntent().getStringExtra(EXTRA_MODE));
+        setTitle(itch ? "itch.io homebrew" : "Find ROM hack patches");
+        if (itch) hint = "Free games their makers share on itch.io. Open one and download its .gb, .gbc or .gba file.";
+        String[][] tabs = itch ? ITCH_SOURCES : SOURCES;
         if (getActionBar() != null) getActionBar().setDisplayHomeAsUpEnabled(true);
 
         LinearLayout root = new LinearLayout(this);
@@ -86,7 +135,7 @@ public final class PatchSearchActivity extends Activity {
         int pad = dp(12);
 
         search = new EditText(this);
-        search.setHint("Game or hack name, e.g. Pokémon Red");
+        search.setHint(itch ? "Search itch.io" : "Game or hack name, e.g. Pokémon Red");
         search.setSingleLine(true);
         search.setImeOptions(EditorInfo.IME_ACTION_SEARCH);
         String query = getIntent().getStringExtra(EXTRA_QUERY);
@@ -108,25 +157,30 @@ public final class PatchSearchActivity extends Activity {
         RadioGroup sources = new RadioGroup(this);
         sources.setOrientation(RadioGroup.HORIZONTAL);
         sources.setPadding(pad, 0, pad, 0);
-        int[] ids = new int[SOURCES.length];
-        for (int i = 0; i < SOURCES.length; i++) {
+        int[] ids = new int[tabs.length];
+        for (int i = 0; i < tabs.length; i++) {
             RadioButton button = new RadioButton(this);
             ids[i] = View.generateViewId();
             button.setId(ids[i]);
-            button.setText(SOURCES[i][0]);
+            button.setText(tabs[i][0]);
             sources.addView(button);
         }
         sources.check(ids[0]);
         sources.setOnCheckedChangeListener((group, checkedId) -> {
             for (int i = 0; i < ids.length; i++) if (ids[i] == checkedId) source = i;
-            runSearch();
+            if (itch) {
+                search.setText("");
+                web.loadUrl(ITCH_SOURCES[source][1]);
+            } else {
+                runSearch();
+            }
         });
         root.addView(sources);
 
         status = new TextView(this);
         status.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         status.setPadding(pad, dp(2), pad, dp(4));
-        status.setText(HINT);
+        status.setText(hint);
         root.addView(status);
 
         progress = new ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal);
@@ -144,7 +198,13 @@ public final class PatchSearchActivity extends Activity {
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 // Web pages stay here; anything else (mail, other apps) isn't followed.
-                return !(url.startsWith("https://") || url.startsWith("http://"));
+                if (!(url.startsWith("https://") || url.startsWith("http://"))) return true;
+                if (itch && !onItch(url)) {
+                    // Off itch.io: only a file is taken (downloads come from other servers), never a page.
+                    download(url, view.getSettings().getUserAgentString(), PatchDownloader.nameFromUrl(url));
+                    return true;
+                }
+                return false;
             }
         });
         web.setWebChromeClient(new WebChromeClient() {
@@ -162,6 +222,8 @@ public final class PatchSearchActivity extends Activity {
         setContentView(root);
         if (savedInstanceState != null) {
             web.restoreState(savedInstanceState);
+        } else if (itch) {
+            web.loadUrl(ITCH_SOURCES[0][1]);
         } else if (query != null && !query.trim().isEmpty()) {
             runSearch();
         }
@@ -183,6 +245,14 @@ public final class PatchSearchActivity extends Activity {
         String query = search.getText().toString();
         if (query.trim().isEmpty()) {
             search.requestFocus();
+            return;
+        }
+        if (itch) {
+            try {
+                web.loadUrl("https://itch.io/search?q=" + URLEncoder.encode(query.trim(), "UTF-8"));
+            } catch (UnsupportedEncodingException e) {
+                throw new AssertionError(e);
+            }
             return;
         }
         web.loadUrl(searchUrl(query, source));
@@ -254,7 +324,7 @@ public final class PatchSearchActivity extends Activity {
                 String message = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
                 main.post(() -> {
                     downloading = false;
-                    status.setText(HINT);
+                    status.setText(hint);
                     showError("Couldn't download", message, url);
                 });
             }
@@ -265,7 +335,7 @@ public final class PatchSearchActivity extends Activity {
     private void downloadBlob(String url, String name) {
         fetchInPage(url, name, () -> {
             downloading = false;
-            status.setText(HINT);
+            status.setText(hint);
             showError("Couldn't download", "The page didn't hand over its download.", null);
         });
     }
@@ -319,7 +389,7 @@ public final class PatchSearchActivity extends Activity {
                     data = Base64.decode(base64, Base64.DEFAULT);
                 } catch (IllegalArgumentException | OutOfMemoryError e) {
                     downloading = false;
-                    status.setText(HINT);
+                    status.setText(hint);
                     showError("Couldn't download", "That download is too big to be a patch.", null);
                     return;
                 }
@@ -341,6 +411,28 @@ public final class PatchSearchActivity extends Activity {
 
     /** A finished download: back to the library if it holds a patch, or why not. */
     private void received(String name, byte[] data, String url) {
+        if (itch) {
+            io.execute(() -> {
+                try {
+                    RomLibrary.Picked game = gameFromDownload(name, data);
+                    File file = new File(getCacheDir(), "game-download");
+                    try (FileOutputStream out = new FileOutputStream(file)) {
+                        out.write(game.data);
+                    }
+                    main.post(() -> {
+                        setResult(RESULT_OK, new Intent().putExtra(EXTRA_FILE, file.getPath()).putExtra(EXTRA_NAME, game.name));
+                        finish();
+                    });
+                } catch (IOException | OutOfMemoryError e) {
+                    main.post(() -> {
+                        downloading = false;
+                        status.setText(hint);
+                        showError("Not a game", e.getMessage() != null ? e.getMessage() : "Out of memory", null);
+                    });
+                }
+            });
+            return;
+        }
         io.execute(() -> {
             try {
                 List<Patcher.Patch> patches = Patcher.fromDownload(name, data);
@@ -361,7 +453,7 @@ public final class PatchSearchActivity extends Activity {
             } catch (IOException e) {
                 main.post(() -> {
                     downloading = false;
-                    status.setText(HINT);
+                    status.setText(hint);
                     showError("Not a patch", e.getMessage(), url);
                 });
             }

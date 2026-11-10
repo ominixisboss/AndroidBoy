@@ -43,6 +43,8 @@ public final class MainActivity extends Activity {
     private static final int REQUEST_RESTORE = 8;
     private static final int REQUEST_PATCH_BASE = 9;
     private static final int REQUEST_FIND_PATCH = 10;
+    private static final int REQUEST_ITCH = 11;
+    private static final int REQUEST_FOLDER = 12;
     private static final String STATE_PENDING_ROM = "pending_rom";
     private static final String TAG = "AndroidBoy";
     /** Home-screen shortcuts open a game through here (the game screen itself isn't exported). */
@@ -172,11 +174,13 @@ public final class MainActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         menu.add(0, 1, 0, R.string.add_game);
+        menu.add(0, 11, 0, "Add a folder of games…");
         menu.add(0, 8, 0, "Apply a ROM hack patch…");
         menu.add(0, 9, 0, "Find ROM hack patches online…");
         menu.add(0, 4, 1, R.string.skin);
         menu.add(0, 2, 2, R.string.settings);
         menu.add(0, 6, 1, R.string.homebrew_hub);
+        menu.add(0, 10, 1, "itch.io homebrew…");
         menu.add(0, 5, 3, R.string.retroachievements);
         menu.add(0, 7, 3, "Backup & restore");
         menu.add(0, 3, 4, R.string.about);
@@ -209,6 +213,16 @@ public final class MainActivity extends Activity {
                 return true;
             case 7:
                 showBackupOptions();
+                return true;
+            case 10:
+                startActivityForResult(PatchSearchActivity.itchIntent(this), REQUEST_ITCH);
+                return true;
+            case 11:
+                try {
+                    startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE), REQUEST_FOLDER);
+                } catch (android.content.ActivityNotFoundException e) {
+                    Toast.makeText(this, "This device has no folder picker", Toast.LENGTH_LONG).show();
+                }
                 return true;
             case 4:
                 SkinPicker.show(this, new SkinLibrary(this), REQUEST_IMPORT_SKIN, new SkinPicker.Callbacks() {
@@ -640,6 +654,45 @@ public final class MainActivity extends Activity {
         });
     }
 
+    /** Asks for a new name; the game's save, states, cheats, picture and star keep with it. */
+    private void rename(File rom) {
+        android.widget.EditText field = new android.widget.EditText(this);
+        field.setSingleLine(true);
+        field.setText(RomLibrary.baseName(rom));
+        field.selectAll();
+        android.widget.FrameLayout box = new android.widget.FrameLayout(this);
+        int pad = Math.round(20 * getResources().getDisplayMetrics().density);
+        box.setPadding(pad, pad / 2, pad, 0);
+        box.addView(field);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+                .setTitle("Rename")
+                .setView(box)
+                .setPositiveButton("Rename", (d, which) -> {
+                    try {
+                        EmulatorActivity.forgetLoadedRom(rom);
+                        File renamed = library.rename(rom, field.getText().toString());
+                        if (renamed.equals(rom)) return;
+                        store.rename(rom, renamed);
+                        boxArt.rename(rom, renamed);
+                        art.remove(rom.getName());
+                        ShortcutManager manager = getSystemService(ShortcutManager.class);
+                        if (manager != null) {
+                            manager.disableShortcuts(java.util.Collections.singletonList("game:" + rom.getName()),
+                                    "This game was renamed; add it to the home screen again");
+                        }
+                        refresh();
+                    } catch (IOException e) {
+                        Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .create();
+        if (dialog.getWindow() != null) {
+            dialog.getWindow().setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+        }
+        dialog.show();
+    }
+
     private void showGameOptions(File rom) {
         boolean favourite = store.isFavourite(rom);
         List<String> labels = new ArrayList<>();
@@ -653,6 +706,8 @@ public final class MainActivity extends Activity {
         });
         labels.add("Find patches for this game…");
         actions.add(() -> findPatches(PatchSearchActivity.queryFor(rom.getName())));
+        labels.add("Rename…");
+        actions.add(() -> rename(rom));
         labels.add("Add to home screen");
         actions.add(() -> addToHomeScreen(rom));
         labels.add("Box art…");
@@ -776,6 +831,43 @@ public final class MainActivity extends Activity {
                 } catch (IOException e) {
                     mainHandler.post(() -> Toast.makeText(this, e.getMessage(), Toast.LENGTH_LONG).show());
                 }
+            });
+            return;
+        }
+
+        if (requestCode == REQUEST_ITCH) {
+            String path = data.getStringExtra(PatchSearchActivity.EXTRA_FILE);
+            String name = data.getStringExtra(PatchSearchActivity.EXTRA_NAME);
+            if (path == null) return;
+            io.execute(() -> {
+                try {
+                    File game = library.addRom(name, RomLibrary.readFile(new File(path)));
+                    mainHandler.post(() -> {
+                        EmulatorActivity.forgetLoadedRom(game);
+                        refresh();
+                        Toast.makeText(this, "Added " + RomLibrary.baseName(game), Toast.LENGTH_LONG).show();
+                        launch(game);
+                    });
+                } catch (IOException e) {
+                    mainHandler.post(() -> Toast.makeText(this, getString(R.string.import_failed, e.getMessage()),
+                            Toast.LENGTH_LONG).show());
+                }
+            });
+            return;
+        }
+        if (requestCode == REQUEST_FOLDER) {
+            Uri tree = data.getData();
+            if (tree == null) return;
+            Toast.makeText(this, "Looking for games…", Toast.LENGTH_SHORT).show();
+            io.execute(() -> {
+                RomLibrary.FolderImport found = library.importFolder(this, tree);
+                mainHandler.post(() -> {
+                    refresh();
+                    String message = found.added == 0 && found.alreadyThere == 0 ? "No games found in that folder"
+                            : "Added " + found.added + (found.added == 1 ? " game" : " games")
+                            + (found.alreadyThere > 0 ? "; " + found.alreadyThere + " already in your library" : "");
+                    Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+                });
             });
             return;
         }

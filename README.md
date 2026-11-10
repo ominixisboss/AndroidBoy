@@ -144,6 +144,14 @@ animation in the screen, not photos of a phone.</sub>
   (one per version or language) asks which to use, and anything that isn't a patch is refused with
   the reason (a `.7z` or `.rar` to extract first, a web page, or a game), with a button to open
   the link in your browser instead.
+- **Add a folder of games** (main menu): pick a folder, such as Downloads or one of cartridge dumps
+  from a USB reader, and every `.gb`/`.gbc`/`.gba` file and zipped game in it and its subfolders
+  is added in one go. Games already in the library are left alone.
+- **Rename** a game from its long-press menu. Its save, save states, cheats, box art, favourite
+  star and play history keep with it.
+- **itch.io homebrew** (main menu): browse itch.io's free Game Boy, Color, Advance and GB Studio
+  games in the app, or search it. Downloading a game's `.gb`, `.gbc` or `.gba` file (or a zip
+  holding one) adds it to the library. Only itch.io pages open there, and only games are taken.
 - **Box art** comes from the [libretro thumbnail collection](https://github.com/libretro-thumbnails)
   (the one RetroArch shows). A game is identified by its checksum in No-Intro's list of known
   cartridges, which gives the exact name its picture is filed under; failing that, by its file

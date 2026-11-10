@@ -75,6 +75,15 @@ final class GameStore {
         prefs.edit().putInt(LINK + rom.getName(), accessory).apply();
     }
 
+    /** Carries a renamed game's favourite star, last-played time and link accessory over to its new file. */
+    void rename(File from, File to) {
+        SharedPreferences.Editor editor = prefs.edit();
+        if (lastPlayed(from) != 0) editor.putLong(PLAYED + to.getName(), lastPlayed(from));
+        if (isFavourite(from)) editor.putBoolean(FAVOURITE + to.getName(), true);
+        if (prefs.contains(LINK + from.getName())) editor.putInt(LINK + to.getName(), prefs.getInt(LINK + from.getName(), 0));
+        editor.remove(PLAYED + from.getName()).remove(FAVOURITE + from.getName()).remove(LINK + from.getName()).apply();
+    }
+
     /** Forgets a deleted game. */
     void forget(File rom) {
         prefs.edit().remove(PLAYED + rom.getName()).remove(FAVOURITE + rom.getName()).remove(LINK + rom.getName()).apply();
