@@ -164,7 +164,7 @@ final class PatchDownloader {
     }
 
     /** The Nintendo logo every Game Boy cartridge carries at 0x104. */
-    private static boolean hasGameBoyLogo(byte[] data) {
+    static boolean hasGameBoyLogo(byte[] data) {
         return data.length >= 0x150 && (data[0x104] & 0xFF) == 0xCE && (data[0x105] & 0xFF) == 0xED
                 && (data[0x106] & 0xFF) == 0x66 && (data[0x107] & 0xFF) == 0x66;
     }

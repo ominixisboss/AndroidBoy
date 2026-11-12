@@ -126,4 +126,45 @@ public class LibraryTest {
         assertTrue(library.list().contains(added));
         assertFalse(RomLibrary.isGbaFile(library.addRom("Colour Game", gb)));
     }
+
+    @Test
+    public void renamingAGameKeepsEverythingWithIt() throws Exception {
+        android.app.Application app = RuntimeEnvironment.getApplication();
+        RomLibrary library = new RomLibrary(app);
+        GameStore store = new GameStore(app);
+        byte[] rom = new byte[0x8000];
+        File game = library.addRom("Old Name (USA).gb", rom);
+        File other = library.addRom("Other.gbc", rom);
+        RomLibrary.writeAtomically(library.batteryFile(game), new byte[] {1, 2, 3});
+        RomLibrary.writeAtomically(library.stateFile(game, 2), new byte[] {4});
+        RomLibrary.writeAtomically(library.cheatFile(game), new byte[] {5});
+        store.setFavourite(game, true);
+        store.markPlayed(game, 1234);
+
+        File renamed = library.rename(game, "  My Adventure ");
+        store.rename(game, renamed);
+        assertEquals("My Adventure.gb", renamed.getName());
+        assertTrue(renamed.isFile());
+        assertFalse(game.exists());
+        assertEquals(3, library.batteryFile(renamed).length());
+        assertTrue(library.stateFile(renamed, 2).isFile());
+        assertTrue(library.cheatFile(renamed).isFile());
+        assertFalse(library.batteryFile(game).exists());
+        assertTrue(store.isFavourite(renamed));
+        assertEquals(1234, store.lastPlayed(renamed));
+        assertFalse(store.isFavourite(game));
+
+        // A name another game has (whatever its system) is refused, and so is an empty one.
+        for (String bad : new String[] {"other", "   "}) {
+            try {
+                library.rename(renamed, bad);
+                org.junit.Assert.fail("Renamed to " + bad);
+            } catch (java.io.IOException expected) {
+                assertTrue(renamed.isFile());
+            }
+        }
+        assertTrue(other.isFile());
+        // Characters that can't be in file names are replaced.
+        assertEquals("A_B.gb", library.rename(renamed, "A/B").getName());
+    }
 }

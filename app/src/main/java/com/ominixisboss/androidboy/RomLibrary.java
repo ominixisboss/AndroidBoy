@@ -154,15 +154,112 @@ final class RomLibrary {
         name = rom.name;
         data = rom.data;
 
-        if (name == null || name.isEmpty()) name = "Game.gb";
-        name = name.replaceAll("[/\\\\:*?\"<>|\\p{Cntrl}]", "_");
-        if (!hasRomExtension(name)) {
-            name += extensionFor(data);
-        }
-
-        File target = new File(romsDir, name);
+        File target = new File(romsDir, fileNameFor(name, data));
         writeAtomically(target, data);
         return target;
+    }
+
+    private static final String ILLEGAL = "[/\\\\:*?\"<>|\\p{Cntrl}]";
+
+    /** The file name a game is kept under: its own name made safe, with an extension for its system. */
+    static String fileNameFor(String name, byte[] data) {
+        if (name == null || name.isEmpty()) name = "Game.gb";
+        name = name.replaceAll(ILLEGAL, "_");
+        if (!hasRomExtension(name)) name += extensionFor(data);
+        return name;
+    }
+
+    /**
+     * Renames a game, and its save, states and cheats with it. Returns its new file; throws with
+     * a message for the player if the name is empty or another game has it.
+     */
+    File rename(File rom, String newName) throws IOException {
+        String base = newName == null ? "" : newName.trim().replaceAll(ILLEGAL, "_");
+        if (base.isEmpty() || base.startsWith(".")) throw new IOException("Type a name for the game");
+        if (base.equals(baseName(rom))) return rom;
+        // Saves are kept under the name without its extension, so that must be the only one.
+        for (File other : list()) {
+            if (!other.equals(rom) && baseName(other).equalsIgnoreCase(base)) {
+                throw new IOException("Another game is already called " + baseName(other));
+            }
+        }
+        File target = new File(romsDir, base + rom.getName().substring(baseName(rom).length()));
+        List<File[]> moves = new ArrayList<>();
+        moves.add(new File[] {batteryFile(rom), batteryFile(target)});
+        moves.add(new File[] {cheatFile(rom), cheatFile(target)});
+        for (int slot = 0; slot <= STATE_SLOTS; slot++) {
+            moves.add(new File[] {stateFile(rom, slot), stateFile(target, slot)});
+            moves.add(new File[] {thumbnailFile(rom, slot), thumbnailFile(target, slot)});
+            moves.add(new File[] {achievementProgressFile(rom, slot), achievementProgressFile(target, slot)});
+        }
+        if (!rom.renameTo(target)) throw new IOException("Could not rename the game");
+        for (File[] move : moves) {
+            if (!move[0].exists()) continue;
+            move[1].delete(); // A leftover from a game deleted long ago.
+            if (!move[0].renameTo(move[1])) throw new IOException("Could not move " + move[0].getName());
+        }
+        return target;
+    }
+
+    /** What {@link #importFolder} did. */
+    static final class FolderImport {
+        int added;
+        int alreadyThere;
+    }
+
+    /**
+     * Adds every game in a folder the player picked, and in its subfolders: files with a game's
+     * extension, and zips holding one. Games already in the library are left alone. Call off
+     * the main thread.
+     */
+    FolderImport importFolder(Context context, Uri tree) {
+        FolderImport result = new FolderImport();
+        ContentResolver resolver = context.getContentResolver();
+        java.util.ArrayDeque<String[]> folders = new java.util.ArrayDeque<>();
+        folders.add(new String[] {android.provider.DocumentsContract.getTreeDocumentId(tree), "0"});
+        int seen = 0;
+        while (!folders.isEmpty() && seen < 5000) {
+            String[] folder = folders.poll();
+            int depth = Integer.parseInt(folder[1]);
+            Uri children = android.provider.DocumentsContract.buildChildDocumentsUriUsingTree(tree, folder[0]);
+            try (Cursor cursor = resolver.query(children, new String[] {
+                    android.provider.DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                    android.provider.DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                    android.provider.DocumentsContract.Document.COLUMN_MIME_TYPE,
+                    android.provider.DocumentsContract.Document.COLUMN_SIZE}, null, null, null)) {
+                while (cursor != null && cursor.moveToNext() && seen++ < 5000) {
+                    String id = cursor.getString(0);
+                    String name = cursor.getString(1);
+                    if (name == null) continue;
+                    if (android.provider.DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(2))) {
+                        if (depth < 4) folders.add(new String[] {id, String.valueOf(depth + 1)});
+                        continue;
+                    }
+                    boolean zip = name.toLowerCase(Locale.ROOT).endsWith(".zip");
+                    if (!zip && !hasRomExtension(name)) continue;
+                    if (!cursor.isNull(3) && cursor.getLong(3) > MAX_ROM_SIZE * 4L) continue;
+                    if (!zip && romFile(fileNameFor(name, new byte[0])).exists()) {
+                        result.alreadyThere++;
+                        continue;
+                    }
+                    try {
+                        Picked file = read(context, android.provider.DocumentsContract.buildDocumentUriUsingTree(tree, id));
+                        Picked game = romIn(name, file.data);
+                        if (romFile(fileNameFor(game.name, game.data)).exists()) {
+                            result.alreadyThere++;
+                        } else {
+                            addRom(game.name, game.data);
+                            result.added++;
+                        }
+                    } catch (IOException | RuntimeException | OutOfMemoryError e) {
+                        // Not a game (a zip of something else), or unreadable: skipped.
+                    }
+                }
+            } catch (RuntimeException e) {
+                // A folder the provider won't list: skipped.
+            }
+        }
+        return result;
     }
 
     static byte[] readFile(File file) throws IOException {
